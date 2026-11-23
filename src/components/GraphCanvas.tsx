@@ -1,5 +1,5 @@
 import React,{memo,useMemo,useRef} from 'react';
-import ReactFlow,{Background,BackgroundVariant,Controls,Handle,MiniMap,Position,useReactFlow,type EdgeChange,type NodeChange,type Connection,type NodeProps,type Viewport} from '@xyflow/react';
+import {ReactFlow,Background,BackgroundVariant,Controls,Handle,MiniMap,Position,useReactFlow,type EdgeChange,type NodeChange,type Connection,type NodeProps,type Viewport} from '@xyflow/react';
 import {DndContext,PointerSensor,KeyboardSensor,useSensor,useSensors,type DragEndEvent,useDraggable} from '@dnd-kit/core';
 import type {NNode,NEdge} from '../core/graph';
 import type {PaletteType} from '../core/types';
@@ -62,7 +62,7 @@ export function CanvasWithFlow({nodes,edges,onNodesChange,onEdgesChange,onConnec
  const sensors=useSensors(useSensor(PointerSensor,{activationConstraint:{distance:8}}),useSensor(KeyboardSensor));
  const addNearCenter=(type:PaletteType)=>{const bounds=canvasRef.current?.getBoundingClientRect();if(!bounds)return;const pos=flow.screenToFlowPosition({x:bounds.left+bounds.width/2,y:bounds.top+bounds.height/2});onAdd(type,pos);};
  const onDragEnd=(event:DragEndEvent)=>{const type=event.active.data.current?.type as PaletteType|undefined;if(!type)return;const ev=event.activatorEvent;
-  let x=0,y=0;if('clientX'in ev&&typeof ev.clientX==='number'){x=ev.clientX+event.delta.x;y=ev.clientY+event.delta.y;}else{addNearCenter(type);return;}
+  let x=0,y=0;if('clientX'in ev&&'clientY'in ev&&typeof ev.clientX==='number'&&typeof ev.clientY==='number'){x=ev.clientX+event.delta.x;y=ev.clientY+event.delta.y;}else{addNearCenter(type);return;}
   const bounds=canvasRef.current?.getBoundingClientRect();if(!bounds||x<bounds.left||x>bounds.right||y<bounds.top||y>bounds.bottom)return;
   onAdd(type,flow.screenToFlowPosition({x,y}));
  };
