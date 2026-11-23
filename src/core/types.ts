@@ -9,5 +9,5 @@ export type Metrics={definitionVersion?:string;orders:number;onTimeRate:number|n
 export type Ribbon=Metrics & {lateOrders:number;avgDelayDays:number|null;affectedFactories:number;factories:number;deliveryDateCount:number};
 export type BreakdownRow={label:string|null;orders:number;on_time_rate:number|null;volume_rate:number|null};
 export type TrendRow={month:string;orders:number;on_time_rate:number|null};export type DashboardData={metrics:Metrics|null;trend:TrendRow[];breakdown:BreakdownRow[];ribbon?:Ribbon|null;pending:boolean;error:string|null};
-export type PaletteType='metric'|'note'|'condition'|'split'|'connector'|'donut'|'bar'|'line'|'calculation';
+export type PaletteType='root'|'metric'|'note'|'condition'|'split'|'connector'|'donut'|'bar'|'line'|'calculation';
 export type SavedDraft={version:2;nodes:Array<{id:string;position:{x:number;y:number};analysis:AnalysisNode}>;edges:Array<{id:string;source:string;target:string;kind:'analytic'|'reference'}>;localFilters:Record<string,Filter[]>;viewport:{x:number;y:number;zoom:number};timestamp:string};
