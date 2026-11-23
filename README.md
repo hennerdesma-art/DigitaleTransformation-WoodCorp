@@ -21,9 +21,9 @@ Designvorgaben: NXT-Türkis `#008B92`, Interaktion nach **NXT | Digital Transfor
 2. Zieladresse: `https://hennerdesma-art.github.io/DigitaleTransformation-WoodCorp/`.
 3. Für die einmalige Admin-Einrichtung die URL mit `?setup=1` öffnen. E-Mail ist vorgegeben; das Initialpasswort und den **separat bereitgestellten** einmaligen Einrichtungscode manuell eingeben.
 4. Der Code ist nur einmal und zeitlich begrenzt gültig. Er steht **nicht** im Repository. Supabase Auth speichert den Passwort-Hash. Der Client enthält niemals einen Secret-/Service-Role-Key.
-5. Danach über das normale Login einloggen. Unter **Team & Zugänge** E-Mail + Rolle wählen, Einladungslink erzeugen, an Zielperson senden. Sie öffnet den Link und legt ihr Passwort fest.
+5. Danach über das normale Login einloggen. Unter **Team & Zugänge** E-Mail, Rolle und Versandart wählen: Einladung per Supabase-E-Mail **oder** einmaligen Link zum Kopieren. Empfänger öffnen den Link und legen selbst ein Passwort fest.
 6. Unter **Authentication > URL Configuration** im Supabase Dashboard die GitHub-Pages-URL als Site URL / erlaubten Redirect konfigurieren; ggf. den genauen Pfad mit `?invite=1` und `?recovery=1` erlauben.
-7. Optional SMTP für zuverlässige Auth-Benachrichtigungen einrichten. Das aktuelle Einladungsmodul generiert bewusst **kopierbare Links**, sendet nicht automatisch E-Mails.
+7. Für zuverlässige E-Mail-Einladungen SMTP in Supabase Auth einrichten. Alternativ einen einmaligen Einladungslink erzeugen und persönlich verschicken. Der Link ist vertraulich.
 
 > Wichtig: Direktes ungeschütztes Self-Signup ist nicht vorgesehen; nur Mitglieder mit Eintrag in `woodcorp_access` können auf Analyse-Daten zugreifen. Für öffentliches Hosting gelten RLS und serverseitige Admin-Prüfung, nicht nur sichtbare Menüs.
 
@@ -35,7 +35,7 @@ css/styles.css            NXT Design- und Komponentenregeln
 js/config.js              öffentliche Supabase-Konfiguration
 js/filters.js             globale und lokale Filtervererbung
 js/app.js                 Auth, Navigation, Baum, Dashboards, Team
-assets/favicon.svg        NXT-inspiriertes Favicon
+assets/favicon.svg        NXT-inspiriertes Favicon\nassets/nxt-logo.png        Originales NXT-Logo (unverändert)
 .github/workflows/pages.yml   GitHub Pages Deployment
 ```
 
