@@ -11,7 +11,8 @@ import {Brand,Button,IconButton,Modal,Notice,Spinner,number,percent,decimal,Smal
 import AuthScreen from './components/AuthScreen';
 import {DashboardRenderer,DashboardBuilder} from './components/DashboardBuilder';
 import {WorkspaceControls,FilterCatalogPage} from './components/WorkspaceControls';
-import {standardDashboard,makeDocument,validDocument,type NodeDashboard} from './core/dashboard';
+import {standardDashboard,makeDocument,validDocument,metricValue,metricFormat,METRIC_LABELS,type MetricKey,type NodeDashboard} from './core/dashboard';
+import {CalculationLogic} from './components/CalculationLogic';
 import {workspacesApi,type WorkspaceRecord,type FilterCatalogRow} from './lib/workspaces';
 import './styles/dashboard.css';
 import './styles/v4.css';
@@ -85,16 +86,21 @@ function Sidebar({view,onNavigate,collapsed,setCollapsed,role}:{view:View;onNavi
  return <aside className={'navigation '+(collapsed?'collapsed':'')} aria-label="Hauptnavigation"><nav><button className="nav-toggle" type="button" onClick={()=>setCollapsed(!collapsed)} aria-label={collapsed?'Navigation ausklappen':'Navigation einklappen'} title={collapsed?'Navigation ausklappen':'Navigation einklappen'}><Icon name={collapsed?'panel-left-open':'panel-left-close'} size={18}/>{!collapsed&&'Navigation'}</button>
  {NAV.filter(n=>!n.admin||role==='admin').map(n=><button className={'nav-entry '+(n.id===view?'active':'')} key={n.id} aria-current={n.id===view?'page':undefined} onClick={()=>onNavigate(n.id)} title={n.label} type="button"><Icon name={n.icon} size={19}/>{!collapsed&&<span>{n.label}</span>}</button>)}
  </nav><div className="nav-spacer"/><div className="nav-bottom">{!collapsed&&<><div className="nav-label"><Icon name="star" size={16}/> FAVORITEN</div><button type="button" onClick={()=>onNavigate('analytics')}><Icon name="target" size={16}/> On-Time Delivery</button><p>WoodCorp · O2C</p></>}<div className="nav-dots" aria-hidden="true"/></div></aside>;}
-function MetricRibbon({ribbon,trend,pending,names}:{ribbon:Ribbon|null;trend:TrendRow[];pending:boolean;names:MetricNames}){
- const values=trend.filter(r=>r.on_time_rate!=null).map(t=>Number(t.on_time_rate));
- const cards=[
-  {title:names.onTimeRate||'On-Time Delivery',value:percent(ribbon?.onTimeRate),icon:'target',unit:'Lieferdatum ≤ Zusage',highlight:true,graph:values},
-  {title:names.orders||'Aufträge',value:number(ribbon?.orders),icon:'package',unit:'Aufträge in Auswahl'},
-  {title:names.avgDelayDays||'Ø Lieferverzug',value:ribbon?.avgDelayDays==null?'–':decimal(ribbon.avgDelayDays)+' Tage',icon:'clock-3',unit:'Nur verspätete Lieferungen'},
-  {title:names.lateOrders||'Verspätete Aufträge',value:number(ribbon?.lateOrders),icon:'triangle-alert',unit:'Lieferdatum > Zusage'},
-  {title:names.affectedFactories||'Betroffene Werke',value:ribbon?`${ribbon.affectedFactories} / ${ribbon.factories}`:'–',icon:'factory',unit:'Werke mit Verspätungen'}
+function MetricRibbon({ribbon,trend,pending,names,onExplain}:{ribbon:Ribbon|null;trend:TrendRow[];pending:boolean;names:MetricNames;onExplain:(metric:MetricKey)=>void}){
+ const graph=trend.filter(r=>r.on_time_rate!=null).map(r=>Number(r.on_time_rate));
+ const cards:{key:MetricKey;icon:string;hint:string;highlight?:boolean;graph?:number[]}[]=[
+  {key:'otifRate',icon:'target',hint:'On Time In Full · Ziel 80 %',highlight:true},
+  {key:'onTimeRate',icon:'clock-3',hint:'Pünktliche Lieferungen',graph},
+  {key:'volumeConformanceRate',icon:'check-circle-2',hint:'Mengenkonforme Lieferungen'},
+  {key:'totalPenaltyEur',icon:'triangle-alert',hint:'Vertragsstrafenmodell · 0,75 €/kg'},
+  {key:'orders',icon:'package',hint:'Case-basierte Aufträge'}
  ];
- return <div className="kpi-ribbon">{cards.map(c=><section className={'ribbon-card '+(c.highlight?'featured':'')} key={c.title} title={c.unit}><div className="ribbon-symbol"><Icon name={c.icon} size={23}/></div><div className="ribbon-content"><h3>{c.title}</h3><div className="ribbon-value">{pending&&!ribbon?'…':c.value}</div><small>{c.unit}</small></div>{c.graph&&<SmallTrend values={c.graph}/>}</section>)}</div>;
+ return <div className="kpi-ribbon">{cards.map(card=><section className={'ribbon-card '+(card.highlight?'featured':'')} key={card.key}>
+   <div className="ribbon-symbol"><Icon name={card.icon} size={23}/></div>
+   <div className="ribbon-content"><h3>{names[card.key]||METRIC_LABELS[card.key]}</h3><div className="ribbon-value">{pending&&!ribbon?'…':metricFormat(card.key,ribbon?metricValue(card.key,ribbon,ribbon):null)}</div><small>{card.hint}</small></div>
+   {card.graph&&<SmallTrend values={card.graph}/>}
+   <button className="ribbon-explain" type="button" onClick={()=>onExplain(card.key)} aria-label={'Berechnungslogik für '+METRIC_LABELS[card.key]} title="Berechnungslogik öffnen"><Icon name="info" size={15}/></button>
+ </section>)}</div>;
 }
 function FilterStrip({globals,fieldNames,onRemove,onAdd,onReset,onShare}:{globals:Filter[];fieldNames:Record<FieldKey,string>;onRemove:(id:string)=>void;onAdd:()=>void;onReset:()=>void;onShare:()=>void}){
  return <div className="filter-strip"><div className="filter-title"><Icon name="filter" size={17}/> Aktive Filter <b>({globals.length})</b></div><div className="filter-chips">{globals.map(f=><div className="filter-chip" key={f.id}><span><b>{formatFilter(f,fieldNames)}</b></span><button title="Filter entfernen" aria-label={'Filter '+formatFilter(f,fieldNames)+' entfernen'} onClick={()=>onRemove(f.id)}>×</button></div>)}{!globals.length&&<span className="no-filters">Alle Werke · alle historischen Lieferungen</span>}</div>
@@ -114,14 +120,15 @@ function BarChart({rows}:{rows:BreakdownRow[]}){
  if(!filtered.length)return <div className="chart-empty">Keine Vergleichsdaten verfügbar</div>;
  return <div className="bar-chart">{filtered.map(r=><div className="bar-row" key={r.label}><span title={r.label||''}>{r.label}</span><div className="bar-track"><div style={{width:Math.max(0,Math.min(100,Number(r.on_time_rate)))+'%'}}/></div><b>{percent(r.on_time_rate)}</b></div>)}</div>;
 }
-function DetailPanel({node,detail,tab,setTab,onClose,onFilter,onExpand,onRename,dashboard,filters,fieldNames,onEdit,canEdit}:{node:NNode|undefined;detail:DashboardData;tab:string;setTab:(v:string)=>void;onClose:()=>void;onFilter:()=>void;onExpand:()=>void;onRename:()=>void;dashboard:NodeDashboard;filters:Filter[];fieldNames:Record<FieldKey,string>;onEdit:()=>void;canEdit:boolean}){
+function DetailPanel({node,detail,tab,setTab,onClose,onFilter,onExpand,onRename,dashboard,filters,fieldNames,filterTrace,onExplain,onEdit,canEdit}:{node:NNode|undefined;detail:DashboardData;tab:string;setTab:(v:string)=>void;onClose:()=>void;onFilter:()=>void;onExpand:()=>void;onRename:()=>void;dashboard:NodeDashboard;filters:Filter[];fieldNames:Record<FieldKey,string>;filterTrace:ReturnType<typeof traceFilters>;onExplain:(metric:MetricKey)=>void;onEdit:()=>void;canEdit:boolean}){
  if(!node)return <section className="detail-panel"><div className="detail-header"><strong>Knoten-Dashboard</strong></div><div className="chart-empty">Knoten im Analysebaum auswählen.</div></section>;
- const m=detail.metrics;const late=detail.ribbon?.lateOrders;const tabs=['Übersicht','Details','Treiber','Vergleich'];
+ const m=detail.metrics;const late=detail.ribbon?.lateOrders;const tabs=['Übersicht','Details','Treiber','Vergleich','Berechnungslogik'];
  return <aside className="detail-panel"><div className="detail-header"><div><Icon name="layers" size={20}/><div><strong>Knoten-Dashboard: {node.data.analysis.label}</strong><small>{node.data.analysis.predicate?fieldNames[node.data.analysis.predicate.field]:'Kennzahl'} · WoodCorp O2C</small></div></div><div className="detail-head-actions">{canEdit&&<IconButton name="type" title="Knoten umbenennen" onClick={onRename}/>}<IconButton name="maximize" title="Dashboard als Vollbild öffnen" onClick={onExpand}/><IconButton name="x" title="Detailbereich schließen" onClick={onClose}/></div></div>
  <nav className="detail-tabs" aria-label="Dashboard-Ansichten">{tabs.map(t=><button key={t} className={t===tab?'selected':''} aria-current={t===tab?'page':undefined} onClick={()=>setTab(t)}>{t}</button>)}</nav>
  {detail.pending&&!m?<Spinner text="Knotenkennzahlen werden geladen …"/>:detail.error?<Notice kind="error">{detail.error}</Notice>:<div className="detail-body">
- {tab==='Übersicht'&&<><div className="detail-dashboard-edit"><span className="muted">Knotenbezogenes Dashboard · {dashboard.widgets.length} Elemente</span>{canEdit&&<button className="nxt-button secondary" onClick={onEdit}><Icon name="layout-dashboard" size={16}/> Dashboard bearbeiten</button>}</div><DashboardRenderer dashboard={dashboard} detail={detail} filters={filters} compact/></>}
- {tab==='Details'&&<div className="chart-box"><h3>Kennzahlen und Datenumfang</h3><dl className="detail-list"><dt>Aufträge</dt><dd>{number(m?.orders)}</dd><dt>Pünktliche Lieferungen</dt><dd>{percent(m?.onTimeRate)}</dd><dt>Mengentreue</dt><dd>{percent(m?.volumeConformanceRate)}</dd><dt>Vollständige Liefertermine</dt><dd>{number(m?.dateCoverage)}</dd><dt>Früheste Lieferung</dt><dd>{fmtDate(m?.firstDelivery)}</dd><dt>Späteste Lieferung</dt><dd>{fmtDate(m?.lastDelivery)}</dd></dl></div>}
+ {tab==='Übersicht'&&<><div className="detail-dashboard-edit"><span className="muted">Knotenbezogenes Dashboard · {dashboard.widgets.length} Elemente</span>{canEdit&&<button className="nxt-button secondary" onClick={onEdit}><Icon name="layout-dashboard" size={16}/> Dashboard bearbeiten</button>}</div><DashboardRenderer dashboard={dashboard} detail={detail} filters={filters} compact onExplain={onExplain}/></>}
+ {tab==='Berechnungslogik'&&<CalculationLogic metric={(node.data.analysis.metricId||'otifRate') as MetricKey} metrics={m} trace={filterTrace} fieldNames={fieldNames} compact/>}
+  {tab==='Details'&&<div className="chart-box"><h3>Kennzahlen und Datenumfang</h3><dl className="detail-list"><dt>Aufträge</dt><dd>{number(m?.orders)}</dd><dt>Pünktliche Lieferungen</dt><dd>{percent(m?.onTimeRate)}</dd><dt>Mengentreue</dt><dd>{percent(m?.volumeConformanceRate)}</dd><dt>Vollständige Liefertermine</dt><dd>{number(m?.dateCoverage)}</dd><dt>Früheste Lieferung</dt><dd>{fmtDate(m?.firstDelivery)}</dd><dt>Späteste Lieferung</dt><dd>{fmtDate(m?.lastDelivery)}</dd></dl></div>}
  {tab==='Treiber'&&<><Notice kind="warning">Dies sind beobachtete Segmentunterschiede, keine nachgewiesenen Ursachen.</Notice><div className="chart-box"><h3>Potenzielle Einflussbereiche · Lieferunternehmen</h3><BarChart rows={detail.breakdown}/></div></>}
  {tab==='Vergleich'&&<div className="chart-box"><h3>Vergleich nach Lieferunternehmen</h3><div className="table-overflow"><table><thead><tr><th>Lieferunternehmen</th><th>Aufträge</th><th>On-Time</th></tr></thead><tbody>{detail.breakdown.map((r,i)=><tr key={r.label||i}><td>{r.label||'Ohne Angabe'}</td><td>{number(r.orders)}</td><td>{percent(r.on_time_rate)}</td></tr>)}</tbody></table></div></div>}
  <button className="detail-refine" onClick={onFilter}><Icon name="filter" size={17}/> Diesen Knoten filtern</button><p className="dashboard-foot">Datenquelle: Supabase · Case-basiert · Historische Daten {PROJECT.years}</p></div>}</aside>;
