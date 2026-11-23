@@ -53,7 +53,7 @@ export function restoreDraft(d:SavedDraft):{nodes:NNode[];edges:NEdge[]}{
 }
 /**
  * Every arrow is a directed filter dependency. Do not introduce a cycle,
- * including via the implicit parentId of an analytical split.
+ * using the actual directed connections. A removed edge removes inheritance.
  */
 export function isValidReference(source:string,target:string,edges:NEdge[],nodes:NNode[]=[]):boolean{
  if(!source||!target||source===target)return false;
@@ -61,7 +61,6 @@ export function isValidReference(source:string,target:string,edges:NEdge[],nodes
  if(edges.some(e=>e.source===source&&e.target===target))return false;
  const next=new Map<string,Set<string>>();
  for(const edge of edges){const set=next.get(edge.source)||new Set<string>();set.add(edge.target);next.set(edge.source,set);}
- for(const n of nodes){if(n.data.analysis.parentId){const set=next.get(n.data.analysis.parentId)||new Set<string>();set.add(n.id);next.set(n.data.analysis.parentId,set);}}
  const pending=[target],visited=new Set<string>();
  while(pending.length){const id=pending.pop()!;if(id===source)return false;if(visited.has(id))continue;visited.add(id);for(const child of next.get(id)||[])pending.push(child);}
  return true;
