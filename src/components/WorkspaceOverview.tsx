@@ -2,7 +2,7 @@ import React,{useMemo,useState} from 'react';
 import type {WorkspaceRecord} from '../lib/workspaces';
 import type {Role} from '../core/types';
 import Icon from './Icon';
-import {Button,Notice} from './Ui';
+import {Button,Modal} from './Ui';
 
 type Scope='all'|'mine'|'shared'|'other';
 export function WorkspaceOverview({items,userId,role,busy,onOpen,onCreate,onRefresh}:{
@@ -57,10 +57,11 @@ export function WorkspaceOverview({items,userId,role,busy,onOpen,onCreate,onRefr
     </article>
    })}</div>}
   <p className="workspace-privacy-note"><Icon name="lock" size={15}/> Private Inhalte anderer Mitglieder bleiben durch Supabase-Zugriffsregeln geschützt. Nur Administratoren können sie verwalten. Eine zusätzliche Workspace-Baumhierarchie kann später auf dieser Übersicht aufbauen.</p>
-  {creating&&<div className="modal-backdrop" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)setCreating(false)}}>
-    <div className="standard-card workspace-create-dialog" role="dialog" aria-modal="true" aria-label="Workspace erstellen">
-      <h3>Privaten Workspace erstellen</h3><form onSubmit={e=>{e.preventDefault();if(!newName.trim())return;onCreate(newName.trim());setNewName('');setCreating(false)}}><label className="field">Name<input autoFocus value={newName} maxLength={120} required onChange={e=>setNewName(e.target.value)}/></label>
-      <div className="directory-actions"><Button onClick={()=>setCreating(false)}>Abbrechen</Button><Button type="submit" kind="primary" icon="plus">Erstellen</Button></div></form>
-    </div></div>}
+  {creating&&<Modal title="Privaten Workspace erstellen" onClose={()=>setCreating(false)}>
+    <form className="workspace-create-dialog-form" onSubmit={e=>{e.preventDefault();if(!newName.trim())return;onCreate(newName.trim());setNewName('');setCreating(false)}}>
+      <label className="field">Name<input autoFocus value={newName} maxLength={120} minLength={2} required onChange={e=>setNewName(e.target.value)}/></label>
+      <div className="modal-actions"><Button onClick={()=>setCreating(false)}>Abbrechen</Button><Button type="submit" kind="primary" icon="plus">Erstellen</Button></div>
+    </form>
+   </Modal>}
  </section>;
 }
