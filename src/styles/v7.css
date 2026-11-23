@@ -65,3 +65,24 @@
 .nxt-funnel-row small{font-weight:400}
 @media(max-width:690px){.nxt-ranked-row{grid-template-columns:90px 1fr 75px;gap:6px}.nxt-stacked-row{grid-template-columns:85px 1fr 50px;gap:7px}.workspace-card-actions{width:100%;justify-content:flex-end}.nxt-vertical-bars{gap:6px}.nxt-heatmap td{min-width:64px}}
 @media(prefers-reduced-motion:reduce){.nxt-ranked-track i,.nxt-vertical-column i,.nxt-stacked-track{transition:none}}
+
+/* Larger, navigable graph cards only for complex Celonis-style visualizations. */
+.react-flow__node-analytics:has(.advanced-node){width:465px !important}
+.react-flow__node-analytics .graph-node.advanced-node{
+ width:455px;min-width:455px;min-height:225px;max-height:450px;overflow:hidden;
+ background:#fff;color:#18464b;border:1px solid #B6DBDB;padding:14px 14px 20px;
+}
+.graph-node.advanced-node .graph-node-content{width:100%}
+.graph-node.advanced-node .node-labels{width:100%;flex:1}
+.graph-node.advanced-node .node-labels>strong{font-size:14px;max-width:415px}
+.graph-advanced-chart{width:410px;max-height:355px;overflow:auto;overscroll-behavior:contain}
+.graph-advanced-chart .nxt-heatmap-wrap{max-height:240px}
+.graph-advanced-chart .nxt-chart-svg{max-height:240px}
+.graph-advanced-chart .nxt-vertical-bars,.graph-advanced-chart .nxt-histogram{min-height:175px}
+.graph-advanced-chart .nxt-heatmap{font-size:9px}
+.graph-advanced-chart .nxt-chart-data-table{font-size:10px}
+@media(max-width:650px){
+ .react-flow__node-analytics:has(.advanced-node){width:400px !important}
+ .react-flow__node-analytics .graph-node.advanced-node{width:390px;min-width:390px}
+ .graph-advanced-chart{width:350px}
+}
