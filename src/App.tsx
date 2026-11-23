@@ -32,23 +32,23 @@ const emptyDetail:DashboardData={metrics:null,trend:[],breakdown:[],pending:fals
 const fmtDate=(value:string|null|undefined)=>value?new Date(value).toLocaleDateString('de-DE'):'–';
 const isEditing=(role:Role|null)=>role==='admin'||role==='analyst';
 
-function FilterDialog({target,dimensions,allowedFields,onApply,onClose}:{target:{kind:'global'|'node';id?:string};dimensions:Record<string,string[]>;allowedFields:FieldKey[];onApply:(f:Filter)=>void;onClose:()=>void}){
+function FilterDialog({target,dimensions,allowedFields,fieldNames,onApply,onClose}:{target:{kind:'global'|'node';id?:string};dimensions:Record<string,string[]>;allowedFields:FieldKey[];fieldNames:Record<FieldKey,string>;onApply:(f:Filter)=>void;onClose:()=>void}){
  const [field,setField]=useState<FieldKey>(allowedFields[0]||'factory');const [value,setValue]=useState('');const entries=allowedFields.filter(f=>(dimensions[f]||[]).length>0);
  useEffect(()=>{setValue(dimensions[field]?.[0]||'');},[field,dimensions]);
  return <Modal title={target.kind==='global'?'Globalen Filter hinzufügen':'Filter für ausgewählten Knoten'} onClose={onClose}>
   <p className="muted">{target.kind==='global'?'Dieser Filter gilt für alle Analysen und den KPI-Header.':'Dieser Filter gilt nur für den Knoten und seine analytischen Nachfahren – niemals für Geschwister.'}</p>
   <form onSubmit={e=>{e.preventDefault();try{onApply(makeFilter(field,value,target.kind==='global'?'global':'local'));onClose();}catch(e){alert(e instanceof Error?e.message:'Fehler beim Filter')}}}>
-   <label className="field">Dimension<select value={field} onChange={e=>setField(e.target.value as FieldKey)}>{entries.map(f=><option key={f} value={f}>{FIELD_LABELS[f]}</option>)}</select></label>
+   <label className="field">Dimension<select value={field} onChange={e=>setField(e.target.value as FieldKey)}>{entries.map(f=><option key={f} value={f}>{fieldNames[f]}</option>)}</select></label>
    <label className="field">Wert<select value={value} onChange={e=>setValue(e.target.value)}>{(dimensions[field]||[]).map(v=><option value={v} key={v}>{v}</option>)}</select></label>
    <div className="modal-actions"><Button onClick={onClose}>Abbrechen</Button><Button kind="primary" icon="check" type="submit" disabled={!value}>Filter anwenden</Button></div>
   </form>
  </Modal>;
 }
-function SplitDialog({nodeName,dimensions,allowedFields,onSplit,onClose}:{nodeName:string;dimensions:Record<string,string[]>;allowedFields:FieldKey[];onSplit:(f:FieldKey)=>Promise<void>;onClose:()=>void}){
+function SplitDialog({nodeName,dimensions,allowedFields,fieldNames,onSplit,onClose}:{nodeName:string;dimensions:Record<string,string[]>;allowedFields:FieldKey[];fieldNames:Record<FieldKey,string>;onSplit:(f:FieldKey)=>Promise<void>;onClose:()=>void}){
  const [field,setField]=useState<FieldKey>('product_type');const [busy,setBusy]=useState(false);const [error,setError]=useState('');
  return <Modal title="Knoten aufgliedern" onClose={onClose}><p className="muted"><b>{nodeName}</b> wird nach einer zugelassenen Dimension in analytische Teilgruppen zerlegt. Diese Teilgruppen erben automatisch die Knotenfilter.</p>
  <form onSubmit={async e=>{e.preventDefault();setBusy(true);setError('');try{await onSplit(field);onClose();}catch(e){setError(e instanceof Error?e.message:'Aufgliederung nicht möglich');}finally{setBusy(false)}}}>
-  <label className="field">Split-Dimension<select value={field} onChange={e=>setField(e.target.value as FieldKey)}>{allowedFields.filter(f=>dimensions[f]?.length).map(f=><option key={f} value={f}>{FIELD_LABELS[f]}</option>)}</select></label>
+  <label className="field">Split-Dimension<select value={field} onChange={e=>setField(e.target.value as FieldKey)}>{allowedFields.filter(f=>dimensions[f]?.length).map(f=><option key={f} value={f}>{fieldNames[f]}</option>)}</select></label>
   {error&&<Notice kind="error">{error}</Notice>}
   <div className="modal-actions"><Button onClick={onClose}>Abbrechen</Button><Button type="submit" kind="primary" icon="split" disabled={busy}>Aufgliedern</Button></div>
  </form></Modal>;
@@ -64,19 +64,19 @@ function Sidebar({view,onNavigate,collapsed,setCollapsed,role}:{view:View;onNavi
  return <aside className={'navigation '+(collapsed?'collapsed':'')} aria-label="Hauptnavigation"><nav><button className="nav-toggle" type="button" onClick={()=>setCollapsed(!collapsed)} aria-label={collapsed?'Navigation ausklappen':'Navigation einklappen'} title={collapsed?'Navigation ausklappen':'Navigation einklappen'}><Icon name={collapsed?'panel-left-open':'panel-left-close'} size={18}/>{!collapsed&&'Navigation'}</button>
  {NAV.filter(n=>!n.admin||role==='admin').map(n=><button className={'nav-entry '+(n.id===view?'active':'')} key={n.id} aria-current={n.id===view?'page':undefined} onClick={()=>onNavigate(n.id)} title={n.label} type="button"><Icon name={n.icon} size={19}/>{!collapsed&&<span>{n.label}</span>}</button>)}
  </nav><div className="nav-spacer"/><div className="nav-bottom">{!collapsed&&<><div className="nav-label"><Icon name="star" size={16}/> FAVORITEN</div><button type="button" onClick={()=>onNavigate('analytics')}><Icon name="target" size={16}/> On-Time Delivery</button><p>WoodCorp · O2C</p></>}<div className="nav-dots" aria-hidden="true"/></div></aside>;}
-function MetricRibbon({ribbon,trend,pending}:{ribbon:Ribbon|null;trend:TrendRow[];pending:boolean}){
+function MetricRibbon({ribbon,trend,pending,names}:{ribbon:Ribbon|null;trend:TrendRow[];pending:boolean;names:MetricNames}){
  const values=trend.filter(r=>r.on_time_rate!=null).map(t=>Number(t.on_time_rate));
  const cards=[
-  {title:'On-Time Delivery',value:percent(ribbon?.onTimeRate),icon:'target',unit:'Lieferdatum ≤ Zusage',highlight:true,graph:values},
-  {title:'Aufträge',value:number(ribbon?.orders),icon:'package',unit:'Aufträge in Auswahl'},
-  {title:'Ø Lieferverzug',value:ribbon?.avgDelayDays==null?'–':decimal(ribbon.avgDelayDays)+' Tage',icon:'clock-3',unit:'Nur verspätete Lieferungen'},
-  {title:'Verspätete Aufträge',value:number(ribbon?.lateOrders),icon:'triangle-alert',unit:'Lieferdatum > Zusage'},
-  {title:'Betroffene Werke',value:ribbon?`${ribbon.affectedFactories} / ${ribbon.factories}`:'–',icon:'factory',unit:'Werke mit Verspätungen'}
+  {title:names.onTimeRate||'On-Time Delivery',value:percent(ribbon?.onTimeRate),icon:'target',unit:'Lieferdatum ≤ Zusage',highlight:true,graph:values},
+  {title:names.orders||'Aufträge',value:number(ribbon?.orders),icon:'package',unit:'Aufträge in Auswahl'},
+  {title:names.avgDelayDays||'Ø Lieferverzug',value:ribbon?.avgDelayDays==null?'–':decimal(ribbon.avgDelayDays)+' Tage',icon:'clock-3',unit:'Nur verspätete Lieferungen'},
+  {title:names.lateOrders||'Verspätete Aufträge',value:number(ribbon?.lateOrders),icon:'triangle-alert',unit:'Lieferdatum > Zusage'},
+  {title:names.affectedFactories||'Betroffene Werke',value:ribbon?`${ribbon.affectedFactories} / ${ribbon.factories}`:'–',icon:'factory',unit:'Werke mit Verspätungen'}
  ];
  return <div className="kpi-ribbon">{cards.map(c=><section className={'ribbon-card '+(c.highlight?'featured':'')} key={c.title} title={c.unit}><div className="ribbon-symbol"><Icon name={c.icon} size={23}/></div><div className="ribbon-content"><h3>{c.title}</h3><div className="ribbon-value">{pending&&!ribbon?'…':c.value}</div><small>{c.unit}</small></div>{c.graph&&<SmallTrend values={c.graph}/>}</section>)}</div>;
 }
-function FilterStrip({globals,onRemove,onAdd,onReset,onShare}:{globals:Filter[];onRemove:(id:string)=>void;onAdd:()=>void;onReset:()=>void;onShare:()=>void}){
- return <div className="filter-strip"><div className="filter-title"><Icon name="filter" size={17}/> Aktive Filter <b>({globals.length})</b></div><div className="filter-chips">{globals.map(f=><div className="filter-chip" key={f.id}><span>{FIELD_LABELS[f.field]}: <b>{f.value}</b></span><button title="Filter entfernen" aria-label={'Filter '+FIELD_LABELS[f.field]+' '+f.value+' entfernen'} onClick={()=>onRemove(f.id)}>×</button></div>)}{!globals.length&&<span className="no-filters">Alle Werke · alle historischen Lieferungen</span>}</div>
+function FilterStrip({globals,fieldNames,onRemove,onAdd,onReset,onShare}:{globals:Filter[];fieldNames:Record<FieldKey,string>;onRemove:(id:string)=>void;onAdd:()=>void;onReset:()=>void;onShare:()=>void}){
+ return <div className="filter-strip"><div className="filter-title"><Icon name="filter" size={17}/> Aktive Filter <b>({globals.length})</b></div><div className="filter-chips">{globals.map(f=><div className="filter-chip" key={f.id}><span>{fieldNames[f.field]}: <b>{f.value}</b></span><button title="Filter entfernen" aria-label={'Filter '+fieldNames[f.field]+' '+f.value+' entfernen'} onClick={()=>onRemove(f.id)}>×</button></div>)}{!globals.length&&<span className="no-filters">Alle Werke · alle historischen Lieferungen</span>}</div>
  <button className="filter-add" onClick={onAdd}><Icon name="plus" size={17}/> Filter</button><IconButton name="refresh-cw" title="Globale Filter zurücksetzen" disabled={!globals.length} onClick={onReset}/><IconButton name="share-2" title="Gefilterte Ansicht teilen" onClick={onShare}/></div>;
 }
 function TrendChart({rows}:{rows:TrendRow[]}){
@@ -93,10 +93,10 @@ function BarChart({rows}:{rows:BreakdownRow[]}){
  if(!filtered.length)return <div className="chart-empty">Keine Vergleichsdaten verfügbar</div>;
  return <div className="bar-chart">{filtered.map(r=><div className="bar-row" key={r.label}><span title={r.label||''}>{r.label}</span><div className="bar-track"><div style={{width:Math.max(0,Math.min(100,Number(r.on_time_rate)))+'%'}}/></div><b>{percent(r.on_time_rate)}</b></div>)}</div>;
 }
-function DetailPanel({node,detail,tab,setTab,onClose,onFilter,dashboard,filters,onEdit,canEdit}:{node:NNode|undefined;detail:DashboardData;tab:string;setTab:(v:string)=>void;onClose:()=>void;onFilter:()=>void;dashboard:NodeDashboard;filters:Filter[];onEdit:()=>void;canEdit:boolean}){
+function DetailPanel({node,detail,tab,setTab,onClose,onFilter,onExpand,onRename,dashboard,filters,onEdit,canEdit}:{node:NNode|undefined;detail:DashboardData;tab:string;setTab:(v:string)=>void;onClose:()=>void;onFilter:()=>void;onExpand:()=>void;onRename:()=>void;dashboard:NodeDashboard;filters:Filter[];onEdit:()=>void;canEdit:boolean}){
  if(!node)return <section className="detail-panel"><div className="detail-header"><strong>Knoten-Dashboard</strong></div><div className="chart-empty">Knoten im Analysebaum auswählen.</div></section>;
  const m=detail.metrics;const late=detail.ribbon?.lateOrders;const tabs=['Übersicht','Details','Treiber','Vergleich'];
- return <aside className="detail-panel"><div className="detail-header"><div><Icon name="layers" size={20}/><div><strong>Knoten-Dashboard: {node.data.analysis.label}</strong><small>{node.data.analysis.predicate?FIELD_LABELS[node.data.analysis.predicate.field]:'Kennzahl'} · WoodCorp O2C</small></div></div><IconButton name="x" title="Detailbereich schließen" onClick={onClose}/></div>
+ return <aside className="detail-panel"><div className="detail-header"><div><Icon name="layers" size={20}/><div><strong>Knoten-Dashboard: {node.data.analysis.label}</strong><small>{node.data.analysis.predicate?FIELD_LABELS[node.data.analysis.predicate.field]:'Kennzahl'} · WoodCorp O2C</small></div></div><div className="detail-head-actions">{canEdit&&<IconButton name="type" title="Knoten umbenennen" onClick={onRename}/>}<IconButton name="maximize" title="Dashboard als Vollbild öffnen" onClick={onExpand}/><IconButton name="x" title="Detailbereich schließen" onClick={onClose}/></div></div>
  <nav className="detail-tabs" aria-label="Dashboard-Ansichten">{tabs.map(t=><button key={t} className={t===tab?'selected':''} aria-current={t===tab?'page':undefined} onClick={()=>setTab(t)}>{t}</button>)}</nav>
  {detail.pending&&!m?<Spinner text="Knotenkennzahlen werden geladen …"/>:detail.error?<Notice kind="error">{detail.error}</Notice>:<div className="detail-body">
  {tab==='Übersicht'&&<><div className="detail-dashboard-edit"><span className="muted">Knotenbezogenes Dashboard · {dashboard.widgets.length} Elemente</span>{canEdit&&<button className="nxt-button secondary" onClick={onEdit}><Icon name="layout-dashboard" size={16}/> Dashboard bearbeiten</button>}</div><DashboardRenderer dashboard={dashboard} detail={detail} filters={filters} compact/></>}
