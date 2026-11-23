@@ -2,12 +2,12 @@ import {FIELDS,type FieldKey} from '../config';
 import {cleanDraft,type NNode,type NEdge} from './graph';
 import type {SavedDraft,Filter,Metrics,Ribbon} from './types';
 
-export type WidgetType='kpi'|'line'|'bar'|'table'|'donut'|'text';
+export type WidgetType='kpi'|'line'|'bar'|'table'|'donut'|'text'|'bar_horizontal'|'bar_vertical'|'stacked'|'stacked100'|'heatmap'|'pareto'|'scatter'|'waterfall'|'bullet'|'histogram'|'treemap'|'funnel';
 export type MetricKey='orders'|'otifRate'|'onTimeRate'|'volumeConformanceRate'|'otifCases'|'lateOrders'|'avgDelayDays'|'affectedFactories'|'totalPenaltyEur'|'latePenaltyEur'|'shortfallPenaltyEur';
 export type Width='half'|'full';
 export type DashboardWidget={
  id:string;type:WidgetType;title:string;width:Width;
- metric?:MetricKey;dimension?:FieldKey;text?:string;
+ metric?:MetricKey;dimension?:FieldKey;compareDimension?:FieldKey;target?:number;distributionMeasure?:'quantity_change_count'|'lateness_days';text?:string;
 };
 export type NodeDashboard={question:string;widgets:DashboardWidget[]};
 export type WorkspaceDocument={version:3;graph:SavedDraft;globalFilters:Filter[];dashboards:Record<string,NodeDashboard>;metricNames?:Partial<Record<MetricKey,string>>};
@@ -16,12 +16,14 @@ export const METRIC_LABELS:Record<MetricKey,string>={
  orders:'Aufträge',otifRate:'OTIF · On Time In Full',onTimeRate:'On-Time Delivery',volumeConformanceRate:'Mengenkonformität',otifCases:'OTIF-Aufträge',lateOrders:'Verspätete Aufträge',avgDelayDays:'Ø Lieferverzug',affectedFactories:'Betroffene Werke',totalPenaltyEur:'Berechnete Vertragsstrafe',latePenaltyEur:'Verspätungsstrafe',shortfallPenaltyEur:'Unterlieferungsstrafe'
 };
 export const WIDGET_LABELS:Record<WidgetType,string>={
- kpi:'KPI-Karte',line:'Zeitreihe',bar:'Balkendiagramm',table:'Datentabelle',donut:'Donutdiagramm',text:'Text / Forschungsfrage'
+ kpi:'KPI-Karte',line:'Zeitreihe',bar:'Balkendiagramm',table:'Datentabelle',donut:'Donutdiagramm',text:'Text / Forschungsfrage',
+ bar_horizontal:'Horizontales Ranking',bar_vertical:'Vertikale Säulen',stacked:'Gestapelte OTIF-Klassen',stacked100:'100%-gestapelte OTIF-Klassen',heatmap:'Werk × Produkt Heatmap',pareto:'Pareto-Kostenanalyse',scatter:'Streudiagramm',waterfall:'Kosten-Wasserfall',bullet:'Zielerreichung / Bullet',histogram:'Häufigkeitsverteilung',treemap:'Kosten-Treemap',funnel:'OTIF-Funnel'
 };
 export const WIDGET_ICONS:Record<WidgetType,string>={
- kpi:'chart-column',line:'chart-no-axes-combined',bar:'chart-column',table:'table-2',donut:'chart-pie',text:'type'
+ kpi:'chart-column',line:'chart-no-axes-combined',bar:'chart-column',table:'table-2',donut:'chart-pie',text:'type',
+ bar_horizontal:'chart-bar',bar_vertical:'chart-column',stacked:'layers',stacked100:'chart-column',heatmap:'grid-3x3',pareto:'chart-no-axes-combined',scatter:'chart-spline',waterfall:'chart-column',bullet:'target',histogram:'chart-bar',treemap:'layout-dashboard',funnel:'list-filter'
 };
-export const WIDGET_TYPES:WidgetType[]=['kpi','line','bar','table','donut','text'];
+export const WIDGET_TYPES:WidgetType[]=['kpi','line','bar','table','donut','text','bar_horizontal','bar_vertical','stacked','stacked100','heatmap','pareto','scatter','waterfall','bullet','histogram','treemap','funnel'];
 export const METRICS=Object.keys(METRIC_LABELS) as MetricKey[];
 
 export function freshWidget(type:WidgetType):DashboardWidget{
@@ -31,7 +33,19 @@ export function freshWidget(type:WidgetType):DashboardWidget{
   bar:{title:'Vergleich der Lieferunternehmen',dimension:'delivery_company',width:'full'},
   table:{title:'Lieferunternehmen im Detail',dimension:'delivery_company',width:'full'},
   donut:{title:'Pünktliche und verspätete Lieferungen',width:'half'},
-  text:{title:'Forschungsfrage',text:'Welche Segmente beeinflussen die Lieferperformance?',width:'full'}
+  text:{title:'Forschungsfrage',text:'Welche Segmente beeinflussen die Lieferperformance?',width:'full'},
+  bar_horizontal:{title:'Segment-Rangliste nach Vertragsstrafen',dimension:'factory',metric:'totalPenaltyEur',width:'full'},
+  bar_vertical:{title:'OTIF je Werk',dimension:'factory',metric:'otifRate',width:'full'},
+  stacked:{title:'OTIF-Fehlerklassen je Werk',dimension:'factory',width:'full'},
+  stacked100:{title:'OTIF-Verteilung (%) je Werk',dimension:'factory',width:'full'},
+  heatmap:{title:'OTIF-Heatmap Werk × Produkttyp',dimension:'factory',compareDimension:'product_type',metric:'otifRate',width:'full'},
+  pareto:{title:'Strafgebühren-Pareto nach Werk',dimension:'factory',metric:'totalPenaltyEur',width:'full'},
+  scatter:{title:'Auftragsvolumen × OTIF je Segment',dimension:'factory',metric:'otifRate',width:'full'},
+  waterfall:{title:'Berechnete Strafgebühren nach Ursache',metric:'totalPenaltyEur',width:'full'},
+  bullet:{title:'OTIF gegenüber dem Zielwert',metric:'otifRate',target:80,width:'half'},
+  histogram:{title:'Häufigkeit von Mengenänderungen',distributionMeasure:'quantity_change_count',width:'full'},
+  treemap:{title:'Kostenanteile nach Werk',dimension:'factory',metric:'totalPenaltyEur',width:'full'},
+  funnel:{title:'OTIF-Schritte vom Auftrag zur Erfüllung',metric:'otifRate',width:'full'}
  };
  return {id:crypto.randomUUID(),type,...standard[type]};
 }
@@ -74,6 +88,9 @@ export function normalizeDashboard(value:unknown):NodeDashboard|null{
   if(w.metric&&!METRICS.includes(w.metric))return null;
   if(w.dimension&&!FIELDS.includes(w.dimension))return null;
   if(w.text&&(typeof w.text!=='string'||w.text.length>3000))return null;
+  if(w.compareDimension&&!FIELDS.includes(w.compareDimension))return null;
+  if(w.target!==undefined&&(!Number.isFinite(w.target)||w.target<0||w.target>100))return null;
+  if(w.distributionMeasure&&!['quantity_change_count','lateness_days'].includes(w.distributionMeasure))return null;
   ids.add(w.id);widgets.push(w);
  }
  return {question:d.question,widgets};

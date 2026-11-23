@@ -1,14 +1,15 @@
 import React,{useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {ReactFlowProvider,useEdgesState,useNodesState,useReactFlow,type Connection,type EdgeChange,type NodeChange,type Viewport} from '@xyflow/react';
 import {FIELD_LABELS,FIELDS,PROJECT,FILTER_KIND,OTIF_STATUS_LABELS,type FieldKey} from './config';
-import {analysisApi,memberApi,supabase} from './lib/supabase';
+import {analysisApi,memberApi,supabase,clearAnalyticsCache} from './lib/supabase';
 import {effectiveFilters,labels,makeFilter,toBackend,validateFilters,formatFilter,traceFilters} from './core/filters';
-import {ROOT_ID,rootAnalysis,createInitialGraph,splitGraph,nodeFor,referenceEdge,isValidReference,cleanDraft,serializeDraft,restoreDraft,type NNode,type NEdge} from './core/graph';
+import {ROOT_ID,rootAnalysis,createInitialGraph,createBlankWorkspaceGraph,splitGraph,nodeFor,referenceEdge,isValidReference,cleanDraft,serializeDraft,restoreDraft,type NNode,type NEdge} from './core/graph';
 import type {Filter,Role,Ribbon,Metrics,TrendRow,BreakdownRow,PaletteType,DashboardData,SavedDraft,AnalysisNode} from './core/types';
 import {CanvasWithFlow} from './components/GraphCanvas';
 import Icon from './components/Icon';
 import {Brand,Button,IconButton,Modal,Notice,Spinner,number,percent,decimal,SmallTrend} from './components/Ui';
 import AuthScreen from './components/AuthScreen';
+import {extractInviteToken,isInviteFragment} from './lib/invite';
 import {DashboardRenderer,DashboardBuilder} from './components/DashboardBuilder';
 import {WorkspaceControls,FilterCatalogPage} from './components/WorkspaceControls';
 import {standardDashboard,makeDocument,validDocument,metricValue,metricFormat,METRIC_LABELS,type MetricKey,type NodeDashboard} from './core/dashboard';
@@ -18,6 +19,7 @@ import './styles/dashboard.css';
 import './styles/v4.css';
 import './styles/v5.css';
 import './styles/v6.css';
+import './styles/v7.css';
 import {NodeSettings} from './components/NodeSettings';
 import {conflictingFields,filterSignature} from './core/filters';
 import {WorkspaceOverview} from './components/WorkspaceOverview';
@@ -135,17 +137,21 @@ function DetailPanel({node,detail,tab,setTab,onClose,onFilter,onExpand,onRename,
  <button className="detail-refine" onClick={onFilter}><Icon name="filter" size={17}/> Diesen Knoten filtern</button><p className="dashboard-foot">Datenquelle: Supabase · Case-basiert · Historische Daten {PROJECT.years}</p></div>}</aside>;
 }
 function TeamPanel({role}:{role:Role}){
- const [members,setMembers]=useState<Array<{user_id:string;email?:string;role:Role;confirmed?:boolean}>>([]);const [email,setEmail]=useState('');const [roleNew,setRoleNew]=useState<Role>('viewer');const [delivery,setDelivery]=useState('email');const [link,setLink]=useState('');const [error,setError]=useState('');const [busy,setBusy]=useState(false);
+ const [members,setMembers]=useState<Array<{user_id:string;email?:string;role:Role;confirmed?:boolean}>>([]);const [email,setEmail]=useState('');const [roleNew,setRoleNew]=useState<Role>('viewer');const [link,setLink]=useState('');const [success,setSuccess]=useState('');const [error,setError]=useState('');const [busy,setBusy]=useState(false);
  const getToken=async()=>{const r=await supabase.auth.getSession();return r.data.session?.access_token||''};
  const reload=useCallback(async()=>{try{const r=await memberApi({action:'list'},await getToken());setMembers(r.members||[]);}catch(e){setError(e instanceof Error?e.message:'Mitglieder konnten nicht geladen werden.')}},[]);
  useEffect(()=>{if(role==='admin')void reload()},[role,reload]);
  if(role!=='admin')return <Notice kind="error">Administratorrechte erforderlich.</Notice>;
- const invite=async(e:React.FormEvent)=>{e.preventDefault();setBusy(true);setError('');setLink('');try{const r=await memberApi({action:'invite',email,role:roleNew,delivery},await getToken());if(r.link)setLink(r.link);else setError('Einladungs-E-Mail angefordert. Prüfe den Posteingang der Zielperson.');await reload();}catch(e){setError(e instanceof Error?e.message:'Einladung fehlgeschlagen.')}finally{setBusy(false)}};
+ const invite=async(e:React.FormEvent)=>{e.preventDefault();setBusy(true);setError('');setLink('');setSuccess('');try{const r=await memberApi({action:'invite',email,role:roleNew,delivery:'link'},await getToken());if(r.link){if(!r.link.startsWith('https://hennerdesma-art.github.io/DigitaleTransformation-WoodCorp/#nxt_invite='))throw Error('Server lieferte keinen gültigen NXT-Einladungslink.');setLink(r.link)}setSuccess(r.message||'Zugang bereitgestellt.');await reload();}catch(e){setError(e instanceof Error?e.message:'Einladung fehlgeschlagen.')}finally{setBusy(false)}};
  const changeRole=async(id:string,next:Role)=>{try{await memberApi({action:'role',userId:id,role:next},await getToken());await reload()}catch(e){setError(e instanceof Error?e.message:'Rolle konnte nicht geändert werden.')}};
  const remove=async(id:string)=>{if(!confirm('Zugriff dieses Mitglieds entfernen?'))return;try{await memberApi({action:'remove',userId:id},await getToken());await reload()}catch(e){setError(e instanceof Error?e.message:'Fehler bei der Entfernung.')}};
  return <section className="content-page"><h2>Team & Zugänge</h2><p className="muted">Einladung und Rollenverwaltung über die bestehende geschützte Supabase-Schnittstelle.</p>
- <div className="standard-card"><h3>Mitglied einladen</h3><form className="team-form" onSubmit={invite}><label className="field">E-Mail<input type="email" required value={email} onChange={e=>setEmail(e.target.value)}/></label><label className="field">Rolle<select value={roleNew} onChange={e=>setRoleNew(e.target.value as Role)}><option value="viewer">Viewer</option><option value="analyst">Analyst</option><option value="admin">Administrator</option></select></label><label className="field">Versand<select value={delivery} onChange={e=>setDelivery(e.target.value)}><option value="email">Per E-Mail</option><option value="link">Einmaligen Link erzeugen</option></select></label><Button type="submit" disabled={busy} kind="primary" icon="plus">Einladen</Button></form>
- {link&&<div className="generated-link"><label>Einmaliger Link (nur an Zielperson senden)<input readOnly value={link} onFocus={e=>e.target.select()}/></label><Button icon="copy" onClick={()=>navigator.clipboard?.writeText(link)}>Kopieren</Button></div>}{error&&<Notice>{error}</Notice>}</div>
+ <div className="standard-card"><h3>Mitglied einladen</h3><form className="team-form" onSubmit={invite}><label className="field">E-Mail<input type="email" required value={email} onChange={e=>setEmail(e.target.value)}/></label><label className="field">Rolle<select value={roleNew} onChange={e=>setRoleNew(e.target.value as Role)}><option value="viewer">Viewer</option><option value="analyst">Analyst</option><option value="admin">Administrator</option></select></label><Button type="submit" disabled={busy} kind="primary" icon="plus">Einladen</Button></form>
+ {success&&<Notice kind="success">{success}</Notice>}
+ {link&&<div className="generated-link"><label>NXT-Webseitenlink · einmaliger Zugangscode<input readOnly value={link} onFocus={e=>e.target.select()}/></label>
+ <Button icon="copy" onClick={()=>{void navigator.clipboard?.writeText(link)}}>NXT-Link kopieren</Button>
+ <span className="invite-privacy">Nur an die eingeladene Person über einen sicheren Kanal senden. Der Code ist einmalig und verfällt nach der Supabase-Einladungsfrist. Die Zielperson legt das Passwort direkt auf der NXT-Webseite fest.</span></div>}
+ {error&&<Notice kind="error">{error}</Notice>}</div>
  <div className="standard-card"><div className="card-heading"><h3>Mitglieder</h3><Button onClick={reload} icon="refresh-cw">Aktualisieren</Button></div><div className="table-overflow"><table><thead><tr><th>E-Mail</th><th>Status</th><th>Rolle</th><th>Aktion</th></tr></thead><tbody>{members.map(m=><tr key={m.user_id}><td>{m.email||m.user_id}</td><td>{m.confirmed?'Bestätigt':'Ausstehend'}</td><td><select value={m.role} onChange={e=>changeRole(m.user_id,e.target.value as Role)}><option value="viewer">Viewer</option><option value="analyst">Analyst</option><option value="admin">Admin</option></select></td><td><Button kind="danger" icon="trash-2" onClick={()=>remove(m.user_id)}>Entfernen</Button></td></tr>)}</tbody></table></div></div></section>;
 }
 function DataPage(){return <section className="content-page"><h2>Datenquellen</h2><p className="muted">Verifizierter Datenbestand des Projekts WoodCorp Process Intelligence</p><div className="data-grid"><div className="standard-card"><Icon name="database"/><h3>woodcorp_cases</h3><b>19.953</b><small>Aufträge · Schlüssel case_key</small></div><div className="standard-card"><Icon name="network"/><h3>woodcorp_activities</h3><b>210.135</b><small>Ereignisse · Referenz case_key</small></div><div className="standard-card"><Icon name="lock"/><h3>RLS & Auth</h3><b>Geschützt</b><small>Persönliche Projektberechtigung</small></div></div><Notice kind="warning">Datenqualität: Das historische Flag <code>order_date_met</code> weicht bei 9.618 Aufträgen vom Vergleich <code>delivered_date ≤ promised_date</code> ab. Die aktuelle On-Time-Kennzahl verwendet den Datumsvergleich.</Notice></section>}
@@ -171,7 +177,13 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
  useEffect(()=>{if(!canModify)setEditMode(false)},[canModify]);
  const allowedFields=useMemo(()=>catalog.length?catalog.filter(c=>c.enabled).map(c=>c.field_key):FIELDS,[catalog]);
  const fieldNames=useMemo(()=>({...FIELD_LABELS,...Object.fromEntries(catalog.map(c=>[c.field_key,c.display_name]))}) as Record<FieldKey,string>,[catalog]);
- const currentDashboard=useMemo(()=>dashboards[selectedId]||(defaultDashboardRef.current[selectedId]??=standardDashboard()),[dashboards,selectedId]);
+ const currentDashboard=useMemo(()=>{
+  if(dashboards[selectedId])return dashboards[selectedId];
+  const a=nodes.find(n=>n.id===selectedId)?.data.analysis;
+  if(a?.kind==='root'&&!a.metricId)
+   return {question:'Ausgangspunkt – wähle erst eine KPI und füge danach Dashboard-Widgets hinzu.',widgets:[]} as NodeDashboard;
+  return defaultDashboardRef.current[selectedId]??=standardDashboard();
+ },[dashboards,selectedId,nodes]);
  const updateDashboard=(next:NodeDashboard)=>{if(!canModify)return;setDashboards(old=>({...old,[selectedId]:next}));setDirty(true);};
  const reloadWorkspaces=useCallback(async()=>{try{setWorkspaces(await workspacesApi.list())}catch(e){say(e instanceof Error?e.message:'Workspace-Abfrage fehlgeschlagen')}},[say]);
  const reloadCatalog=useCallback(async()=>{try{setCatalog(await workspacesApi.catalog())}catch(e){say(e instanceof Error?e.message:'Filterkatalog nicht verfügbar')}},[say]);
@@ -193,10 +205,28 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
  const connect=useCallback((c:Connection)=>{if(!editMode||!canModify||!c.source||!c.target)return;if(!isValidReference(c.source,c.target,edges,nodes)){say('Verbindung ungültig, bereits vorhanden oder führt zu einem Filterkreis.');return;}
   remember();setEdges(e=>[...e,referenceEdge(c.source!,c.target!)]);say('Filterfluss verbunden: Alle Filter des Ursprungsknotens gelten nun auch im Ziel und dessen Nachfolgern.');},[edges,nodes,editMode,canModify,remember,setEdges,say]);
  const buildDocument=()=>makeDocument(serializeDraft(nodes,edges,locals,viewportRef.current),globals,dashboards,metricNames);
- const createWorkspace=async(title:string)=>{if(!isEditing(role))return;setSaving(true);try{
-   const document=buildDocument();const ws=await workspacesApi.create(userId,document,title);
-   localStorage.setItem(localKey,JSON.stringify(document.graph));setActiveWorkspace(ws);setWorkspaces(prev=>[ws,...prev]);setDirty(false);say('Privater Workspace in Supabase erstellt');
-  }catch(e){say(e instanceof Error?e.message:'Workspace konnte nicht erstellt werden')}finally{setSaving(false)}};
+ const createWorkspace=async(title:string):Promise<boolean>=>{
+  if(!isEditing(role))return false;
+  if(dirty&&!confirm('Aktuelle Änderungen sind noch nicht gespeichert. Wirklich einen neuen, leeren Workspace öffnen?'))return false;
+  setSaving(true);
+  try{
+   const base=createBlankWorkspaceGraph();
+   const viewport={x:0,y:0,zoom:1};
+   const document=makeDocument(serializeDraft(base.nodes,base.edges,{},viewport),[],{},{});
+   const ws=await workspacesApi.create(userId,document,title);
+   setNodes(base.nodes);setEdges([]);setGlobals([]);setLocals({});
+   setDashboards({});setMetricNames({});defaultDashboardRef.current={};
+   setSelectedId(base.nodes[0].id);setSelectedTab('Übersicht');
+   viewportRef.current=viewport;
+   setActiveWorkspace(ws);setWorkspaces(prev=>[ws,...prev]);
+   localStorage.setItem(localKey,JSON.stringify(document.graph));
+   initializedRef.current=true;setLoaded(true);setDirty(false);
+   window.setTimeout(()=>void flow.fitView({duration:280,padding:.45}),80);
+   say('Neuer privater Workspace: ein unkonfigurierter Ausgangsknoten, keine Unterpunkte.');
+   return true;
+  }catch(e){say(e instanceof Error?e.message:'Workspace konnte nicht erstellt werden');return false;}
+  finally{setSaving(false)}
+ };
  const saveDraft=async()=>{if(!canModify){say('Keine Berechtigung zum Speichern dieses Workspaces');return;}setSaving(true);
   try{const document=buildDocument();localStorage.setItem(localKey,JSON.stringify(document.graph));
    if(!activeWorkspace){const ws=await workspacesApi.create(userId,document,'Meine Analyse');setActiveWorkspace(ws);setWorkspaces(prev=>[ws,...prev]);}
@@ -218,9 +248,27 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
   if(publishing&&!confirm('Diesen Workspace für alle Mitglieder des NXT Analytics-Projekts sichtbar machen?'))return;
   setSaving(true);try{const saved=await workspacesApi.updateMetadata(activeWorkspace,publishing?{status:'published',visibility:'team'}:{status:'draft',visibility:'private'});setActiveWorkspace(saved);setWorkspaces(prev=>prev.map(w=>w.id===saved.id?saved:w));say(publishing?'Workspace für das Team veröffentlicht':'Workspace wieder privat gestellt');}catch(e){say(e instanceof Error?e.message:'Freigabe fehlgeschlagen')}finally{setSaving(false)}
  };
- const removeWorkspace=async()=>{if(!activeWorkspace||!canModify)return;
-  if(!confirm('Workspace unwiderruflich aus Supabase löschen? Die WoodCorp-Rohdaten bleiben unverändert.'))return;
-  try{await workspacesApi.remove(activeWorkspace.id);setWorkspaces(prev=>prev.filter(w=>w.id!==activeWorkspace.id));setActiveWorkspace(null);setDirty(false);say('Workspace entfernt')}catch(e){say(e instanceof Error?e.message:'Löschen fehlgeschlagen')}
+ const deleteWorkspace=async(id:string):Promise<void>=>{
+  const ws=workspaces.find(x=>x.id===id);
+  if(!ws||!(isEditing(role)&&(ws.owner_id===userId||role==='admin')))throw Error('Keine Löschberechtigung.');
+  setSaving(true);
+  try{
+   await workspacesApi.remove(id,ws.revision);
+   setWorkspaces(prev=>prev.filter(w=>w.id!==id));
+   if(activeWorkspace?.id===id){
+    const base=createBlankWorkspaceGraph();
+    setActiveWorkspace(null);setNodes(base.nodes);setEdges([]);setGlobals([]);
+    setLocals({});setDashboards({});setMetricNames({});defaultDashboardRef.current={};
+    setSelectedId(base.nodes[0].id);setDirty(false);setLoaded(true);
+    localStorage.removeItem(localKey);
+   }
+   say('Workspace "'+ws.title+'" wurde gelöscht. WoodCorp-Daten bleiben erhalten.');
+  }finally{setSaving(false)}
+ };
+ const removeWorkspace=async()=>{
+  if(!activeWorkspace||!canModify)return;
+  if(!confirm('Workspace "'+activeWorkspace.title+'" unwiderruflich löschen?'))return;
+  try{await deleteWorkspace(activeWorkspace.id)}catch(e){say(e instanceof Error?e.message:'Löschen fehlgeschlagen')}
  };
  const toggleCatalog=async(field:FieldKey,enabled:boolean)=>{
   if(role!=='admin')return;
@@ -252,8 +300,9 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
  const resetDraft=()=>{if(!confirm('Lokalen Entwurf verwerfen und OTIF-Ausgangsknoten neu laden? Eine gespeicherte Server-Version bleibt erhalten.'))return;localStorage.removeItem(localKey);setActiveWorkspace(null);setDashboards({});setMetricNames({});initializedRef.current=false;setLocals({});setGlobals([]);setLoaded(false);setReloadKey(i=>i+1);say('Lokaler Entwurf zurückgesetzt')};
  const addNode=useCallback((type:PaletteType,position:{x:number;y:number})=>{if(!editMode||!canModify){say('Zum Hinzufügen zuerst den Bearbeitungsmodus mit Schreibrechten aktivieren.');return;}
   if(type==='connector'){say('Connector: Ziehe einen Verbindungspunkt an einem Knoten zu einem anderen Verbindungspunkt.');return;}
-  remember();const label=type==='root'?'Neuer Ausgangsknoten':type==='metric'?'Neue KPI':type==='note'?'Neue Anmerkung':type==='condition'?'Neuer Filterknoten':type==='donut'?'Donut · On-Time':type==='bar'?'Balken · Segmentvergleich':type==='line'?'Zeitreihe · On-Time':type==='calculation'?'Vertragsstrafe · 0,75 €/kg':'Neue Aufgliederung';
-  const analysis:AnalysisNode={id:'user:'+crypto.randomUUID(),parentId:null,label,kind:type==='root'?'root':type==='metric'?'metric':type==='note'?'note':type==='condition'?'condition':'segment',metricId:'otifRate',createdBy:'user',description:type==='note'?'Anmerkung':undefined,visualization:({donut:'donut',bar:'bar',line:'line',calculation:'calculation'} as Record<string,AnalysisNode['visualization']>)[type]||'kpi',chartDimension:'delivery_company',calculationTemplate:'total_penalty_eur'};
+  remember();const label=type==='root'?'Neuer Ausgangsknoten':type==='metric'?'Neue KPI':type==='note'?'Neue Anmerkung':type==='condition'?'Neuer Filterknoten':type==='donut'?'Donut · On-Time':type==='bar'?'Balken · Segmentvergleich':type==='line'?'Zeitreihe · On-Time':type==='calculation'?'Vertragsstrafe · 0,75 €/kg':
+  ({stacked:'OTIF-Klassen',stacked100:'OTIF 100%-Vergleich',heatmap:'OTIF-Heatmap',pareto:'Strafkosten-Pareto',scatter:'OTIF-Streudiagramm',waterfall:'Kosten-Wasserfall',histogram:'Mengenänderungen-Verteilung',treemap:'Kosten-Treemap',funnel:'OTIF-Funnel'} as Record<string,string>)[type]||'Neue Aufgliederung';
+  const analysis:AnalysisNode={id:'user:'+crypto.randomUUID(),parentId:null,label,kind:type==='root'?'root':type==='metric'?'metric':type==='note'?'note':type==='condition'?'condition':'segment',metricId:type==='root'?undefined:'otifRate',createdBy:'user',description:type==='note'?'Anmerkung':undefined,visualization:({donut:'donut',bar:'bar',line:'line',calculation:'calculation',stacked:'stacked',stacked100:'stacked100',heatmap:'heatmap',pareto:'pareto',scatter:'scatter',waterfall:'waterfall',histogram:'histogram',treemap:'treemap',funnel:'funnel'} as Record<string,AnalysisNode['visualization']>)[type]||'kpi',chartDimension:'factory',calculationTemplate:'total_penalty_eur'};
   setNodes(ns=>{
    let next={...position};
    for(let i=0;i<40;i++){
@@ -267,25 +316,82 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
  const applyFilter=(f:Filter)=>{if(canModify)setDirty(true);if(dialog?.kind==='global'){setGlobals(gs=>{try{return validateFilters([...gs,f])}catch(e){say((e as Error).message);return gs}})}else if(dialog?.id){setLocals(old=>{const current=old[dialog.id!]||[];try{return {...old,[dialog.id!]:validateFilters([...current,f])}}catch(e){say((e as Error).message);return old}})} };
  const removeGlobal=(id:string)=>{setGlobals(gs=>gs.filter(f=>f.id!==id));if(canModify)setDirty(true)};
  const share=async()=>{const data={v:1,g:globals.map(({field,op,value})=>({field,op,value})),selected:selectedId};const u=new URL(location.href);u.searchParams.set('view',btoa(unescape(encodeURIComponent(JSON.stringify(data)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''));try{await navigator.clipboard.writeText(u.toString());say('Link kopiert. Lokale Knotenfilter werden nicht mitgeteilt.')}catch{say('Zwischenablage nicht verfügbar. URL bitte manuell kopieren.')}};
- const triggerReload=()=>setReloadKey(v=>v+1);
+ const triggerReload=()=>{clearAnalyticsCache();setReloadKey(v=>v+1)};
  useEffect(()=>{const query=new URLSearchParams(location.search).get('view');if(!query)return;try{const raw=JSON.parse(decodeURIComponent(escape(atob(query.replace(/-/g,'+').replace(/_/g,'/')))));if(raw.v!==1)return;const gs=validateFilters((raw.g||[]).map((f:Filter)=>({...f,id:crypto.randomUUID()})));setGlobals(gs);if(typeof raw.selected==='string')setSelectedId(raw.selected);}catch{say('Ungültiger Ansichtslink ignoriert.')}},[]);
  useEffect(()=>{analysisApi.dimensions().then(setDimensions).catch(e=>setWarning('Filterkatalog konnte nicht geladen werden: '+e.message));},[]);
- useEffect(()=>{const run=++requestRef.current;setBusy(true);setWarning('');const fetchAll=async()=>{
-  try{const [rb,m,trend]=await Promise.all([analysisApi.ribbon(globals),analysisApi.metrics(globals),analysisApi.trend(globals)]);
-   if(run!==requestRef.current)return;setRibbon(rb);setRootMetrics(m);setRibbonTrend(trend);
-   if(!initializedRef.current){const base=createInitialGraph([],{orders:rb.orders,onTimeRate:rb.onTimeRate});const saved=localStorage.getItem(localKey);
-    if(saved){try{const d=cleanDraft(JSON.parse(saved));if(d){const recovered=restoreDraft(d);const counts=new Map(base.nodes.map(n=>[n.id,n.data]));setNodes(recovered.nodes.map(n=>({...n,data:{...n.data,orders:counts.get(n.id)?.orders??null,onTimeRate:counts.get(n.id)?.onTimeRate??null}})));setEdges(recovered.edges);setLocals(d.localFilters||{});viewportRef.current=d.viewport;setTimeout(()=>flow.setViewport(d.viewport),150);say('Lokaler Entwurf geladen');}else{setNodes(base.nodes);setEdges(base.edges)}}catch{setNodes(base.nodes);setEdges(base.edges)}}else{setNodes(base.nodes);setEdges(base.edges)}initializedRef.current=true;setLoaded(true);
+ // Initialize the graph independently from network responses. A timeout cannot
+ // leave the user with an empty graph or prevent the workspace from opening.
+ useEffect(()=>{
+  if(initializedRef.current)return;
+  const base=createBlankWorkspaceGraph();
+  let recovered=false;
+  const saved=localStorage.getItem(localKey);
+  if(saved){
+   try{
+    const draft=cleanDraft(JSON.parse(saved));
+    if(draft){
+     const graph=restoreDraft(draft);
+     setNodes(graph.nodes);setEdges(graph.edges);
+     setLocals(draft.localFilters||{});
+     viewportRef.current=draft.viewport;
+     setTimeout(()=>void flow.setViewport(draft.viewport),120);
+     recovered=true;
+    }
+   }catch{/* invalid browser draft ignored */}
+  }
+  if(!recovered){setNodes(base.nodes);setEdges(base.edges);}
+  initializedRef.current=true;setLoaded(true);
+ },[localKey]);
+ useEffect(()=>{
+  const run=++requestRef.current;
+  setBusy(true);setWarning('');
+  // Load the KPI first; a timed-out trend must never invalidate valid KPIs.
+  const fetchAll=async()=>{
+   const [metricsResult,trendResult]=await Promise.allSettled([
+    analysisApi.metrics(globals),analysisApi.trend(globals)
+   ]);
+   if(run!==requestRef.current)return;
+   if(metricsResult.status==='fulfilled'){
+    const m=metricsResult.value;
+    setRootMetrics(m);
+    setRibbon({...m,deliveryDateCount:m.dateCoverage??0} as Ribbon);
+   }else{
+    setWarning('KPI-Abfrage nicht verfügbar: '+String(metricsResult.reason instanceof Error?metricsResult.reason.message:metricsResult.reason));
    }
-  }catch(e){if(run===requestRef.current)setWarning('Live-Daten konnten nicht geladen werden: '+(e instanceof Error?e.message:String(e)))}finally{if(run===requestRef.current)setBusy(false)}};
-  void fetchAll();return()=>{requestRef.current++};
+   if(trendResult.status==='fulfilled')setRibbonTrend(trendResult.value);
+   else setRibbonTrend([]);
+   setBusy(false);
+  };
+  void fetchAll();
+  return()=>{requestRef.current++};
  },[globals,reloadKey]);
- useEffect(()=>{if(!initializedRef.current||!loaded)return;let filt:Filter[];try{filt=effective(selectedId);}catch(e){setDetail({...emptyDetail,error:e instanceof Error?e.message:'Ungültiger Analysezweig'});return}
- const idx=++detailRequest.current;setDetail(old=>({...old,pending:true,error:null,metrics:null,trend:[],breakdown:[]}));
- Promise.all([analysisApi.metrics(filt),analysisApi.trend(filt),analysisApi.breakdown('delivery_company',filt),analysisApi.ribbon(filt)]).then(([metrics,trend,breakdown,ribbon])=>{
-  if(idx!==detailRequest.current)return;setDetail({metrics,trend,breakdown,ribbon,pending:false,error:null});
-  setNodes(ns=>ns.map(n=>n.id===selectedId?{...n,data:{...n.data,orders:metrics.orders,onTimeRate:metrics.onTimeRate}}:n));
- }).catch(e=>{if(idx===detailRequest.current)setDetail({...emptyDetail,error:e instanceof Error?e.message:'Analyse nicht verfügbar'});});
- return()=>{detailRequest.current++};
+ useEffect(()=>{
+  if(!initializedRef.current||!loaded)return;
+  const selected=topology.nodes.find(n=>n.id===selectedId);
+  if(selected?.kind==='root'&&!selected.metricId){
+   setDetail({...emptyDetail,pending:false,error:null});return;
+  }
+  let filt:Filter[];
+  try{filt=effective(selectedId)}
+  catch(e){setDetail({...emptyDetail,error:e instanceof Error?e.message:'Ungültiger Analysezweig'});return}
+  const idx=++detailRequest.current;
+  setDetail(prev=>({...prev,pending:true,error:null}));
+  const load=async()=>{
+   const [metricsResult,trendResult,breakdownResult]=await Promise.allSettled([
+    analysisApi.metrics(filt),analysisApi.trend(filt),analysisApi.breakdown('delivery_company',filt)
+   ]);
+   if(idx!==detailRequest.current)return;
+   const metrics=metricsResult.status==='fulfilled'?metricsResult.value:null;
+   const trend=trendResult.status==='fulfilled'?trendResult.value:[];
+   const breakdown=breakdownResult.status==='fulfilled'?breakdownResult.value:[];
+   const error=metricsResult.status==='rejected'
+    ?String(metricsResult.reason instanceof Error?metricsResult.reason.message:metricsResult.reason):null;
+   const ribbon=metrics?{...metrics,deliveryDateCount:metrics.dateCoverage??0} as Ribbon:null;
+   setDetail({metrics,trend,breakdown,ribbon,pending:false,error});
+   if(metrics)setNodes(ns=>ns.map(n=>n.id===selectedId?{...n,data:{...n.data,orders:metrics.orders,onTimeRate:metrics.onTimeRate}}:n));
+  };
+  void load();
+  return()=>{detailRequest.current++};
  },[selectedId,globals,locals,loaded,graphFilterKey]);
  const saveNodeSettings=(id:string,patch:Partial<AnalysisNode>)=>{
   if(!canModify)return;
@@ -309,6 +415,10 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
   };
   const tasks=ordinary.map(a=>async()=>{
    try{
+    if(a.kind==='root'&&!a.metricId){
+     update(a.id,{orders:null,onTimeRate:null,primaryValue:null,primaryLabel:'KPI auswählen',error:undefined,filterSummary:'Unkonfigurierter Ausgangsknoten'});
+     return;
+    }
     const filters=effectiveFilters(globals,topology.nodes,locals,a.id,topology.edges);
     const contradictions=conflictingFields(filters);
     if(contradictions.length){
@@ -322,7 +432,7 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
     if(run!==graphRequest.current)return;
     const viz=a.visualization||'kpi';
     const chosen=(a.metricId==='otd'?'onTimeRate':a.metricId&&Object.prototype.hasOwnProperty.call(METRIC_LABELS,a.metricId)?a.metricId:'otifRate') as MetricKey;
-    const patch:Partial<NNode['data']>={orders:metrics.orders,onTimeRate:metrics.onTimeRate,primaryValue:metricValue(chosen,metrics,null),primaryLabel:METRIC_LABELS[chosen],filterSummary:filters.map(f=>formatFilter(f,fieldNames)).join(' · '),error:undefined,chartRows:undefined,calculation:undefined};
+    const patch:Partial<NNode['data']>={orders:metrics.orders,onTimeRate:metrics.onTimeRate,fullMetrics:metrics,appliedFilters:filters,primaryValue:metricValue(chosen,metrics,null),primaryLabel:METRIC_LABELS[chosen],filterSummary:filters.map(f=>formatFilter(f,fieldNames)).join(' · '),error:undefined,chartRows:undefined,calculation:undefined};
     if(viz==='bar'){
       const dimension=a.chartDimension||'delivery_company';
       const chartKey=key+':'+dimension;
@@ -345,7 +455,7 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
   });
   let next=0;
   const worker=async()=>{while(next<tasks.length&&run===graphRequest.current){const at=next++;await tasks[at]()}}
-  void Promise.all(Array.from({length:Math.min(5,tasks.length)},()=>worker()));
+  void Promise.all(Array.from({length:Math.min(2,tasks.length)},()=>worker()));
   return()=>{graphRequest.current++};
  },[graphFilterKey,globals,locals,loaded]);
  const split=async(id:string,field:FieldKey)=>{const f=effective(id);const rows=await analysisApi.breakdown(field,f);if(!rows.length)throw Error('Keine Teilgruppen für diese Filter verfügbar');
@@ -365,7 +475,7 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
       <><div className={'workspace-row '+(!rightVisible?'no-detail':'')}><CanvasWithFlow {...modeActions}/>{rightVisible&&<DetailPanel node={selectedNode} detail={detail} tab={selectedTab} setTab={setSelectedTab} onClose={()=>setRightVisible(false)} onExpand={()=>setFullDashboard(true)} onRename={()=>setNameDialog('node')} onFilter={()=>setDialog({kind:'node',id:selectedId})} dashboard={currentDashboard} filters={effective()} fieldNames={fieldNames} filterTrace={traceFilters(globals,analysisNodes,locals,selectedId,topology.edges)} onExplain={metric=>setLogicContext({metric,nodeId:selectedId})} onEdit={()=>handleSetView('builder')} canEdit={canModify}/>}</div>
       {!rightVisible&&<button className="detail-reopen" onClick={()=>setRightVisible(true)}><Icon name="layers" size={17}/> Detaildashboard einblenden</button>}</>}
     <div className="bottom-disclaimer">Analyse-Ansicht · Datenbasis WoodCorp {PROJECT.years} · Das Referenzdesign enthält illustrative, nicht übernommene Beispielwerte. {isEditing(role)?'Private Entwürfe können in Supabase gespeichert und für das Team freigegeben werden.':''}</div>
-   </>:view==='workspaces'?<WorkspaceOverview items={workspaces} userId={userId} role={role} busy={saving} onOpen={id=>{void selectWorkspace(id).then(ok=>{if(ok)handleSetView('analytics')})}} onCreate={title=>{void createWorkspace(title).then(()=>handleSetView('analytics'))}} onRefresh={()=>void reloadWorkspaces()}/>:
+   </>:view==='workspaces'?<WorkspaceOverview items={workspaces} userId={userId} role={role} busy={saving} onOpen={id=>{void selectWorkspace(id).then(ok=>{if(ok)handleSetView('analytics')})}} onCreate={title=>{void createWorkspace(title).then(ok=>{if(ok)handleSetView('analytics')})}} onDelete={deleteWorkspace} onRefresh={()=>void reloadWorkspaces()}/>:
      view==='data'?<DataExplorer dimensions={dimensions}/>:
      view==='filters'?<FilterCatalogV4 rows={catalog} candidates={candidates} admin={role==='admin'} busy={catalogBusy} onRefresh={()=>{void reloadCatalog();void reloadCandidates()}} onToggle={(field,enabled)=>void toggleCatalog(field,enabled)} onRegister={addCatalogField} onRename={renameCatalogField}/>:view==='team'?<TeamPanel role={role}/>:<ProfilePage email={email} role={role}/>}
   </main>
@@ -380,15 +490,73 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
   {!!toast&&<div className="nxt-toast" role="status">{toast}<button aria-label="Meldung schließen" onClick={()=>setToast('')}>×</button></div>}
  </div>;
 }
-export default function App(){const [state,setState]=useState<'loading'|'login'|'app'|'no-access'>('loading');const [authMode,setAuthMode]=useState<'login'|'invite'|'recovery'>('login');const [role,setRole]=useState<Role|null>(null);const [email,setEmail]=useState('');const [userId,setUserId]=useState('');
- const refreshAuth=useCallback(async()=>{const {data,error}=await supabase.auth.getUser();if(error||!data.user){setState('login');setAuthMode('login');return;}setEmail(data.user.email||'');setUserId(data.user.id);
- const membership=await supabase.from('woodcorp_access').select('role').eq('user_id',data.user.id).maybeSingle();if(!membership.data?.role){setState('no-access');return;}
- setRole(membership.data.role as Role);
- const params=new URLSearchParams(location.search);if(params.has('invite')){setAuthMode('invite');setState('login');}else if(params.has('recovery')){setAuthMode('recovery');setState('login');}else setState('app');},[]);
- useEffect(()=>{void refreshAuth();const {data}=supabase.auth.onAuthStateChange((event)=>{if(event==='SIGNED_OUT'){setState('login');setAuthMode('login');}else if(event==='SIGNED_IN'){setTimeout(()=>void refreshAuth(),0)}});return()=>data.subscription.unsubscribe();},[refreshAuth]);
+export default function App(){
+ const [state,setState]=useState<'loading'|'login'|'app'|'no-access'>('loading');
+ const [authMode,setAuthMode]=useState<'login'|'invite'|'recovery'>('login');
+ const [inviteError,setInviteError]=useState('');
+ const invitePending=useRef(false),booted=useRef(false);
+ const [role,setRole]=useState<Role|null>(null);
+ const [email,setEmail]=useState(''),[userId,setUserId]=useState('');
+ const refreshAuth=useCallback(async()=>{
+  const {data,error}=await supabase.auth.getUser();
+  if(error||!data.user){setState('login');setAuthMode('login');return;}
+  setEmail(data.user.email||'');setUserId(data.user.id);
+  const membership=await supabase.from('woodcorp_access').select('role')
+    .eq('user_id',data.user.id).maybeSingle();
+  if(!membership.data?.role){setState('no-access');return;}
+  setRole(membership.data.role as Role);
+  const params=new URLSearchParams(location.search);
+  if(invitePending.current||params.has('invite')){
+   setAuthMode('invite');setState('login');
+  }else if(params.has('recovery')){
+   setAuthMode('recovery');setState('login');
+  }else{setAuthMode('login');setState('app')}
+ },[]);
+ useEffect(()=>{
+  // Subscribe even if StrictMode replays the effect, but consume the token once.
+  const {data}=supabase.auth.onAuthStateChange(event=>{
+   if(event==='SIGNED_OUT'){setState('login');setAuthMode('login');invitePending.current=false;}
+   else if(event==='SIGNED_IN'&&!invitePending.current){
+    setTimeout(()=>void refreshAuth(),0);
+   }
+  });
+  if(!booted.current){
+   booted.current=true;
+   const start=async()=>{
+    const hash=window.location.hash;
+    const token=extractInviteToken(hash);
+    if(token){
+     invitePending.current=true;
+     // Clear secrets before any other browser navigation, logging or API call.
+     window.history.replaceState({},document.title,location.pathname+location.search);
+     setState('loading');setInviteError('');
+     try{
+      const {data:verified,error}=await supabase.auth.verifyOtp({token_hash:token,type:'invite'});
+      if(error||!verified?.user)throw Error('Einladung ungültig oder abgelaufen.');
+      await refreshAuth();return;
+     }catch{
+      invitePending.current=false;
+      setInviteError('Der Einladungslink ist ungültig oder abgelaufen. Bitte den Administrator um einen neuen Einladungslink bitten.');
+      setAuthMode('login');setState('login');
+      return;
+     }
+    }
+    if(isInviteFragment(hash)){
+     window.history.replaceState({},document.title,location.pathname+location.search);
+     setInviteError('Ungültiger Einladungslink. Bitte einen neuen Link anfordern.');
+     setAuthMode('login');setState('login');return;
+    }
+    await refreshAuth();
+   };
+   void start();
+  }
+  return()=>data.subscription.unsubscribe();
+ },[refreshAuth]);
  const signout=async()=>{await supabase.auth.signOut();setState('login')};
  if(state==='loading')return <div className="boot-screen"><Spinner text="NXT Analytics wird vorbereitet …"/></div>;
- if(state==='login')return <AuthScreen client={supabase} mode={authMode} onDone={()=>void refreshAuth()}/>;
+ if(state==='login')return <AuthScreen client={supabase} mode={authMode} initialNotice={inviteError} onDone={()=>{
+   invitePending.current=false;setInviteError('');void refreshAuth();
+ }}/>;
  if(state==='no-access')return <div className="access-denied"><Brand/><h1>Für dieses Projekt ist eine Freigabe erforderlich.</h1><p>Du bist angemeldet, aber noch nicht für NXT Analytics berechtigt. Bitte wende dich an die Administration.</p><Button icon="log-out" onClick={signout}>Abmelden</Button></div>;
  return <ReactFlowProvider><AnalyticsWorkspace userId={userId} role={role!} email={email} onSignOut={signout}/></ReactFlowProvider>;
 }

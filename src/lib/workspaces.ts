@@ -38,9 +38,14 @@ export const workspacesApi={
   if(!data)throw Error('Workspace wurde parallel bearbeitet. Bitte neu laden.');
   return data as unknown as WorkspaceRecord;
  },
- async remove(id:string):Promise<void>{
-  const {error}=await supabase.from('nxt_workspaces').delete().eq('id',id);
-  if(error)throw Error('Löschen nicht möglich: '+error.message);
+ async remove(id:string,expectedRevision:number):Promise<void>{
+  if(!/^[0-9a-f-]{36}$/i.test(id)||!Number.isInteger(expectedRevision)||expectedRevision<1)
+   throw Error('Ungültige Workspace-Kennung oder Version');
+  // RLS enforces owner/admin. Requiring a returned row prevents silent 0-row success.
+  const {data,error}=await supabase.from('nxt_workspaces').delete().eq('id',id)
+    .eq('revision',expectedRevision).select('id').maybeSingle();
+  if(error)throw Error('Workspace konnte nicht gelöscht werden: '+error.message);
+  if(!data?.id)throw Error('Workspace nicht gelöscht: keine Berechtigung, bereits entfernt oder zwischenzeitlich geändert. Bitte Liste aktualisieren.');
  },
  async catalog():Promise<FilterCatalogRow[]>{
   const {data,error}=await supabase.from('nxt_filter_catalog').select('field_key,display_name,enabled,sort_order,updated_at').order('sort_order');

@@ -9,7 +9,16 @@ import {formatFilter} from '../core/filters';
 const TYPES:{value:GraphViz;label:string}[]=[
  {value:'kpi',label:'KPI-Kachel'}, {value:'donut',label:'Donutdiagramm'},
  {value:'bar',label:'Balkendiagramm'}, {value:'line',label:'Zeitreihe'},
- {value:'calculation',label:'SQL-Kennzahl (geprüfte Vorlage)'}
+ {value:'calculation',label:'SQL-Kennzahl (geprüfte Vorlage)'},
+ {value:'stacked',label:'Gestapelte OTIF-Fehlerklassen'},
+ {value:'stacked100',label:'100%-Stack nach OTIF-Klassen'},
+ {value:'heatmap',label:'Heatmap Werk × Produkttyp'},
+ {value:'pareto',label:'Pareto: Vertragsstrafen'},
+ {value:'scatter',label:'Scatter: Aufträge × OTIF'},
+ {value:'waterfall',label:'Kosten-Wasserfall'},
+ {value:'histogram',label:'Häufigkeitsverteilung'},
+ {value:'treemap',label:'Kosten-Treemap'},
+ {value:'funnel',label:'OTIF-Funnel'}
 ];
 export function NodeSettings({node,allowedFields,fieldNames,filters,onRemoveFilter,onSave,onClose}:{
  node:AnalysisNode;allowedFields:FieldKey[];fieldNames:Record<FieldKey,string>;filters:Filter[];onRemoveFilter:(id:string)=>void;
@@ -22,7 +31,7 @@ export function NodeSettings({node,allowedFields,fieldNames,filters,onRemoveFilt
  const [rate,setRate]=useState<string>(node.rateEurPerKg?.toString()||'');
  const [error,setError]=useState('');
  const calc=CALCULATION_TEMPLATES[template];
- const suggestedNames:Record<GraphViz,string>={kpi:'Neue KPI',donut:'Donut · On-Time',bar:'Balken · Segmentvergleich',line:'Zeitreihe · On-Time',calculation:'Vertragsstrafe · 0,75 €/kg'};
+ const suggestedNames:Record<GraphViz,string>={kpi:'Neue KPI',donut:'Donut · On-Time',bar:'Balken · Segmentvergleich',line:'Zeitreihe · On-Time',calculation:'Vertragsstrafe · 0,75 €/kg',stacked:'OTIF-Klassen · gestapelt',stacked100:'OTIF-Klassen · 100 %',heatmap:'OTIF-Heatmap',pareto:'Vertragsstrafen · Pareto',scatter:'Aufträge und OTIF',waterfall:'Kosten-Zerlegung',histogram:'Mengenänderungen · Verteilung',treemap:'Kostenanteile · Treemap',funnel:'OTIF-Funnel'};
  const isSuggested=(label:string)=>Object.values(suggestedNames).includes(label)||label==='SQL · Unterlieferte Menge'||TEMPLATES.some(id=>CALCULATION_TEMPLATES[id].label===label);
  const changeVisual=(next:GraphViz)=>{if(isSuggested(name))setName(suggestedNames[next]);setViz(next)};
  const changeTemplate=(next:CalculationTemplate)=>{if(isSuggested(name))setName(CALCULATION_TEMPLATES[next].label);setTemplate(next);setError('')};
@@ -37,7 +46,7 @@ export function NodeSettings({node,allowedFields,fieldNames,filters,onRemoveFilt
    <label className="field">Knotenname<input autoFocus maxLength={100} minLength={2} required value={name} onChange={e=>setName(e.target.value)}/></label>
    <label className="field">Anzeigeart<select value={viz} onChange={e=>changeVisual(e.target.value as GraphViz)}>{TYPES.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}</select></label>
    {viz==='kpi'&&<label className="field">Kennzahl<select value={selectedMetric} onChange={e=>setSelectedMetric(e.target.value as MetricKey)}>{METRICS.map(m=><option key={m} value={m}>{METRIC_LABELS[m]}</option>)}</select></label>}
-   {viz==='bar'&&<label className="field">Gruppierung<select value={field} onChange={e=>setField(e.target.value as FieldKey)}>{[...new Set([...allowedFields,field])].map(key=><option key={key} value={key}>{fieldNames[key]||FIELD_LABELS[key]}</option>)}</select></label>}
+   {(['bar','stacked','stacked100','heatmap','pareto','scatter','treemap'].includes(viz))&&<label className="field">Gruppierung<select value={field} onChange={e=>setField(e.target.value as FieldKey)}>{[...new Set([...allowedFields,field])].map(key=><option key={key} value={key}>{fieldNames[key]||FIELD_LABELS[key]}</option>)}</select></label>}
    {viz==='calculation'&&<>
     <label className="field">Geprüfte SQL-Vorlage<select value={template} onChange={e=>changeTemplate(e.target.value as CalculationTemplate)}>{TEMPLATES.map(key=><option key={key} value={key}>{CALCULATION_TEMPLATES[key].label}</option>)}</select></label>
     <p className="muted">{calc.description}</p>
