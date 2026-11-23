@@ -300,8 +300,9 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
  const resetDraft=()=>{if(!confirm('Lokalen Entwurf verwerfen und OTIF-Ausgangsknoten neu laden? Eine gespeicherte Server-Version bleibt erhalten.'))return;localStorage.removeItem(localKey);setActiveWorkspace(null);setDashboards({});setMetricNames({});initializedRef.current=false;setLocals({});setGlobals([]);setLoaded(false);setReloadKey(i=>i+1);say('Lokaler Entwurf zurückgesetzt')};
  const addNode=useCallback((type:PaletteType,position:{x:number;y:number})=>{if(!editMode||!canModify){say('Zum Hinzufügen zuerst den Bearbeitungsmodus mit Schreibrechten aktivieren.');return;}
   if(type==='connector'){say('Connector: Ziehe einen Verbindungspunkt an einem Knoten zu einem anderen Verbindungspunkt.');return;}
-  remember();const label=type==='root'?'Neuer Ausgangsknoten':type==='metric'?'Neue KPI':type==='note'?'Neue Anmerkung':type==='condition'?'Neuer Filterknoten':type==='donut'?'Donut · On-Time':type==='bar'?'Balken · Segmentvergleich':type==='line'?'Zeitreihe · On-Time':type==='calculation'?'Vertragsstrafe · 0,75 €/kg':'Neue Aufgliederung';
-  const analysis:AnalysisNode={id:'user:'+crypto.randomUUID(),parentId:null,label,kind:type==='root'?'root':type==='metric'?'metric':type==='note'?'note':type==='condition'?'condition':'segment',metricId:'otifRate',createdBy:'user',description:type==='note'?'Anmerkung':undefined,visualization:({donut:'donut',bar:'bar',line:'line',calculation:'calculation'} as Record<string,AnalysisNode['visualization']>)[type]||'kpi',chartDimension:'delivery_company',calculationTemplate:'total_penalty_eur'};
+  remember();const label=type==='root'?'Neuer Ausgangsknoten':type==='metric'?'Neue KPI':type==='note'?'Neue Anmerkung':type==='condition'?'Neuer Filterknoten':type==='donut'?'Donut · On-Time':type==='bar'?'Balken · Segmentvergleich':type==='line'?'Zeitreihe · On-Time':type==='calculation'?'Vertragsstrafe · 0,75 €/kg':
+  ({stacked:'OTIF-Klassen',stacked100:'OTIF 100%-Vergleich',heatmap:'OTIF-Heatmap',pareto:'Strafkosten-Pareto',scatter:'OTIF-Streudiagramm',waterfall:'Kosten-Wasserfall',histogram:'Mengenänderungen-Verteilung',treemap:'Kosten-Treemap',funnel:'OTIF-Funnel'} as Record<string,string>)[type]||'Neue Aufgliederung';
+  const analysis:AnalysisNode={id:'user:'+crypto.randomUUID(),parentId:null,label,kind:type==='root'?'root':type==='metric'?'metric':type==='note'?'note':type==='condition'?'condition':'segment',metricId:type==='root'?undefined:'otifRate',createdBy:'user',description:type==='note'?'Anmerkung':undefined,visualization:({donut:'donut',bar:'bar',line:'line',calculation:'calculation',stacked:'stacked',stacked100:'stacked100',heatmap:'heatmap',pareto:'pareto',scatter:'scatter',waterfall:'waterfall',histogram:'histogram',treemap:'treemap',funnel:'funnel'} as Record<string,AnalysisNode['visualization']>)[type]||'kpi',chartDimension:'factory',calculationTemplate:'total_penalty_eur'};
   setNodes(ns=>{
    let next={...position};
    for(let i=0;i<40;i++){
@@ -431,7 +432,7 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
     if(run!==graphRequest.current)return;
     const viz=a.visualization||'kpi';
     const chosen=(a.metricId==='otd'?'onTimeRate':a.metricId&&Object.prototype.hasOwnProperty.call(METRIC_LABELS,a.metricId)?a.metricId:'otifRate') as MetricKey;
-    const patch:Partial<NNode['data']>={orders:metrics.orders,onTimeRate:metrics.onTimeRate,primaryValue:metricValue(chosen,metrics,null),primaryLabel:METRIC_LABELS[chosen],filterSummary:filters.map(f=>formatFilter(f,fieldNames)).join(' · '),error:undefined,chartRows:undefined,calculation:undefined};
+    const patch:Partial<NNode['data']>={orders:metrics.orders,onTimeRate:metrics.onTimeRate,fullMetrics:metrics,appliedFilters:filters,primaryValue:metricValue(chosen,metrics,null),primaryLabel:METRIC_LABELS[chosen],filterSummary:filters.map(f=>formatFilter(f,fieldNames)).join(' · '),error:undefined,chartRows:undefined,calculation:undefined};
     if(viz==='bar'){
       const dimension=a.chartDimension||'delivery_company';
       const chartKey=key+':'+dimension;
