@@ -9,7 +9,7 @@ test('parallel filtered graph branches may be linked in DAG but not linked backw
  const edges=[...g.edges,referenceEdge('factory:Bonn','factory:Essen')];
  assert.equal(isValidReference('factory:Essen','factory:Bonn',edges,g.nodes),false);
 });
-\ntest('a chart node keeps its configuration in the saved tree',()=>{
+test('a chart node keeps its configuration in the saved tree',()=>{
  const g=createInitialGraph([{label:'Essen',orders:8,on_time_rate:75,volume_rate:70}]);
  const node=g.nodes[1];node.data.analysis.visualization='bar';node.data.analysis.chartDimension='cust_market';
  const restored=restoreDraft(serializeDraft(g.nodes,g.edges,{}, {x:0,y:0,zoom:1}));
