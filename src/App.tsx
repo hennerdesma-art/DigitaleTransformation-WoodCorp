@@ -9,7 +9,7 @@ import {CanvasWithFlow} from './components/GraphCanvas';
 import Icon from './components/Icon';
 import {Brand,Button,IconButton,Modal,Notice,Spinner,number,percent,decimal,SmallTrend} from './components/Ui';
 import AuthScreen from './components/AuthScreen';
-import {extractInviteToken,isInviteFragment} from './lib/invite';
+import {extractInviteTicket,isInviteFragment,type InvitationTicket} from './lib/invite';
 import {DashboardRenderer,DashboardBuilder} from './components/DashboardBuilder';
 import {WorkspaceControls,FilterCatalogPage} from './components/WorkspaceControls';
 import {standardDashboard,makeDocument,validDocument,metricValue,metricFormat,METRIC_LABELS,type MetricKey,type NodeDashboard} from './core/dashboard';
@@ -503,56 +503,48 @@ export default function App(){
  const [state,setState]=useState<'loading'|'login'|'app'|'no-access'>('loading');
  const [authMode,setAuthMode]=useState<'login'|'invite'|'recovery'>('login');
  const [inviteError,setInviteError]=useState('');
+ const [inviteTicket,setInviteTicket]=useState<InvitationTicket|null>(null);
  const invitePending=useRef(false),booted=useRef(false);
  const [role,setRole]=useState<Role|null>(null);
  const [email,setEmail]=useState(''),[userId,setUserId]=useState('');
  const refreshAuth=useCallback(async()=>{
+  // Do not route another already signed-in account into a pending invite flow.
+  if(invitePending.current){setAuthMode('invite');setState('login');return}
   const {data,error}=await supabase.auth.getUser();
-  if(error||!data.user){setState('login');setAuthMode('login');return;}
+  if(error||!data.user){setState('login');setAuthMode('login');return}
   setEmail(data.user.email||'');setUserId(data.user.id);
   const membership=await supabase.from('woodcorp_access').select('role')
     .eq('user_id',data.user.id).maybeSingle();
-  if(!membership.data?.role){setState('no-access');return;}
+  if(!membership.data?.role){setState('no-access');return}
   setRole(membership.data.role as Role);
-  const params=new URLSearchParams(location.search);
-  if(invitePending.current||params.has('invite')){
-   setAuthMode('invite');setState('login');
-  }else if(params.has('recovery')){
+  if(new URLSearchParams(location.search).has('recovery')){
    setAuthMode('recovery');setState('login');
   }else{setAuthMode('login');setState('app')}
  },[]);
  useEffect(()=>{
-  // Subscribe even if StrictMode replays the effect, but consume the token once.
   const {data}=supabase.auth.onAuthStateChange(event=>{
-   if(event==='SIGNED_OUT'){setState('login');setAuthMode('login');invitePending.current=false;}
-   else if(event==='SIGNED_IN'&&!invitePending.current){
+   if(invitePending.current)return; // Verify the invite only on password submission.
+   if(event==='SIGNED_OUT'){setState('login');setAuthMode('login')}
+   else if(event==='SIGNED_IN'||event==='PASSWORD_RECOVERY'){
+    // Defer Supabase calls outside its synchronous auth-state callback.
     setTimeout(()=>void refreshAuth(),0);
    }
   });
   if(!booted.current){
    booted.current=true;
    const start=async()=>{
-    const hash=window.location.hash;
-    const token=extractInviteToken(hash);
-    if(token){
+    const hash=location.hash;
+    const ticket=extractInviteTicket(hash);
+    if(ticket){
      invitePending.current=true;
-     // Clear secrets before any other browser navigation, logging or API call.
-     window.history.replaceState({},document.title,location.pathname+location.search);
-     setState('loading');setInviteError('');
-     try{
-      const {data:verified,error}=await supabase.auth.verifyOtp({token_hash:token,type:'invite'});
-      if(error||!verified?.user)throw Error('Einladung ungültig oder abgelaufen.');
-      await refreshAuth();return;
-     }catch{
-      invitePending.current=false;
-      setInviteError('Der Einladungslink ist ungültig oder abgelaufen. Bitte den Administrator um einen neuen Einladungslink bitten.');
-      setAuthMode('login');setState('login');
-      return;
-     }
+     // Token stays in component memory, NEVER in history or network navigation.
+     history.replaceState({},document.title,location.pathname+location.search);
+     setInviteTicket(ticket);setInviteError('');
+     setAuthMode('invite');setState('login');return;
     }
     if(isInviteFragment(hash)){
-     window.history.replaceState({},document.title,location.pathname+location.search);
-     setInviteError('Ungültiger Einladungslink. Bitte einen neuen Link anfordern.');
+     history.replaceState({},document.title,location.pathname+location.search);
+     setInviteError('Ungültiger Einladungslink. Bitte in „Team & Zugänge“ einen neuen Link erzeugen lassen.');
      setAuthMode('login');setState('login');return;
     }
     await refreshAuth();
@@ -561,10 +553,10 @@ export default function App(){
   }
   return()=>data.subscription.unsubscribe();
  },[refreshAuth]);
- const signout=async()=>{await supabase.auth.signOut();setState('login')};
+ const signout=async()=>{invitePending.current=false;setInviteTicket(null);await supabase.auth.signOut();setState('login')};
  if(state==='loading')return <div className="boot-screen"><Spinner text="NXT Analytics wird vorbereitet …"/></div>;
- if(state==='login')return <AuthScreen client={supabase} mode={authMode} initialNotice={inviteError} onDone={()=>{
-   invitePending.current=false;setInviteError('');void refreshAuth();
+ if(state==='login')return <AuthScreen client={supabase} mode={authMode} inviteTicket={inviteTicket} initialNotice={inviteError} onDone={()=>{
+   invitePending.current=false;setInviteTicket(null);setInviteError('');void refreshAuth();
  }}/>;
  if(state==='no-access')return <div className="access-denied"><Brand/><h1>Für dieses Projekt ist eine Freigabe erforderlich.</h1><p>Du bist angemeldet, aber noch nicht für NXT Analytics berechtigt. Bitte wende dich an die Administration.</p><Button icon="log-out" onClick={signout}>Abmelden</Button></div>;
  return <ReactFlowProvider><AnalyticsWorkspace userId={userId} role={role!} email={email} onSignOut={signout}/></ReactFlowProvider>;
