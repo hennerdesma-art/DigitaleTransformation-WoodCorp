@@ -1,0 +1,37 @@
+/* NXT Canvas v5: charts, inherited filters and parameterized calculation cards. */
+.react-flow__node-analytics .graph-node.chart-node{width:254px;min-width:254px;min-height:165px;padding:14px 12px 17px;border-radius:13px;box-shadow:0 8px 28px #0639401c}
+.graph-node.chart-node .node-labels{gap:9px}
+.graph-node.chart-node .node-labels strong{font-size:12px;max-width:228px;text-align:center}
+.graph-node.chart-node .node-grip{align-self:flex-start;margin-top:3px}
+.graph-node.chart-node .graph-node-content{align-items:flex-start}
+.graph-node.chart-node .node-buttons{right:-11px;top:-12px}
+.node-viz-loading{min-height:90px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-size:10px;color:#567477}
+.node-viz-loading .nxt-spinner{width:18px;height:18px}
+.node-viz-error{font-size:10px;color:#B42332;background:#fff5f5;border:1px solid #f5cdcd;padding:8px 11px;border-radius:9px;margin:0;max-width:220px;line-height:1.3}
+.node-viz-empty{color:#637d83;font-size:11px;margin:12px 0}
+.node-viz-donut{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:5px;min-height:120px}
+.node-viz-donut>span{font-size:10px;color:#55787e}
+.node-viz-ring{width:92px;height:92px;border-radius:50%;display:grid;place-items:center}
+.node-viz-ring>div{width:67px;height:67px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;flex-direction:column}
+.node-viz-ring b{font-size:18px;font-variant-numeric:tabular-nums;color:#00666B}
+.node-viz-ring small{font-size:9px;color:#698288}
+.node-viz-bars{display:flex;flex-direction:column;gap:7px;width:212px;margin:8px auto 0}
+.node-viz-bar>div:first-child{display:flex;justify-content:space-between;gap:8px;font-size:9px;color:#37565c}
+.node-viz-bar span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:135px;text-align:left}
+.node-viz-bar b{font-size:9px;color:#00666B}
+.node-viz-track{background:#e4f0f1;height:6px;border-radius:8px;overflow:hidden;margin-top:3px}
+.node-viz-track i{display:block;height:100%;background:linear-gradient(90deg,#008b92,#43bbc1);border-radius:8px}
+.node-viz-line{width:220px;margin:0 auto}
+.node-viz-line svg{display:block;width:100%;height:108px}
+.node-viz-line>div{display:flex;align-items:center;justify-content:space-between;color:#58777b;font-size:9px;gap:5px}
+.node-viz-line b{font-size:13px;color:#007d82}
+.node-viz-result{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;min-height:97px;width:225px}
+.node-viz-result strong{font-size:23px;line-height:1.1;letter-spacing:-.5px;font-variant-numeric:tabular-nums;color:var(--nxt-primary);text-align:center;overflow-wrap:anywhere}
+.node-viz-result small{font-size:9px;max-width:210px;line-height:1.4;text-align:center;color:#5b7479}
+.node-settings .field{margin:12px 0}
+.node-sql-preview{background:#f0f8f8;border:1px solid #c9e0e1;border-radius:11px;display:flex;flex-direction:column;gap:8px;padding:13px;margin:14px 0}
+.node-sql-preview strong{font-size:11px;color:#00666b}
+.node-sql-preview code{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5;color:#16464a;background:#fff;border-radius:8px;padding:11px;font-size:10px}
+.node-sql-preview small{font-size:10px;color:#527276}
+.react-flow__edge:has(.react-flow__edge-text) .react-flow__edge-text{font-size:10px;fill:#00666b}
+@media(max-width:650px){.react-flow__node-analytics .graph-node.chart-node{width:238px;min-width:238px}}
