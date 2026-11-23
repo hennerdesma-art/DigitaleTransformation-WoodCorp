@@ -1,5 +1,5 @@
 import React,{useState} from 'react';
-import type {AnalysisNode,GraphViz,CalculationTemplate} from '../core/types';
+import type {AnalysisNode,GraphViz,CalculationTemplate,Filter} from '../core/types';
 import type {FieldKey} from '../config';
 import {CALCULATION_TEMPLATES,TEMPLATES,validateRate} from '../core/calculations';
 import {FIELD_LABELS} from '../config';
@@ -9,8 +9,8 @@ const TYPES:{value:GraphViz;label:string}[]=[
  {value:'bar',label:'Balkendiagramm'}, {value:'line',label:'Zeitreihe'},
  {value:'calculation',label:'SQL-Kennzahl (geprüfte Vorlage)'}
 ];
-export function NodeSettings({node,allowedFields,fieldNames,onSave,onClose}:{
- node:AnalysisNode;allowedFields:FieldKey[];fieldNames:Record<FieldKey,string>;
+export function NodeSettings({node,allowedFields,fieldNames,filters,onRemoveFilter,onSave,onClose}:{
+ node:AnalysisNode;allowedFields:FieldKey[];fieldNames:Record<FieldKey,string>;filters:Filter[];onRemoveFilter:(id:string)=>void;
  onSave:(patch:Partial<AnalysisNode>)=>void;onClose:()=>void;
 }){
  const [name,setName]=useState(node.label),[viz,setViz]=useState<GraphViz>(node.visualization||'kpi');
@@ -36,6 +36,7 @@ export function NodeSettings({node,allowedFields,fieldNames,onSave,onClose}:{
     {calc.requiresRate&&<label className="field">Bestätigter Kostensatz (€/kg)<input type="number" required step="0.0001" min="0.0001" max="10000" value={rate} onChange={e=>setRate(e.target.value)} placeholder="€/kg selbst eingeben"/></label>}
     <div className="node-sql-preview"><strong>SQL-Vorlage (nur Vorschau)</strong><code>{calc.sql}</code><small>Die Web-App sendet nur die Vorlagen-ID, validierte Filter und ggf. den Kostensatz an eine eingeschränkte Supabase-RPC. Kein frei eingegebenes SQL wird ausgeführt.</small></div>
    </>}
+   {!!filters.length&&<fieldset className="node-local-filters"><legend>Eigene Filter dieses Knotens</legend>{filters.map(f=><div key={f.id}><span>{fieldNames[f.field]}: <b>{f.value}</b></span><button className="nxt-button secondary" type="button" onClick={()=>onRemoveFilter(f.id)} aria-label={'Filter '+f.value+' entfernen'}>Entfernen</button></div>)}</fieldset>}
    <p className="muted">Alle Kennzahlen dieser Kachel erben die Filter sämtlicher eingehender Verbindungen. Eigene Filter verengen die Auswahl zusätzlich.</p>
    {error&&<Notice kind="error">{error}</Notice>}
    <div className="modal-actions"><Button onClick={onClose}>Abbrechen</Button><Button type="submit" kind="primary" icon="check">Übernehmen</Button></div>
