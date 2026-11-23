@@ -14,10 +14,16 @@ import {WorkspaceControls,FilterCatalogPage} from './components/WorkspaceControl
 import {standardDashboard,makeDocument,validDocument,type NodeDashboard} from './core/dashboard';
 import {workspacesApi,type WorkspaceRecord,type FilterCatalogRow} from './lib/workspaces';
 import './styles/dashboard.css';
+import './styles/v4.css';
+import {WorkspaceOverview} from './components/WorkspaceOverview';
+import {DataExplorer} from './components/DataExplorer';
+import {FilterCatalogV4} from './components/FilterCatalogV4';
+import {DashboardFullView,KpiNameDialog,RenameNodeDialog,type MetricNames} from './components/DashboardViews';
+import type {FilterCandidate} from './lib/workspaces';
 
-type View='home'|'analytics'|'tree'|'builder'|'data'|'filters'|'team'|'profile';
+type View='home'|'workspaces'|'analytics'|'tree'|'builder'|'data'|'filters'|'team'|'profile';
 const NAV:{id:View;label:string;icon:string;admin?:boolean}[]=[
- {id:'home',label:'Home',icon:'house'}, {id:'analytics',label:'KPI-Analyse',icon:'chart-column'},
+ {id:'home',label:'Home',icon:'house'}, {id:'workspaces',label:'Workspaces',icon:'layers'}, {id:'analytics',label:'KPI-Analyse',icon:'chart-column'},
  {id:'tree',label:'Decision Tree',icon:'network'}, {id:'builder',label:'Dashboard Builder',icon:'layout-dashboard'},
  {id:'data',label:'Datenquellen',icon:'database'}, {id:'filters',label:'Filterbibliothek',icon:'filter'},
  {id:'team',label:'Team & Zugänge',icon:'user-round',admin:true},{id:'profile',label:'Konfiguration',icon:'settings'}
@@ -124,9 +130,9 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
  const [dimensions,setDimensions]=useState<Record<string,string[]>>({});const [ribbon,setRibbon]=useState<Ribbon|null>(null);const [rootMetrics,setRootMetrics]=useState<Metrics|null>(null);const [ribbonTrend,setRibbonTrend]=useState<TrendRow[]>([]);
  const [selectedId,setSelectedId]=useState(ROOT_ID);const [selectedTab,setSelectedTab]=useState('Übersicht');const [detail,setDetail]=useState<DashboardData>(emptyDetail);
  const [nodes,setNodes,onNodesChange]=useNodesState<NNode>([nodeFor({id:ROOT_ID,parentId:null,label:'On-Time Delivery',kind:'root',createdBy:'system'}, {x:550,y:35})]);
- const [dashboards,setDashboards]=useState<Record<string,NodeDashboard>>({});const defaultDashboardRef=useRef<Record<string,NodeDashboard>>({});
+ const [dashboards,setDashboards]=useState<Record<string,NodeDashboard>>({});const [metricNames,setMetricNames]=useState<MetricNames>({});const [fullDashboard,setFullDashboard]=useState(false);const [nameDialog,setNameDialog]=useState<'node'|'metrics'|null>(null);const defaultDashboardRef=useRef<Record<string,NodeDashboard>>({});
  const [workspaces,setWorkspaces]=useState<WorkspaceRecord[]>([]);const [activeWorkspace,setActiveWorkspace]=useState<WorkspaceRecord|null>(null);
- const [catalog,setCatalog]=useState<FilterCatalogRow[]>([]);const [saving,setSaving]=useState(false);
+ const [catalog,setCatalog]=useState<FilterCatalogRow[]>([]);const [candidates,setCandidates]=useState<FilterCandidate[]>([]);const [saving,setSaving]=useState(false);const [catalogBusy,setCatalogBusy]=useState(false);
  const [edges,setEdges,onEdgesChange]=useEdgesState<NEdge>([]);const [editMode,setEditMode]=useState(false);const [rightVisible,setRightVisible]=useState(true);const [fullscreen,setFullscreen]=useState(false);const [busy,setBusy]=useState(true);const [warning,setWarning]=useState('');const [toast,setToast]=useState('');
  const [dialog,setDialog]=useState<{kind:'global'|'node'|'split';id?:string}|null>(null);const [help,setHelp]=useState(false);const [search,setSearch]=useState('');const [dirty,setDirty]=useState(false);const [loaded,setLoaded]=useState(false);const [reloadKey,setReloadKey]=useState(0);
  const viewportRef=useRef<Viewport>({x:0,y:0,zoom:1});const requestRef=useRef(0);const detailRequest=useRef(0);const undoRef=useRef<Array<{nodes:NNode[];edges:NEdge[]}>>([]);const redoRef=useRef<Array<{nodes:NNode[];edges:NEdge[]}>>([]);const initializedRef=useRef(false);
@@ -135,6 +141,7 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
  const canModify=isEditing(role)&&(!activeWorkspace||activeWorkspace.owner_id===userId||role==='admin');
  useEffect(()=>{if(!canModify)setEditMode(false)},[canModify]);
  const allowedFields=useMemo(()=>catalog.length?catalog.filter(c=>c.enabled).map(c=>c.field_key):FIELDS,[catalog]);
+ const fieldNames=useMemo(()=>({...FIELD_LABELS,...Object.fromEntries(catalog.map(c=>[c.field_key,c.display_name]))}) as Record<FieldKey,string>,[catalog]);
  const currentDashboard=useMemo(()=>dashboards[selectedId]||(defaultDashboardRef.current[selectedId]??=standardDashboard()),[dashboards,selectedId]);
  const updateDashboard=(next:NodeDashboard)=>{if(!canModify)return;setDashboards(old=>({...old,[selectedId]:next}));setDirty(true);};
  const reloadWorkspaces=useCallback(async()=>{try{setWorkspaces(await workspacesApi.list())}catch(e){say(e instanceof Error?e.message:'Workspace-Abfrage fehlgeschlagen')}},[say]);
