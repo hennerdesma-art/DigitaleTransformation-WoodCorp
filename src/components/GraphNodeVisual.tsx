@@ -2,11 +2,25 @@ import React from 'react';
 import type {GraphNodeData} from '../core/types';
 import {formatCalculated} from '../core/calculations';
 import {number,percent} from './Ui';
+import {AdvancedChart} from './AdvancedCharts';
+import type {DashboardWidget,WidgetType} from '../core/dashboard';
+import type {DashboardData} from '../core/types';
 export function GraphNodeVisual({data}:{data:GraphNodeData}){
  const {analysis,onTimeRate,orders,chartRows,trendRows,calculation,busy,error}=data;
  const kind=analysis.visualization||'kpi';
  if(busy)return <div className="node-viz-loading" role="status"><span className="nxt-spinner"/> Werte werden aktualisiert …</div>;
  if(error)return <p className="node-viz-error" role="status">{error}</p>;
+ if(['stacked','stacked100','heatmap','pareto','scatter','waterfall','histogram','treemap','funnel'].includes(kind)){
+  const widget:DashboardWidget={
+   id:'graph-chart:'+analysis.id,type:kind as WidgetType,title:analysis.label,width:'full',
+   dimension:analysis.chartDimension||'factory',
+   compareDimension:(analysis.chartDimension==='product_type'?'factory':'product_type'),
+   distributionMeasure:'quantity_change_count',
+   metric:'otifRate'
+  };
+  const detail:DashboardData={metrics:data.fullMetrics||null,trend:trendRows||[],breakdown:chartRows||[],pending:false,error:null};
+  return <div className="graph-advanced-chart nodrag nowheel"><AdvancedChart widget={widget} detail={detail} filters={data.appliedFilters||[]}/></div>;
+ }
  if(kind==='calculation'){
   const estimate=calculation?.isEstimate;
   const contractual=calculation?.template?.endsWith('_penalty_eur');
