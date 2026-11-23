@@ -303,17 +303,54 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
  const applyFilter=(f:Filter)=>{if(canModify)setDirty(true);if(dialog?.kind==='global'){setGlobals(gs=>{try{return validateFilters([...gs,f])}catch(e){say((e as Error).message);return gs}})}else if(dialog?.id){setLocals(old=>{const current=old[dialog.id!]||[];try{return {...old,[dialog.id!]:validateFilters([...current,f])}}catch(e){say((e as Error).message);return old}})} };
  const removeGlobal=(id:string)=>{setGlobals(gs=>gs.filter(f=>f.id!==id));if(canModify)setDirty(true)};
  const share=async()=>{const data={v:1,g:globals.map(({field,op,value})=>({field,op,value})),selected:selectedId};const u=new URL(location.href);u.searchParams.set('view',btoa(unescape(encodeURIComponent(JSON.stringify(data)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''));try{await navigator.clipboard.writeText(u.toString());say('Link kopiert. Lokale Knotenfilter werden nicht mitgeteilt.')}catch{say('Zwischenablage nicht verfügbar. URL bitte manuell kopieren.')}};
- const triggerReload=()=>setReloadKey(v=>v+1);
+ const triggerReload=()=>{clearAnalyticsCache();setReloadKey(v=>v+1)};
  useEffect(()=>{const query=new URLSearchParams(location.search).get('view');if(!query)return;try{const raw=JSON.parse(decodeURIComponent(escape(atob(query.replace(/-/g,'+').replace(/_/g,'/')))));if(raw.v!==1)return;const gs=validateFilters((raw.g||[]).map((f:Filter)=>({...f,id:crypto.randomUUID()})));setGlobals(gs);if(typeof raw.selected==='string')setSelectedId(raw.selected);}catch{say('Ungültiger Ansichtslink ignoriert.')}},[]);
  useEffect(()=>{analysisApi.dimensions().then(setDimensions).catch(e=>setWarning('Filterkatalog konnte nicht geladen werden: '+e.message));},[]);
- useEffect(()=>{const run=++requestRef.current;setBusy(true);setWarning('');const fetchAll=async()=>{
-  try{const [rb,m,trend]=await Promise.all([analysisApi.ribbon(globals),analysisApi.metrics(globals),analysisApi.trend(globals)]);
-   if(run!==requestRef.current)return;setRibbon(rb);setRootMetrics(m);setRibbonTrend(trend);
-   if(!initializedRef.current){const base=createInitialGraph([],{orders:rb.orders,onTimeRate:rb.onTimeRate});const saved=localStorage.getItem(localKey);
-    if(saved){try{const d=cleanDraft(JSON.parse(saved));if(d){const recovered=restoreDraft(d);const counts=new Map(base.nodes.map(n=>[n.id,n.data]));setNodes(recovered.nodes.map(n=>({...n,data:{...n.data,orders:counts.get(n.id)?.orders??null,onTimeRate:counts.get(n.id)?.onTimeRate??null}})));setEdges(recovered.edges);setLocals(d.localFilters||{});viewportRef.current=d.viewport;setTimeout(()=>flow.setViewport(d.viewport),150);say('Lokaler Entwurf geladen');}else{setNodes(base.nodes);setEdges(base.edges)}}catch{setNodes(base.nodes);setEdges(base.edges)}}else{setNodes(base.nodes);setEdges(base.edges)}initializedRef.current=true;setLoaded(true);
+ // Initialize the graph independently from network responses. A timeout cannot
+ // leave the user with an empty graph or prevent the workspace from opening.
+ useEffect(()=>{
+  if(initializedRef.current)return;
+  const base=createBlankWorkspaceGraph();
+  let recovered=false;
+  const saved=localStorage.getItem(localKey);
+  if(saved){
+   try{
+    const draft=cleanDraft(JSON.parse(saved));
+    if(draft){
+     const graph=restoreDraft(draft);
+     setNodes(graph.nodes);setEdges(graph.edges);
+     setLocals(draft.localFilters||{});
+     viewportRef.current=draft.viewport;
+     setTimeout(()=>void flow.setViewport(draft.viewport),120);
+     recovered=true;
+    }
+   }catch{/* invalid browser draft ignored */}
+  }
+  if(!recovered){setNodes(base.nodes);setEdges(base.edges);}
+  initializedRef.current=true;setLoaded(true);
+ },[localKey]);
+ useEffect(()=>{
+  const run=++requestRef.current;
+  setBusy(true);setWarning('');
+  // Load the KPI first; a timed-out trend must never invalidate valid KPIs.
+  const fetchAll=async()=>{
+   const [metricsResult,trendResult]=await Promise.allSettled([
+    analysisApi.metrics(globals),analysisApi.trend(globals)
+   ]);
+   if(run!==requestRef.current)return;
+   if(metricsResult.status==='fulfilled'){
+    const m=metricsResult.value;
+    setRootMetrics(m);
+    setRibbon({...m,deliveryDateCount:m.dateCoverage??0} as Ribbon);
+   }else{
+    setWarning('KPI-Abfrage nicht verfügbar: '+String(metricsResult.reason instanceof Error?metricsResult.reason.message:metricsResult.reason));
    }
-  }catch(e){if(run===requestRef.current)setWarning('Live-Daten konnten nicht geladen werden: '+(e instanceof Error?e.message:String(e)))}finally{if(run===requestRef.current)setBusy(false)}};
-  void fetchAll();return()=>{requestRef.current++};
+   if(trendResult.status==='fulfilled')setRibbonTrend(trendResult.value);
+   else setRibbonTrend([]);
+   setBusy(false);
+  };
+  void fetchAll();
+  return()=>{requestRef.current++};
  },[globals,reloadKey]);
  useEffect(()=>{if(!initializedRef.current||!loaded)return;let filt:Filter[];try{filt=effective(selectedId);}catch(e){setDetail({...emptyDetail,error:e instanceof Error?e.message:'Ungültiger Analysezweig'});return}
  const idx=++detailRequest.current;setDetail(old=>({...old,pending:true,error:null,metrics:null,trend:[],breakdown:[]}));
