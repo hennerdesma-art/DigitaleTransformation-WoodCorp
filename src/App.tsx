@@ -171,7 +171,13 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
  useEffect(()=>{if(!canModify)setEditMode(false)},[canModify]);
  const allowedFields=useMemo(()=>catalog.length?catalog.filter(c=>c.enabled).map(c=>c.field_key):FIELDS,[catalog]);
  const fieldNames=useMemo(()=>({...FIELD_LABELS,...Object.fromEntries(catalog.map(c=>[c.field_key,c.display_name]))}) as Record<FieldKey,string>,[catalog]);
- const currentDashboard=useMemo(()=>dashboards[selectedId]||(defaultDashboardRef.current[selectedId]??=standardDashboard()),[dashboards,selectedId]);
+ const currentDashboard=useMemo(()=>{
+  if(dashboards[selectedId])return dashboards[selectedId];
+  const a=nodes.find(n=>n.id===selectedId)?.data.analysis;
+  if(a?.kind==='root'&&!a.metricId)
+   return {question:'Ausgangspunkt – wähle erst eine KPI und füge danach Dashboard-Widgets hinzu.',widgets:[]} as NodeDashboard;
+  return defaultDashboardRef.current[selectedId]??=standardDashboard();
+ },[dashboards,selectedId,nodes]);
  const updateDashboard=(next:NodeDashboard)=>{if(!canModify)return;setDashboards(old=>({...old,[selectedId]:next}));setDirty(true);};
  const reloadWorkspaces=useCallback(async()=>{try{setWorkspaces(await workspacesApi.list())}catch(e){say(e instanceof Error?e.message:'Workspace-Abfrage fehlgeschlagen')}},[say]);
  const reloadCatalog=useCallback(async()=>{try{setCatalog(await workspacesApi.catalog())}catch(e){say(e instanceof Error?e.message:'Filterkatalog nicht verfügbar')}},[say]);
@@ -352,13 +358,33 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
   void fetchAll();
   return()=>{requestRef.current++};
  },[globals,reloadKey]);
- useEffect(()=>{if(!initializedRef.current||!loaded)return;let filt:Filter[];try{filt=effective(selectedId);}catch(e){setDetail({...emptyDetail,error:e instanceof Error?e.message:'Ungültiger Analysezweig'});return}
- const idx=++detailRequest.current;setDetail(old=>({...old,pending:true,error:null,metrics:null,trend:[],breakdown:[]}));
- Promise.all([analysisApi.metrics(filt),analysisApi.trend(filt),analysisApi.breakdown('delivery_company',filt),analysisApi.ribbon(filt)]).then(([metrics,trend,breakdown,ribbon])=>{
-  if(idx!==detailRequest.current)return;setDetail({metrics,trend,breakdown,ribbon,pending:false,error:null});
-  setNodes(ns=>ns.map(n=>n.id===selectedId?{...n,data:{...n.data,orders:metrics.orders,onTimeRate:metrics.onTimeRate}}:n));
- }).catch(e=>{if(idx===detailRequest.current)setDetail({...emptyDetail,error:e instanceof Error?e.message:'Analyse nicht verfügbar'});});
- return()=>{detailRequest.current++};
+ useEffect(()=>{
+  if(!initializedRef.current||!loaded)return;
+  const selected=topology.nodes.find(n=>n.id===selectedId);
+  if(selected?.kind==='root'&&!selected.metricId){
+   setDetail({...emptyDetail,pending:false,error:null});return;
+  }
+  let filt:Filter[];
+  try{filt=effective(selectedId)}
+  catch(e){setDetail({...emptyDetail,error:e instanceof Error?e.message:'Ungültiger Analysezweig'});return}
+  const idx=++detailRequest.current;
+  setDetail(prev=>({...prev,pending:true,error:null}));
+  const load=async()=>{
+   const [metricsResult,trendResult,breakdownResult]=await Promise.allSettled([
+    analysisApi.metrics(filt),analysisApi.trend(filt),analysisApi.breakdown('delivery_company',filt)
+   ]);
+   if(idx!==detailRequest.current)return;
+   const metrics=metricsResult.status==='fulfilled'?metricsResult.value:null;
+   const trend=trendResult.status==='fulfilled'?trendResult.value:[];
+   const breakdown=breakdownResult.status==='fulfilled'?breakdownResult.value:[];
+   const error=metricsResult.status==='rejected'
+    ?String(metricsResult.reason instanceof Error?metricsResult.reason.message:metricsResult.reason):null;
+   const ribbon=metrics?{...metrics,deliveryDateCount:metrics.dateCoverage??0} as Ribbon:null;
+   setDetail({metrics,trend,breakdown,ribbon,pending:false,error});
+   if(metrics)setNodes(ns=>ns.map(n=>n.id===selectedId?{...n,data:{...n.data,orders:metrics.orders,onTimeRate:metrics.onTimeRate}}:n));
+  };
+  void load();
+  return()=>{detailRequest.current++};
  },[selectedId,globals,locals,loaded,graphFilterKey]);
  const saveNodeSettings=(id:string,patch:Partial<AnalysisNode>)=>{
   if(!canModify)return;
@@ -382,6 +408,10 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
   };
   const tasks=ordinary.map(a=>async()=>{
    try{
+    if(a.kind==='root'&&!a.metricId){
+     update(a.id,{orders:null,onTimeRate:null,primaryValue:null,primaryLabel:'KPI auswählen',error:undefined,filterSummary:'Unkonfigurierter Ausgangsknoten'});
+     return;
+    }
     const filters=effectiveFilters(globals,topology.nodes,locals,a.id,topology.edges);
     const contradictions=conflictingFields(filters);
     if(contradictions.length){
@@ -418,7 +448,7 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
   });
   let next=0;
   const worker=async()=>{while(next<tasks.length&&run===graphRequest.current){const at=next++;await tasks[at]()}}
-  void Promise.all(Array.from({length:Math.min(5,tasks.length)},()=>worker()));
+  void Promise.all(Array.from({length:Math.min(2,tasks.length)},()=>worker()));
   return()=>{graphRequest.current++};
  },[graphFilterKey,globals,locals,loaded]);
  const split=async(id:string,field:FieldKey)=>{const f=effective(id);const rows=await analysisApi.breakdown(field,f);if(!rows.length)throw Error('Keine Teilgruppen für diese Filter verfügbar');
