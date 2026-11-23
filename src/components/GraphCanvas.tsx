@@ -11,7 +11,7 @@ import {metricFormat,type MetricKey} from '../core/dashboard';
 
 function AnalyticNode({id,data,selected}:NodeProps<NNode>){
  const {analysis,onTimeRate,orders,editMode,localCount,onFilter,onSplit,onRemove,onConfigure,busy}=data;
- const chosen=(analysis.metricId||'otifRate') as MetricKey;
+ const chosen=(analysis.metricId==='otd'?'onTimeRate':analysis.metricId||'otifRate') as MetricKey;
  const mainValue=data.primaryValue===undefined?onTimeRate:data.primaryValue;
  const fieldNames=data.fieldNames as Record<FieldKey,string>|undefined;
  const dark=analysis.kind==='root';
