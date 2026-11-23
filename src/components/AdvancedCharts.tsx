@@ -217,7 +217,7 @@ function Histogram({bins}:{bins:DistributionBucket[]}){
 }
 function Funnel({detail}:{detail:DashboardData}){
  const m=detail.metrics;
- const data=[['Alle Aufträge',val(m?.orders)],['Pünktlich',val(m?.onTimeCases)],['OTIF',val(m?.otifCases)]];
+ const data:Array<[string,number]>=[['Alle Aufträge',val(m?.orders)],['Pünktlich',val(m?.onTimeCases)],['OTIF',val(m?.otifCases)]];
  const base=Math.max(1,data[0][1]);
  return <div className="advanced-chart nxt-funnel">
   {data.map(([label,value],i)=><div className="nxt-funnel-row" key={label}>
