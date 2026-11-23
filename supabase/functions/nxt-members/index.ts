@@ -72,7 +72,7 @@ Deno.serve(async (req:Request) => {
     }
     if(body.action==="invite"){
       const email=typeof body.email==="string"?body.email.trim().toLowerCase():"";
-      const name=typeof body.display_name==="string"?body.display_name.trim().replace(/\\s+/g," "):"";
+      const name=typeof body.display_name==="string"?body.display_name.trim().replace(/\s+/g," "):"";
       const role=body.role;
       if(!safeName(name)||!safeEmail(email)||!["viewer","analyst","admin"].includes(role))
         return response({error:"Bitte Namen (2–100 Zeichen), gültige E-Mail-Adresse und Rolle angeben."},400,origin);
