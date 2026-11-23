@@ -12,7 +12,7 @@ const fallbackRows:BreakdownRow[]=[];
 function useBreakdown(widget:DashboardWidget,detail:DashboardData,filters:Filter[]){
  const [extra,setExtra]=useState<{key:string;rows:BreakdownRow[];loading:boolean;error:string}>({key:'',rows:[],loading:false,error:''});
  const field=widget.dimension||'delivery_company';
- const key=JSON.stringify(filters.map(f=>[f.field,f.value]).sort())+':'+field;
+ const key=JSON.stringify(filters.map(f=>[f.field,f.op,f.value]).sort())+':'+field;
  useEffect(()=>{
   if(widget.type!=='bar'&&widget.type!=='table')return;
   if(field==='delivery_company')return;
