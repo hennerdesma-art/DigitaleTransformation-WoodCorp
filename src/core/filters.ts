@@ -71,7 +71,7 @@ export function conflictingFields(filters:Filter[]):FieldKey[]{
   const kind=FILTER_KIND(field);
   if(kind==='category'){
    let intersection:Set<string>|null=null;
-   for(const f of list){const values=new Set(Array.isArray(f.value)?f.value:[String(f.value)]);intersection=intersection===null?values:new Set([...intersection].filter(v=>values.has(v)));}
+   for(const f of list){const values=new Set(Array.isArray(f.value)?f.value:[String(f.value)]);intersection=intersection===null?values:new Set<string>(Array.from(intersection as Set<string>).filter((v:string)=>values.has(v)));}
    if(intersection!==null&&intersection.size===0)conflicts.push(field);
   }else{
    let lower=-Infinity,upper=Infinity;
