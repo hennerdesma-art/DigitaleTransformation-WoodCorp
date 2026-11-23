@@ -316,7 +316,7 @@ async function refreshAnalysis(){
  if($("#toolbar")){const t=$("#toolbar");t.outerHTML=toolbarMarkup();bindToolbar()}
  if(state.view==="tree")paintTree();
  try{
-  const globalParams={p_filters:withBackend(state.global)};
+  const globalParams={p_filters:withBackend([...state.global,...(state.local.root||[])])};
   const [fac,metrics]=await Promise.all([
    rpc("nxt_breakdown",{p_field:"factory",...globalParams}),
    rpc("nxt_case_metrics",globalParams)
@@ -333,7 +333,14 @@ async function refreshAnalysis(){
    state.productRows=await rpc("nxt_breakdown",{p_field:"product_type",p_filters:withBackend(factoryFilters)});
   }
   if(sequence!==state.requestId)return;
-  buildTreeNodes();state.graphBusy=false;
+  buildTreeNodes();
+  const localFiltered=Object.keys(state.local).filter(id=>id!=="root"&&state.nodes[id]&&state.local[id]?.length);
+  if(localFiltered.length){
+   const nodeMetrics=await Promise.all(localFiltered.map(id=>rpc("nxt_case_metrics",{p_filters:withBackend(effective(id))})));
+   if(sequence!==state.requestId)return;
+   localFiltered.forEach((id,i)=>{state.nodes[id].orders=nodeMetrics[i]?.orders;state.nodes[id].onTimeRate=nodeMetrics[i]?.onTimeRate});
+  }
+  state.graphBusy=false;
   if(state.view==="tree")paintTree();
   paintOverview();
   await refreshDashboard(sequence);
@@ -342,7 +349,7 @@ async function refreshAnalysis(){
 }
 async function refreshDashboard(sequence=state.requestId){
  const params={p_filters:withBackend(effective())};
- state.busy=true;paintDetails();
+ state.busy=true;state.selectedMetrics=null;state.trend=[];state.breakdown=[];paintDetails();
  try{
   const [metrics,trend,breakdown]=await Promise.all([
     rpc("nxt_case_metrics",params),
@@ -390,7 +397,7 @@ function paintTree(){
 }
 function selectNode(id){
  if(!state.nodes[id])return;
- state.selected=id;
+ state.selected=id;state.selectedMetrics=null;state.trend=[];state.breakdown=[];
  const factory=factoryFor(id);
  if(factory)state.expandedFactory=factory;
  else state.expandedFactory=null;
