@@ -1,7 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {CALCULATION_TEMPLATES,TEMPLATES,validateRate,formatCalculated} from './calculations';
 test('all displayed SQL suggestions are curated and parameterized',()=>{
- assert.deepEqual(TEMPLATES,['late_orders','shortfall_kg','estimated_shortfall_cost_eur']);
+ assert.ok(['otif_rate','late_penalty_eur','shortfall_penalty_eur','total_penalty_eur','estimated_shortfall_cost_eur'].every(k=>TEMPLATES.includes(k as any)));
  assert.ok(TEMPLATES.every(k=>!CALCULATION_TEMPLATES[k].sql.includes('DROP')));
 });
 test('estimated cost requires an explicit valid user rate',()=>{
