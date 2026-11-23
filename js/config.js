@@ -4,7 +4,7 @@ window.NXT_CONFIG = Object.freeze({
   supabasePublishableKey: "sb_publishable_OXunlJIRSrr876SHquUTWg__fdN7QOk",
   membersEndpoint: "https://maqyirapxoygcsljdqyk.supabase.co/functions/v1/nxt-members",
   appName: "NXT | Digital Transformation",
-  logoUrl: "https://raw.githubusercontent.com/hennerdesma-art/nxt-netzwerkforschung-survey/main/assets/nxt-logo.png",
+  logoUrl: "./assets/nxt-logo.png",
   bootstrapEmail: "Henner.Pade@Student.Reutlingen-University.DE",
   repoUrl: "https://github.com/hennerdesma-art/DigitaleTransformation-WoodCorp",
   fields: Object.freeze({
