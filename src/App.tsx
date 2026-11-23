@@ -1,8 +1,8 @@
 import React,{useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {ReactFlowProvider,useEdgesState,useNodesState,useReactFlow,type Connection,type EdgeChange,type NodeChange,type Viewport} from '@xyflow/react';
-import {FIELD_LABELS,FIELDS,PROJECT,type FieldKey} from './config';
+import {FIELD_LABELS,FIELDS,PROJECT,FILTER_KIND,OTIF_STATUS_LABELS,type FieldKey} from './config';
 import {analysisApi,memberApi,supabase} from './lib/supabase';
-import {effectiveFilters,labels,makeFilter,toBackend,validateFilters} from './core/filters';
+import {effectiveFilters,labels,makeFilter,toBackend,validateFilters,formatFilter,traceFilters} from './core/filters';
 import {ROOT_ID,createInitialGraph,splitGraph,nodeFor,referenceEdge,isValidReference,cleanDraft,serializeDraft,restoreDraft,type NNode,type NEdge} from './core/graph';
 import type {Filter,Role,Ribbon,Metrics,TrendRow,BreakdownRow,PaletteType,DashboardData,SavedDraft,AnalysisNode} from './core/types';
 import {CanvasWithFlow} from './components/GraphCanvas';
@@ -36,14 +36,32 @@ const fmtDate=(value:string|null|undefined)=>value?new Date(value).toLocaleDateS
 const isEditing=(role:Role|null)=>role==='admin'||role==='analyst';
 
 function FilterDialog({target,dimensions,allowedFields,fieldNames,onApply,onClose}:{target:{kind:'global'|'node';id?:string};dimensions:Record<string,string[]>;allowedFields:FieldKey[];fieldNames:Record<FieldKey,string>;onApply:(f:Filter)=>void;onClose:()=>void}){
- const [field,setField]=useState<FieldKey>(allowedFields[0]||'factory');const [value,setValue]=useState('');const entries=allowedFields.filter(f=>(dimensions[f]||[]).length>0);
- useEffect(()=>{setValue(dimensions[field]?.[0]||'');},[field,dimensions]);
- return <Modal title={target.kind==='global'?'Globalen Filter hinzufügen':'Filter für ausgewählten Knoten'} onClose={onClose}>
-  <p className="muted">{target.kind==='global'?'Dieser Filter gilt für alle Analysen und den KPI-Header.':'Dieser Filter gilt nur für den Knoten und seine analytischen Nachfahren – niemals für Geschwister.'}</p>
-  <form onSubmit={e=>{e.preventDefault();try{onApply(makeFilter(field,value,target.kind==='global'?'global':'local'));onClose();}catch(e){alert(e instanceof Error?e.message:'Fehler beim Filter')}}}>
-   <label className="field">Dimension<select value={field} onChange={e=>setField(e.target.value as FieldKey)}>{entries.map(f=><option key={f} value={f}>{fieldNames[f]}</option>)}</select></label>
-   <label className="field">Wert<select value={value} onChange={e=>setValue(e.target.value)}>{(dimensions[field]||[]).map(v=><option value={v} key={v}>{v}</option>)}</select></label>
-   <div className="modal-actions"><Button onClick={onClose}>Abbrechen</Button><Button kind="primary" icon="check" type="submit" disabled={!value}>Filter anwenden</Button></div>
+ const [field,setField]=useState<FieldKey>(allowedFields[0]||'factory');
+ const kind=FILTER_KIND(field), options=dimensions[field]||[];
+ const [op,setOp]=useState<Filter['op']>('eq'),[value,setValue]=useState(''),[multi,setMulti]=useState<string[]>([]);
+ const [from,setFrom]=useState(''),[to,setTo]=useState(''),[error,setError]=useState('');
+ useEffect(()=>{setOp(FILTER_KIND(field)==='category'?'eq':'between');setValue((dimensions[field]||[])[0]||'');setMulti([]);setFrom('');setTo('');setError('');},[field,dimensions]);
+ const categorical=kind==='category', numeric=kind==='number';
+ const submit=(e:React.FormEvent)=>{
+  e.preventDefault();setError('');
+  try{
+   const payload:string|string[]=categorical?(op==='in'?multi:value):op==='between'?[from,to]:from;
+   onApply(makeFilter(field,payload,target.kind==='global'?'global':'local',op));onClose();
+  }catch(err){setError(err instanceof Error?err.message:'Ungültiger Filter');}
+ };
+ return <Modal title={target.kind==='global'?'Globalen Filter hinzufügen':'Lokalen Filter für den Knoten'} onClose={onClose}>
+  <p className="muted">{target.kind==='global'?'Dieser Filter gilt für alle Knoten, Diagramme und Dashboards.':'Der Filter gilt für diesen Knoten und alle über Pfeile erreichbaren Nachfolger, nicht für unabhängige Zweige.'}</p>
+  <form onSubmit={submit} className="nxt-typed-filter">
+   <label className="field">Dimension<select value={field} onChange={e=>setField(e.target.value as FieldKey)}>{allowedFields.map(f=><option key={f} value={f}>{fieldNames[f]}</option>)}</select></label>
+   <label className="field">Vergleich<select value={op} onChange={e=>{setOp(e.target.value as Filter['op']);setError('')}}>{categorical?<><option value="eq">Ist gleich</option><option value="in">Ist einer von (Mehrfachauswahl)</option></>:<><option value="between">Zwischen / Zeitraum</option><option value="gte">Ab (≥)</option><option value="lte">Bis (≤)</option><option value="eq">Gleich (=)</option></>}</select></label>
+   {categorical&&(op==='eq'?<label className="field">Wert<select value={value} onChange={e=>setValue(e.target.value)}><option value="">Bitte wählen</option>{options.map(v=><option value={v} key={v}>{OTIF_STATUS_LABELS[v]||v}</option>)}</select></label>:
+    <fieldset className="nxt-multiselect"><legend>Mehrere Werte auswählen (max. 20)</legend>{options.map(v=><label key={v}><input type="checkbox" checked={multi.includes(v)} onChange={e=>setMulti(old=>e.target.checked?[...old,v].slice(0,20):old.filter(x=>x!==v))}/>{OTIF_STATUS_LABELS[v]||v}</label>)}</fieldset>)}
+   {!categorical&&<div className="nxt-filter-range">
+    <label className="field">{op==='between'?'Von':op==='gte'?'Ab':op==='lte'?'Bis':'Wert'}<input type={numeric?'number':'date'} step={numeric?'any':undefined} required value={from} onChange={e=>setFrom(e.target.value)}/></label>
+    {op==='between'&&<label className="field">Bis<input type={numeric?'number':'date'} step={numeric?'any':undefined} required value={to} onChange={e=>setTo(e.target.value)}/></label>}
+   </div>}
+   {error&&<Notice kind="error">{error}</Notice>}
+   <div className="modal-actions"><Button onClick={onClose}>Abbrechen</Button><Button kind="primary" icon="check" type="submit">Filter anwenden</Button></div>
   </form>
  </Modal>;
 }
@@ -79,7 +97,7 @@ function MetricRibbon({ribbon,trend,pending,names}:{ribbon:Ribbon|null;trend:Tre
  return <div className="kpi-ribbon">{cards.map(c=><section className={'ribbon-card '+(c.highlight?'featured':'')} key={c.title} title={c.unit}><div className="ribbon-symbol"><Icon name={c.icon} size={23}/></div><div className="ribbon-content"><h3>{c.title}</h3><div className="ribbon-value">{pending&&!ribbon?'…':c.value}</div><small>{c.unit}</small></div>{c.graph&&<SmallTrend values={c.graph}/>}</section>)}</div>;
 }
 function FilterStrip({globals,fieldNames,onRemove,onAdd,onReset,onShare}:{globals:Filter[];fieldNames:Record<FieldKey,string>;onRemove:(id:string)=>void;onAdd:()=>void;onReset:()=>void;onShare:()=>void}){
- return <div className="filter-strip"><div className="filter-title"><Icon name="filter" size={17}/> Aktive Filter <b>({globals.length})</b></div><div className="filter-chips">{globals.map(f=><div className="filter-chip" key={f.id}><span>{fieldNames[f.field]}: <b>{f.value}</b></span><button title="Filter entfernen" aria-label={'Filter '+fieldNames[f.field]+' '+f.value+' entfernen'} onClick={()=>onRemove(f.id)}>×</button></div>)}{!globals.length&&<span className="no-filters">Alle Werke · alle historischen Lieferungen</span>}</div>
+ return <div className="filter-strip"><div className="filter-title"><Icon name="filter" size={17}/> Aktive Filter <b>({globals.length})</b></div><div className="filter-chips">{globals.map(f=><div className="filter-chip" key={f.id}><span><b>{formatFilter(f,fieldNames)}</b></span><button title="Filter entfernen" aria-label={'Filter '+formatFilter(f,fieldNames)+' entfernen'} onClick={()=>onRemove(f.id)}>×</button></div>)}{!globals.length&&<span className="no-filters">Alle Werke · alle historischen Lieferungen</span>}</div>
  <button className="filter-add" onClick={onAdd}><Icon name="plus" size={17}/> Filter</button><IconButton name="refresh-cw" title="Globale Filter zurücksetzen" disabled={!globals.length} onClick={onReset}/><IconButton name="share-2" title="Gefilterte Ansicht teilen" onClick={onShare}/></div>;
 }
 function TrendChart({rows}:{rows:TrendRow[]}){
