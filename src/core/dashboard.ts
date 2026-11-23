@@ -22,7 +22,7 @@ export const WIDGET_LABELS:Record<WidgetType,string>={
 };
 export const WIDGET_ICONS:Record<WidgetType,string>={
  kpi:'chart-column',line:'chart-no-axes-combined',bar:'chart-column',table:'table-2',donut:'chart-pie',text:'type',
- bar_horizontal:'chart-bar',bar_vertical:'chart-column',stacked:'layers',stacked100:'chart-column',heatmap:'grid-3x3',pareto:'chart-no-axes-combined',scatter:'chart-spline',waterfall:'chart-column',bullet:'target',histogram:'chart-bar',treemap:'layout-dashboard',funnel:'list-filter',e02_overview:'clock-3',e02_compare:'git-compare',e02_quality:'shield-check',e02_distribution:'chart-column'
+ bar_horizontal:'chart-bar',bar_vertical:'chart-column',stacked:'layers',stacked100:'chart-column',heatmap:'grid-3x3',pareto:'chart-no-axes-combined',scatter:'chart-spline',waterfall:'chart-column',bullet:'target',histogram:'chart-bar',treemap:'layout-dashboard',funnel:'list-filter',e02_overview:'clock-3',e02_compare:'network',e02_quality:'check-circle-2',e02_distribution:'chart-column'
 };
 export const WIDGET_TYPES:WidgetType[]=['kpi','line','bar','table','donut','text','bar_horizontal','bar_vertical','stacked','stacked100','heatmap','pareto','scatter','waterfall','bullet','histogram','treemap','funnel','e02_overview','e02_compare','e02_quality','e02_distribution'];
 export const METRICS=Object.keys(METRIC_LABELS) as MetricKey[];
