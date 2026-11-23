@@ -6,6 +6,8 @@ import type {Filter,DashboardData,BreakdownRow,TrendRow} from '../core/types';
 import {WIDGET_LABELS,WIDGET_ICONS,WIDGET_TYPES,METRICS,METRIC_LABELS,addWidget,dashboardFor,metricFormat,metricValue,moveWidget,removeWidget,updateWidget,type DashboardWidget,type NodeDashboard,type WidgetType,type MetricKey} from '../core/dashboard';
 import Icon from './Icon';
 import {AdvancedChart,ADVANCED_TYPES} from './AdvancedCharts';
+import {ProcessChart,PROCESS_TYPES} from './ProcessCharts';
+import {E02_KEYS,E02_INTERVALS,type E02IntervalKey} from '../core/processIntervals';
 import {Button,Notice,Spinner,number,percent} from './Ui';
 
 type DataProps={widget:DashboardWidget;detail:DashboardData;filters:Filter[]};
@@ -40,6 +42,7 @@ function TableWidget({rows}:{rows:BreakdownRow[]}){
 export function DashboardWidgetView({widget,detail,filters}:DataProps){
  const {rows,loading,error}=useBreakdown(widget,detail,filters);
  const value=widget.metric?metricValue(widget.metric,detail.metrics,detail.ribbon):null;
+ if(PROCESS_TYPES.some(t=>t===widget.type))return <ProcessChart widget={widget} filters={filters}/>;
  if(widget.type==='text')return <div className="nxt-widget-notes"><Icon name="info" size={22}/><p>{widget.text||'Hier eine Forschungsfrage oder Interpretation formulieren.'}</p></div>;
  if(detail.error)return <Notice kind="error">{detail.error}</Notice>;
  if(detail.pending&&!detail.metrics)return <Spinner text="Daten werden berechnet …"/>;
@@ -59,7 +62,7 @@ export function DashboardWidgetView({widget,detail,filters}:DataProps){
  }
  return null;
 }
-export function DashboardRenderer({dashboard,detail,filters,compact=false,onExplain}:{dashboard:NodeDashboard;detail:DashboardData;filters:Filter[];compact?:boolean;onExplain?:(metric:MetricKey)=>void}){ return <div className={'node-dashboard-renderer '+(compact?'compact':'')}><p className="dashboard-question"><Icon name="circle-help" size={17}/>{dashboard.question}</p><div className="node-dashboard-widgets">{dashboard.widgets.map(w=><section key={w.id} className={'nxt-widget '+(w.width==='full'?'full':'half')}><header><Icon name={WIDGET_ICONS[w.type]} size={17}/><h4>{w.title}</h4>{onExplain&&w.type!=='text'&&<button type="button" className="nxt-widget-explain" onClick={()=>onExplain(w.type==='kpi'?(w.metric||'otifRate')
+export function DashboardRenderer({dashboard,detail,filters,compact=false,onExplain}:{dashboard:NodeDashboard;detail:DashboardData;filters:Filter[];compact?:boolean;onExplain?:(metric:MetricKey)=>void}){ return <div className={'node-dashboard-renderer '+(compact?'compact':'')}><p className="dashboard-question"><Icon name="circle-help" size={17}/>{dashboard.question}</p><div className="node-dashboard-widgets">{dashboard.widgets.map(w=><section key={w.id} className={'nxt-widget '+(w.width==='full'?'full':'half')}><header><Icon name={WIDGET_ICONS[w.type]} size={17}/><h4>{w.title}</h4>{onExplain&&w.type!=='text'&&!PROCESS_TYPES.some(t=>t===w.type)&&<button type="button" className="nxt-widget-explain" onClick={()=>onExplain(w.type==='kpi'?(w.metric||'otifRate')
    :['waterfall','pareto','treemap'].includes(w.type)?'totalPenaltyEur'
    :['stacked','stacked100','heatmap','scatter','bullet','funnel'].includes(w.type)?'otifRate'
    :['histogram'].includes(w.type)?'otifRate'
@@ -86,6 +89,7 @@ function WidgetInspector({widget,onPatch,onRemove,disabled,fieldNames,allowedFie
   {['bar_horizontal','bar_vertical'].includes(widget.type)&&<label className="field">Dargestellte Kennzahl<select value={widget.metric||'otifRate'} disabled={disabled} onChange={e=>onPatch({metric:e.target.value as DashboardWidget['metric']})}>{(['otifRate','onTimeRate','volumeConformanceRate','orders','otifCases','lateOrders','totalPenaltyEur','latePenaltyEur','shortfallPenaltyEur'] as MetricKey[]).map(m=><option key={m} value={m}>{METRIC_LABELS[m]}</option>)}</select></label>}
   {widget.type==='heatmap'&&<label className="field">Zweite Dimension<select value={widget.compareDimension||'product_type'} disabled={disabled} onChange={e=>onPatch({compareDimension:e.target.value as FieldKey})}>{(['factory','product_type','delivery_company','cust_market','cust_country','warehouse_type'] as FieldKey[]).filter(f=>f!==widget.dimension).map(f=><option key={f} value={f}>{fieldNames[f]}</option>)}</select></label>}
   {widget.type==='bullet'&&<><label className="field">Rate<select value={widget.metric||'otifRate'} disabled={disabled} onChange={e=>onPatch({metric:e.target.value as MetricKey})}>{(['otifRate','onTimeRate','volumeConformanceRate'] as MetricKey[]).map(m=><option key={m} value={m}>{METRIC_LABELS[m]}</option>)}</select></label><label className="field">Zielwert (%)<input type="number" min="0" max="100" step=".1" disabled={disabled} value={widget.target??80} onChange={e=>onPatch({target:Math.max(0,Math.min(100,Number(e.target.value)||0))})}/></label></>}
+  {widget.type==='e02_distribution'&&<label className="field">Prozessintervall<select value={widget.intervalKey||'order_to_delivery'} disabled={disabled} onChange={e=>onPatch({intervalKey:e.target.value as E02IntervalKey})}>{E02_KEYS.map(key=><option key={key} value={key}>{E02_INTERVALS[key].title}</option>)}</select></label>}
   {widget.type==='histogram'&&<label className="field">Verteilung<select value={widget.distributionMeasure||'quantity_change_count'} disabled={disabled} onChange={e=>onPatch({distributionMeasure:e.target.value as DashboardWidget['distributionMeasure']})}><option value="quantity_change_count">Anzahl Mengenänderungen</option><option value="lateness_days">Lieferverzug nach Intervall</option></select></label>}
   {widget.type==='text'&&<label className="field">Freitext<textarea rows={6} maxLength={3000} value={widget.text||''} disabled={disabled} onChange={e=>onPatch({text:e.target.value})}/></label>}
   <button className="nxt-button secondary" type="button" disabled={disabled} onClick={onRemove}><Icon name="trash-2" size={16}/> Widget entfernen</button>
