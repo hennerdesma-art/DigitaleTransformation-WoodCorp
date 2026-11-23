@@ -5,14 +5,24 @@ import Icon from './Icon';
 import {Button,Modal} from './Ui';
 
 type Scope='all'|'mine'|'shared'|'other';
-export function WorkspaceOverview({items,userId,role,busy,onOpen,onCreate,onRefresh}:{
+export function WorkspaceOverview({items,userId,role,busy,onOpen,onCreate,onDelete,onRefresh}:{
  items:WorkspaceRecord[];userId:string;role:Role;busy:boolean;
- onOpen:(id:string)=>void;onCreate:(title:string)=>void;onRefresh:()=>void;
+ onOpen:(id:string)=>void;onCreate:(title:string)=>void;onDelete:(id:string)=>Promise<void>;onRefresh:()=>void;
 }){
  const [scope,setScope]=useState<Scope>('all');
  const [query,setQuery]=useState('');
  const [newName,setNewName]=useState('');
  const [creating,setCreating]=useState(false);
+ const [deleteTarget,setDeleteTarget]=useState<WorkspaceRecord|null>(null);
+ const [deleteConfirm,setDeleteConfirm]=useState(''),[deleting,setDeleting]=useState(false),[deleteError,setDeleteError]=useState('');
+ const confirmDelete=async(e:React.FormEvent)=>{
+  e.preventDefault();
+  if(!deleteTarget||deleteConfirm!==deleteTarget.title)return;
+  setDeleting(true);setDeleteError('');
+  try{await onDelete(deleteTarget.id);setDeleteTarget(null);setDeleteConfirm('')}
+  catch(err){setDeleteError(err instanceof Error?err.message:'Workspace konnte nicht gelöscht werden.')}
+  finally{setDeleting(false)}
+ };
  const counts=useMemo(()=>({
   all:items.length,mine:items.filter(w=>w.owner_id===userId).length,
   shared:items.filter(w=>w.owner_id!==userId&&w.visibility==='team'&&w.status==='published').length,
@@ -48,12 +58,13 @@ export function WorkspaceOverview({items,userId,role,busy,onOpen,onCreate,onRefr
     const mine=w.owner_id===userId,shared=w.visibility==='team'&&w.status==='published';
     const nodeCount=w.document?.graph?.nodes?.length??0;
     const dashboardCount=Object.keys(w.document?.dashboards||{}).length;
-    const privateOther=!mine&&!shared;
+    const privateOther=!mine&&!shared;const canDelete=role==='admin'||(mine&&canCreate);
     return <article key={w.id} className={'workspace-overview-card '+(shared?'shared':'private')}>
       <div className="workspace-card-top"><span className="workspace-card-icon"><Icon name={shared?'share-2':'network'} size={22}/></span><span className={'workspace-card-badge '+(shared?'shared':'')}>{shared?'Team · Geteilt':mine?'Privat':'Privat · Admin'}</span></div>
       <h3>{w.title}</h3><p>{w.description||'Interaktive Analyse mit Decision Tree und individuellen Kennzahlen.'}</p>
       <div className="workspace-card-meta"><span><Icon name="network" size={15}/>{nodeCount} Knoten</span><span><Icon name="layout-dashboard" size={15}/>{dashboardCount} Dashboards</span></div>
-      <div className="workspace-card-bottom"><small>{mine?'Von dir erstellt':privateOther?'Anderer Eigentümer · Adminansicht':'Von einem Teammitglied veröffentlicht'}<br/>Aktualisiert: {new Date(w.updated_at).toLocaleDateString('de-DE')}</small><Button icon="chevron-right" kind={shared?'primary':'secondary'} onClick={()=>onOpen(w.id)}>Öffnen</Button></div>
+      <div className="workspace-card-bottom"><small>{mine?'Von dir erstellt':privateOther?'Anderer Eigentümer · Adminansicht':'Von einem Teammitglied veröffentlicht'}<br/>Aktualisiert: {new Date(w.updated_at).toLocaleDateString('de-DE')}</small><div className="workspace-card-actions">{canDelete&&<Button icon="trash-2" disabled={busy} onClick={()=>{setDeleteTarget(w);setDeleteConfirm('');setDeleteError('')}}>Löschen</Button>}
+    <Button icon="chevron-right" kind={shared?'primary':'secondary'} onClick={()=>onOpen(w.id)}>Öffnen</Button></div></div>
     </article>
    })}</div>}
   <p className="workspace-privacy-note"><Icon name="lock" size={15}/> Private Inhalte anderer Mitglieder bleiben durch Supabase-Zugriffsregeln geschützt. Nur Administratoren können sie verwalten. Eine zusätzliche Workspace-Baumhierarchie kann später auf dieser Übersicht aufbauen.</p>
@@ -61,6 +72,17 @@ export function WorkspaceOverview({items,userId,role,busy,onOpen,onCreate,onRefr
     <form className="workspace-create-dialog-form" onSubmit={e=>{e.preventDefault();if(!newName.trim())return;onCreate(newName.trim());setNewName('');setCreating(false)}}>
       <label className="field">Name<input autoFocus value={newName} maxLength={120} minLength={2} required onChange={e=>setNewName(e.target.value)}/></label>
       <div className="modal-actions"><Button onClick={()=>setCreating(false)}>Abbrechen</Button><Button type="submit" kind="primary" icon="plus">Erstellen</Button></div>
+    </form>
+   </Modal>}
+  {deleteTarget&&<Modal title="Workspace unwiderruflich löschen" onClose={()=>{if(!deleting)setDeleteTarget(null)}}>
+    <form onSubmit={e=>{void confirmDelete(e)}} className="workspace-delete-confirm">
+      <p>Der Workspace <strong>{deleteTarget.title}</strong> wird dauerhaft entfernt. Seine Knoten, Filter und Dashboard-Konfigurationen gehen verloren. Die WoodCorp-Rohdaten und andere Workspaces bleiben erhalten.</p>
+      <label className="field">Zur Bestätigung den Workspace-Namen exakt eingeben
+       <input autoFocus value={deleteConfirm} autoComplete="off" onChange={e=>setDeleteConfirm(e.target.value)} placeholder={deleteTarget.title} required/>
+      </label>
+      {deleteError&&<div role="alert" className="workspace-delete-error">{deleteError}</div>}
+      <div className="modal-actions"><Button disabled={deleting} onClick={()=>setDeleteTarget(null)}>Abbrechen</Button>
+       <Button type="submit" kind="danger" icon="trash-2" disabled={busy||deleting||deleteConfirm!==deleteTarget.title}>{deleting?'Lösche …':'Workspace löschen'}</Button></div>
     </form>
    </Modal>}
  </section>;
