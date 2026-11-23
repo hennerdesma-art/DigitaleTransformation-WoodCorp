@@ -35,6 +35,16 @@ Die geplanten Dashboards E00 / E01 / E02 / A01 können als Knoten-Dashboards inn
 
 Technische und fachliche Details: [PHASE_1_OTIF_FILTERS_AND_EXPLAINABILITY.md](docs/PHASE_1_OTIF_FILTERS_AND_EXPLAINABILITY.md).
 
+## Neu: NXT v7 – Workspaces, Chart-Bibliothek, schnelle Daten und Einladungen
+
+Ein neuer Workspace beginnt jetzt mit **genau einem neutralen Ausgangsknoten**. Er übernimmt weder andere Knoten noch vorherige Filter oder Dashboards. Die KPI-Abfragen sind dedupliziert, begrenzt und haben eine optimierte Datenbankfunktion; ein fehlgeschlagenes Diagramm darf andere Kennzahlen nicht mehr blockieren.
+
+Unter **Workspaces** können Eigentümer und Administratoren einen Workspace nach exakter Namensbestätigung löschen. Der **Dashboard-Builder** unterstützt 18 Celonis-orientierte Widgettypen, mit erweiterten Visualisierungen auch direkt auf dem Graph-Canvas.
+
+**Team & Zugänge** stellt per Admin-geschützter Supabase-Edge-Funktion ein einmaliges Einladungsfragment auf der NXT-GitHub-Pages-Adresse bereit, nicht den rohen Supabase-Action-Link. Den Link nur über einen sicheren Kanal an den Empfänger schicken.
+
+Details und Sicherheitsgrenzen in [NXT_V7_WORKSPACES_CHARTS_INVITES.md](docs/NXT_V7_WORKSPACES_CHARTS_INVITES.md).
+
 ## Erste Schritte
 
 - Mit einem bereits freigegebenen Supabase-Auth-Konto anmelden.
