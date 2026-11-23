@@ -1,0 +1,37 @@
+name: NXT Analytics v2 - Development checks
+on:
+  push:
+    branches: [feat/nxt-analytics-interactive-v2]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - run: npm run test
+      - run: npm run build
+      - name: Check built icon assets
+        run: |
+          test -f dist/icons/sprite.svg
+          test -f dist/icons/network.svg
+          test -f dist/nxt-logo.png
+          test -f dist/index.html
+      - name: Capture dependency lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: nxt-v2-package-lock
+          path: package-lock.json
+          retention-days: 10
+      - name: Upload reviewable build
+        uses: actions/upload-artifact@v4
+        with:
+          name: nxt-analytics-v2-preview
+          path: dist/
+          retention-days: 10

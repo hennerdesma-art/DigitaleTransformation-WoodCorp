@@ -1,0 +1,1 @@
+import React from 'react';import {createRoot} from 'react-dom/client';import '@xyflow/react/dist/style.css';import './styles/tokens.css';import './styles/app.css';import App from './App';const root=document.getElementById('root');if(!root)throw Error('NXT app root missing');createRoot(root).render(<React.StrictMode><App/></React.StrictMode>);
