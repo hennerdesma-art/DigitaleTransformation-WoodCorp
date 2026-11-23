@@ -35,3 +35,11 @@
 .node-sql-preview small{font-size:10px;color:#527276}
 .react-flow__edge:has(.react-flow__edge-text) .react-flow__edge-text{font-size:10px;fill:#00666b}
 @media(max-width:650px){.react-flow__node-analytics .graph-node.chart-node{width:238px;min-width:238px}}
+
+.node-filter-summary{display:block;width:100%;max-width:240px;margin:7px auto 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px;color:#54787d;border-top:1px solid #dce8e9;padding-top:5px}
+.graph-node.root-node .node-filter-summary{color:#b5e7e5;border-top-color:#ffffff40}
+.node-local-filters{border:1px solid #c9e0e1;border-radius:10px;padding:10px 12px;margin:12px 0}
+.node-local-filters legend{color:#00666b;font-weight:700;font-size:12px}
+.node-local-filters>div{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:5px 0}
+.node-local-filters>div+div{border-top:1px solid #e5eff0}
+.node-local-filters .nxt-button{font-size:11px;min-height:30px}
