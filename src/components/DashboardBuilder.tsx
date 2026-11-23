@@ -3,7 +3,7 @@ import {DndContext,KeyboardSensor,PointerSensor,useDraggable,useDroppable,useSen
 import {FIELD_LABELS,FIELDS,type FieldKey} from '../config';
 import {analysisApi} from '../lib/supabase';
 import type {Filter,DashboardData,BreakdownRow,TrendRow} from '../core/types';
-import {WIDGET_LABELS,WIDGET_ICONS,WIDGET_TYPES,METRICS,METRIC_LABELS,addWidget,dashboardFor,metricFormat,metricValue,moveWidget,removeWidget,updateWidget,type DashboardWidget,type NodeDashboard,type WidgetType} from '../core/dashboard';
+import {WIDGET_LABELS,WIDGET_ICONS,WIDGET_TYPES,METRICS,METRIC_LABELS,addWidget,dashboardFor,metricFormat,metricValue,moveWidget,removeWidget,updateWidget,type DashboardWidget,type NodeDashboard,type WidgetType,type MetricKey} from '../core/dashboard';
 import Icon from './Icon';
 import {Button,Notice,Spinner,number,percent} from './Ui';
 
