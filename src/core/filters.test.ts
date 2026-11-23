@@ -31,3 +31,25 @@ test('new verified WoodCorp dimensions stay exact-match filters',()=>{
  const registered={id:'market',field:'cust_market' as const,op:'eq' as const,value:'Retail'};
  assert.equal(validateFilters([registered])[0].field,'cust_market');
 });
+
+test('typed date, numeric and multiselect filters are validated',()=>{
+ assert.equal(validateFilters([{id:'date',field:'delivered_date',op:'between',value:['2018-01-01','2018-12-31']}])[0].op,'between');
+ assert.equal(validateFilters([{id:'num',field:'quantity_change_count',op:'gte',value:'3'}])[0].op,'gte');
+ assert.equal(validateFilters([{id:'multi',field:'factory',op:'in',value:['Essen','Bonn']}])[0].op,'in');
+ assert.throws(()=>validateFilters([{id:'bad',field:'factory',op:'between',value:['A','B']}]),/Kategorie/);
+ assert.throws(()=>validateFilters([{id:'date',field:'delivered_date',op:'between',value:['2019-01-01','2018-01-01']}]),/Von-Wert/);
+});
+test('conflicting ranges and multi-select intersections are recognized',()=>{
+ assert.deepEqual(conflictingFields([
+  {id:'global',field:'quantity_change_count',op:'gte',value:'3'},
+  {id:'node',field:'quantity_change_count',op:'lte',value:'1'}
+ ]),['quantity_change_count']);
+ assert.deepEqual(conflictingFields([
+  {id:'global',field:'factory',op:'in',value:['Essen','Bonn']},
+  {id:'node',field:'factory',op:'eq',value:'Crates'}
+ ]),['factory']);
+ assert.deepEqual(conflictingFields([
+  {id:'global',field:'factory',op:'in',value:['Essen','Bonn']},
+  {id:'node',field:'factory',op:'eq',value:'Bonn'}
+ ]),[]);
+});
