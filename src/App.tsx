@@ -242,7 +242,7 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
    if(run!==requestRef.current)return;setRibbon(rb);setRootMetrics(m);setRibbonTrend(trend);
    if(!initializedRef.current){const base=createInitialGraph(factories,{orders:rb.orders,onTimeRate:rb.onTimeRate});const saved=localStorage.getItem(localKey);
     if(saved){try{const d=cleanDraft(JSON.parse(saved));if(d){const recovered=restoreDraft(d);const counts=new Map(base.nodes.map(n=>[n.id,n.data]));setNodes(recovered.nodes.map(n=>({...n,data:{...n.data,...(counts.get(n.id)||{})}})));setEdges(recovered.edges);setLocals(d.localFilters||{});viewportRef.current=d.viewport;setTimeout(()=>flow.setViewport(d.viewport),150);say('Lokaler Entwurf geladen');}else{setNodes(base.nodes);setEdges(base.edges)}}catch{setNodes(base.nodes);setEdges(base.edges)}}else{setNodes(base.nodes);setEdges(base.edges)}initializedRef.current=true;setLoaded(true);
-   }else{const lookup=new Map(factories.map(r=>['factory:'+r.label,r]));setNodes(ns=>ns.map(n=>{if(n.id===ROOT_ID)return {...n,data:{...n.data,orders:rb.orders,onTimeRate:rb.onTimeRate}};if(n.id.startsWith('factory:')){const v=lookup.get(n.id);return {...n,data:{...n.data,orders:v?.orders??null,onTimeRate:v?.on_time_rate??null}}}return {...n,data:{...n.data,orders:null,onTimeRate:null}}}));}
+   }
   }catch(e){if(run===requestRef.current)setWarning('Live-Daten konnten nicht geladen werden: '+(e instanceof Error?e.message:String(e)))}finally{if(run===requestRef.current)setBusy(false)}};
   void fetchAll();return()=>{requestRef.current++};
  },[globals,reloadKey]);
@@ -253,7 +253,67 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
   setNodes(ns=>ns.map(n=>n.id===selectedId?{...n,data:{...n.data,orders:metrics.orders,onTimeRate:metrics.onTimeRate}}:n));
  }).catch(e=>{if(idx===detailRequest.current)setDetail({...emptyDetail,error:e instanceof Error?e.message:'Analyse nicht verfügbar'});});
  return()=>{detailRequest.current++};
- },[selectedId,globals,locals,loaded]);
+ },[selectedId,globals,locals,loaded,graphFilterKey]);
+ const saveNodeSettings=(id:string,patch:Partial<AnalysisNode>)=>{
+  if(!canModify)return;
+  remember();setNodes(ns=>ns.map(n=>n.id===id?{...n,data:{...n.data,analysis:{...n.data.analysis,...patch,id:n.id}}}:n));
+  setDirty(true);say('Knoten aktualisiert; Filter und Diagramm werden neu berechnet.');
+ };
+ // Visible cards use the same inherited predicates as detail dashboards.
+ // A stable semantic key prevents metric updates from starting new requests.
+ useEffect(()=>{
+  if(!loaded)return;
+  const run=++graphRequest.current;
+  const ordinary=topology.nodes.filter(a=>a.kind!=='note');
+  setNodes(old=>old.map(n=>n.data.analysis.kind==='note'?n:{...n,data:{...n.data,busy:true,error:undefined}}));
+  const metricPromises=new Map<string,ReturnType<typeof analysisApi.metrics>>();
+  const breakdownPromises=new Map<string,ReturnType<typeof analysisApi.breakdown>>();
+  const trendPromises=new Map<string,ReturnType<typeof analysisApi.trend>>();
+  const calculations=new Map<string,ReturnType<typeof analysisApi.calculated>>();
+  const update=(id:string,patch:Partial<NNode['data']>)=>{
+   if(run!==graphRequest.current)return;
+   setNodes(old=>old.map(n=>n.id===id?{...n,data:{...n.data,...patch,busy:false}}:n));
+  };
+  const tasks=ordinary.map(a=>async()=>{
+   try{
+    const filters=effectiveFilters(globals,topology.nodes,locals,a.id,topology.edges);
+    const contradictions=conflictingFields(filters);
+    if(contradictions.length){
+     update(a.id,{orders:0,onTimeRate:null,chartRows:[],trendRows:[],calculation:undefined,error:'Keine passenden Aufträge: widersprüchliche Filter ('+contradictions.map(f=>fieldNames[f]).join(', ')+').',filterSummary:'Filterkonflikt'});
+     return;
+    }
+    const key=filterSignature(filters);
+    let promise=metricPromises.get(key);
+    if(!promise){promise=analysisApi.metrics(filters);metricPromises.set(key,promise)}
+    const metrics=await promise;
+    if(run!==graphRequest.current)return;
+    const viz=a.visualization||'kpi';
+    const patch:Partial<NNode['data']>={orders:metrics.orders,onTimeRate:metrics.onTimeRate,filterSummary:filters.map(f=>(fieldNames[f.field]||f.field)+': '+f.value).join(' · '),error:undefined,chartRows:undefined,trendRows:undefined,calculation:undefined};
+    if(viz==='bar'){
+      const dimension=a.chartDimension||'delivery_company';
+      const chartKey=key+':'+dimension;
+      let lookup=breakdownPromises.get(chartKey);
+      if(!lookup){lookup=analysisApi.breakdown(dimension,filters);breakdownPromises.set(chartKey,lookup)}
+      patch.chartRows=await lookup;
+    }else if(viz==='line'){
+      let lookup=trendPromises.get(key);
+      if(!lookup){lookup=analysisApi.trend(filters);trendPromises.set(key,lookup)}
+      patch.trendRows=await lookup;
+    }else if(viz==='calculation'){
+      const template=a.calculationTemplate||'shortfall_kg';
+      const calcKey=key+':'+template+':'+(a.rateEurPerKg??'');
+      let lookup=calculations.get(calcKey);
+      if(!lookup){lookup=analysisApi.calculated(template,filters,a.rateEurPerKg);calculations.set(calcKey,lookup)}
+      patch.calculation=await lookup;
+    }
+    update(a.id,patch);
+   }catch(e){update(a.id,{error:e instanceof Error?e.message:'Knotendaten konnten nicht geladen werden'});}
+  });
+  let next=0;
+  const worker=async()=>{while(next<tasks.length&&run===graphRequest.current){const at=next++;await tasks[at]()}}
+  void Promise.all(Array.from({length:Math.min(5,tasks.length)},()=>worker()));
+  return()=>{graphRequest.current++};
+ },[graphFilterKey,globals,locals,loaded]);
  const split=async(id:string,field:FieldKey)=>{const f=effective(id);const rows=await analysisApi.breakdown(field,f);if(!rows.length)throw Error('Keine Teilgruppen für diese Filter verfügbar');
   remember();const next=splitGraph(nodes,edges,id,field,rows);setNodes(next.nodes);setEdges(next.edges);say(rows.length+' Teilgruppen geladen');};
  const pageSearch=(term:string)=>{setSearch(term);if(term.trim().length<2)return;const item=nodes.find(n=>n.data.analysis.label.toLowerCase().includes(term.toLowerCase()));if(item){setSelectedId(item.id);setView('analytics');void flow.fitView({nodes:[{id:item.id}],duration:250,padding:.6});}};
