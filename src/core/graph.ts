@@ -14,6 +14,12 @@ export function semanticEdge(parent:string,child:string):NEdge{
 export function referenceEdge(parent:string,child:string):NEdge{
  return {id:'reference:'+crypto.randomUUID(),source:parent,target:child,type:'smoothstep',style:{stroke:'#008B92',strokeWidth:2},data:{kind:'reference'},label:'Filterfluss →'};
 }
+/** Fresh workspaces must NOT inherit a former workspace's graph or any factory branches. */
+export function createBlankWorkspaceGraph():{nodes:NNode[];edges:NEdge[]}{
+ const analysis:AnalysisNode={id:'root:workspace:'+crypto.randomUUID(),parentId:null,
+  label:'Ausgangsknoten',kind:'root',createdBy:'user'};
+ return {nodes:[nodeFor(analysis,{x:440,y:80})],edges:[]};
+}
 export function createInitialGraph(factories:BreakdownRow[],rootMetric?:{orders?:number;onTimeRate?:number|null}):{nodes:NNode[];edges:NEdge[]}{
  const root=nodeFor(rootAnalysis(),{x:500,y:70},rootMetric);
  return {nodes:[root],edges:[]};
