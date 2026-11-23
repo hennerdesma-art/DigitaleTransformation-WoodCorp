@@ -19,7 +19,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Check JavaScript syntax\n        run: |\n          node --check js/config.js\n          node --check js/filters.js\n          node --check js/app.js\n      - name: Test filter inheritance\n        run: node --test tests/filter-engine.test.cjs\n      - name: Configure Pages
+      - name: Check JavaScript syntax
+        run: |
+          node --check js/config.js
+          node --check js/filters.js
+          node --check js/app.js
+      - name: Test filter inheritance
+        run: node --test tests/filter-engine.test.cjs
+      - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload static NXT app
         uses: actions/upload-pages-artifact@v3
