@@ -3,6 +3,7 @@ import {PROJECT,type FieldKey} from '../config';
 import {toBackend} from '../core/filters';
 import type {Filter,Metrics,Ribbon,BreakdownRow,TrendRow,CalculationTemplate,CalculatedMetric} from '../core/types';
 import {validateRate} from '../core/calculations';
+import type {E02Summary,E02IntervalKey,E02DistributionBucket} from '../core/processIntervals';
 export type SegmentStats={
  label:string|null;orders:number;otif_cases:number;on_time_not_full_cases:number;
  late_in_full_cases:number;late_not_full_cases:number;unknown_cases:number;late_orders:number;
@@ -71,6 +72,8 @@ export const analysisApi={
  segments:(field:FieldKey,filters:Filter[])=>request<SegmentStats[]>('nxt_chart_segments',{p_field:field,...normalized(filters)}),
  heatmap:(x:FieldKey,y:FieldKey,filters:Filter[])=>request<HeatmapCell[]>('nxt_chart_heatmap',{p_x_field:x,p_y_field:y,...normalized(filters)}),
  distribution:(measure:'quantity_change_count'|'lateness_days',filters:Filter[])=>request<DistributionBucket[]>('nxt_chart_distribution',{p_measure:measure,...normalized(filters)}),
+ e02Summary:(filters:Filter[])=>request<E02Summary>('nxt_e02_interval_summary',normalized(filters)),
+ e02Distribution:(interval:E02IntervalKey,filters:Filter[])=>request<E02DistributionBucket[]>('nxt_e02_interval_distribution',{p_interval:interval,...normalized(filters)}),
 };
 export async function memberApi(payload:Record<string,unknown>,token?:string){
  const res=await fetch(PROJECT.membersEndpoint,{method:'POST',
