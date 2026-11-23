@@ -12,7 +12,7 @@ export function semanticEdge(parent:string,child:string):NEdge{
  return {id:'analytic:'+parent+'=>'+child,source:parent,target:child,type:'smoothstep',animated:false,style:{stroke:'#008B92',strokeWidth:2},data:{kind:'analytic'}};
 }
 export function referenceEdge(parent:string,child:string):NEdge{
- return {id:'reference:'+crypto.randomUUID(),source:parent,target:child,type:'smoothstep',style:{stroke:'#36AAB0',strokeDasharray:'6 5',strokeWidth:2},data:{kind:'reference'},label:'Referenz'};
+ return {id:'reference:'+crypto.randomUUID(),source:parent,target:child,type:'smoothstep',style:{stroke:'#008B92',strokeWidth:2},data:{kind:'reference'},label:'Filterfluss →'};
 }
 export function createInitialGraph(factories:BreakdownRow[],rootMetric?:{orders?:number;onTimeRate?:number|null}):{nodes:NNode[];edges:NEdge[]}{
  const rows=factories.filter(r=>r.label!==null);
@@ -51,9 +51,19 @@ export function serializeDraft(nodes:NNode[],edges:NEdge[],locals:Record<string,
 export function restoreDraft(d:SavedDraft):{nodes:NNode[];edges:NEdge[]}{
  return {nodes:d.nodes.map(n=>nodeFor(n.analysis,n.position)),edges:d.edges.map(e=>e.kind==='analytic'?{...semanticEdge(e.source,e.target),id:e.id}:{...referenceEdge(e.source,e.target),id:e.id})};
 }
-export function isValidReference(source:string,target:string,edges:NEdge[]):boolean{
+/**
+ * Every arrow is a directed filter dependency. Do not introduce a cycle,
+ * using the actual directed connections. A removed edge removes inheritance.
+ */
+export function isValidReference(source:string,target:string,edges:NEdge[],nodes:NNode[]=[]):boolean{
  if(!source||!target||source===target)return false;
- return !edges.some(e=>e.source===source&&e.target===target);
+ if(nodes.length&&(!nodes.some(n=>n.id===source)||!nodes.some(n=>n.id===target)))return false;
+ if(edges.some(e=>e.source===source&&e.target===target))return false;
+ const next=new Map<string,Set<string>>();
+ for(const edge of edges){const set=next.get(edge.source)||new Set<string>();set.add(edge.target);next.set(edge.source,set);}
+ const pending=[target],visited=new Set<string>();
+ while(pending.length){const id=pending.pop()!;if(id===source)return false;if(visited.has(id))continue;visited.add(id);for(const child of next.get(id)||[])pending.push(child);}
+ return true;
 }
 export function hasAnalyticCycle(nodes:NNode[]):boolean{
  const byId=new Map(nodes.map(n=>[n.id,n.data.analysis]));

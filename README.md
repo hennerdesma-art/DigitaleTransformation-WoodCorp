@@ -14,6 +14,15 @@ Geschützte, interaktive **NXT Analytics**-Web-App für WoodCorp Order-to-Cash a
 
 Siehe [`docs/PHASE_6_NAV_DATA_FILTERS.md`](docs/PHASE_6_NAV_DATA_FILTERS.md) für Details, Grenzen und Sicherheit.
 
+## Neu: Baumdiagramme, gerichtete Filter und SQL-Kennzahlen (Phase 7)
+
+- Jeder Pfeil überträgt globale und lokale Filter in Pfeilrichtung; parallele Quellen werden per UND kombiniert. Filterkreise werden verhindert.
+- Knoten können als Donut, Balken, Linie und SQL-Kennzahl direkt auf dem Graph-Canvas dargestellt und konfiguriert werden.
+- SQL basiert auf drei **vordefinierten, serverseitig validierten** Berechnungsvorlagen, kein freies SQL. Euro-Schätzungen benötigen einen eigenständig angegebenen Kostensatz.
+- Gespeicherte Referenzverbindungen gelten jetzt ebenfalls als Filterfluss.
+
+Weitere Informationen: [PHASE_7_FILTER_GRAPH_SQL.md](docs/PHASE_7_FILTER_GRAPH_SQL.md).
+
 ## Erste Schritte
 
 - Mit einem bereits freigegebenen Supabase-Auth-Konto anmelden.
