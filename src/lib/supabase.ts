@@ -20,8 +20,8 @@ const MAX_CONCURRENT=3,MAX_CACHE=160;
 const cache=new Map<string,{value:unknown;until:number}>();
 const inflight=new Map<string,Promise<unknown>>();
 const waiting:Array<()=>void>=[];
-let running=0;
-export function clearAnalyticsCache(){cache.clear();inflight.clear();}
+let running=0;let cacheGeneration=0;
+export function clearAnalyticsCache(){cacheGeneration++;cache.clear();inflight.clear();}
 supabase.auth.onAuthStateChange(event=>{if(event==='SIGNED_IN'||event==='SIGNED_OUT'||event==='USER_UPDATED')clearAnalyticsCache()});
 async function permit<T>(work:()=>Promise<T>):Promise<T>{
  if(running>=MAX_CONCURRENT)await new Promise<void>(resolve=>waiting.push(resolve));
@@ -34,6 +34,7 @@ async function request<T>(name:string,params:Record<string,unknown>={},ttl=90_00
  const cached=cache.get(key);
  if(cached&&cached.until>Date.now())return cached.value as T;
  const previous=inflight.get(key);if(previous)return previous as Promise<T>;
+ const epoch=cacheGeneration;
  const promise=permit(async()=>{
   const {data,error}=await supabase.rpc(name,params);
   if(error){
@@ -44,8 +45,10 @@ async function request<T>(name:string,params:Record<string,unknown>={},ttl=90_00
   }
   return data as T;
  }).then(value=>{
-  if(cache.size>=MAX_CACHE)cache.delete(cache.keys().next().value!);
-  cache.set(key,{value,until:Date.now()+ttl});
+  if(epoch===cacheGeneration){
+   if(cache.size>=MAX_CACHE)cache.delete(cache.keys().next().value!);
+   cache.set(key,{value,until:Date.now()+ttl});
+  }
   return value;
  }).finally(()=>{if(inflight.get(key)===promise)inflight.delete(key)});
  inflight.set(key,promise);
