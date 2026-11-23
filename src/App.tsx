@@ -228,7 +228,14 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
   if(type==='connector'){say('Connector: Ziehe einen Verbindungspunkt an einem Knoten zu einem anderen Verbindungspunkt.');return;}
   remember();const label=type==='metric'?'Neue KPI':type==='note'?'Neue Anmerkung':type==='condition'?'Neuer Filterknoten':type==='donut'?'Donut · On-Time':type==='bar'?'Balken · Segmentvergleich':type==='line'?'Zeitreihe · On-Time':type==='calculation'?'SQL · Unterlieferte Menge':'Neue Aufgliederung';
   const analysis:AnalysisNode={id:'user:'+crypto.randomUUID(),parentId:null,label,kind:type==='metric'?'metric':type==='note'?'note':type==='condition'?'condition':'segment',createdBy:'user',description:type==='note'?'Anmerkung':undefined,visualization:({donut:'donut',bar:'bar',line:'line',calculation:'calculation'} as Record<string,AnalysisNode['visualization']>)[type]||'kpi',chartDimension:'delivery_company',calculationTemplate:'shortfall_kg'};
-  setNodes(ns=>[...ns,nodeFor(analysis,position)]);setSelectedId(analysis.id);say('Knoten hinzugefügt. Einstellungen über das Zahnrad am Knoten konfigurieren.');
+  setNodes(ns=>{
+   let next={...position};
+   for(let i=0;i<40;i++){
+    if(!ns.some(n=>Math.abs(n.position.x-next.x)<250&&Math.abs(n.position.y-next.y)<180))break;
+    const count=i+1;next={x:position.x+count%4*275,y:position.y+Math.floor(count/4)*205};
+   }
+   return [...ns,nodeFor(analysis,next)];
+  });setSelectedId(analysis.id);say('Knoten hinzugefügt. Einstellungen über das Zahnrad am Knoten konfigurieren.');
  },[editMode,canModify,remember,setNodes,say]);
  const removeNode=(id:string)=>{const n=nodes.find(n=>n.id===id);if(!editMode||!canModify||n?.data.analysis.createdBy!=='user')return;if(!confirm('Knoten und seine Verbindungen entfernen?'))return;remember();setNodes(ns=>ns.filter(n=>n.id!==id));setEdges(es=>es.filter(e=>e.source!==id&&e.target!==id));if(selectedId===id)setSelectedId(ROOT_ID);say('Knoten entfernt');};
  const applyFilter=(f:Filter)=>{if(canModify)setDirty(true);if(dialog?.kind==='global'){setGlobals(gs=>{try{return validateFilters([...gs,f])}catch(e){say((e as Error).message);return gs}})}else if(dialog?.id){setLocals(old=>{const current=old[dialog.id!]||[];try{return {...old,[dialog.id!]:validateFilters([...current,f])}}catch(e){say((e as Error).message);return old}})} };
