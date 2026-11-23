@@ -231,21 +231,34 @@ function renderProfile(){
 function renderTeamPage(){
  if(state.role!=="admin")return;
  $("#page").innerHTML=pageTitle("Team & Zugänge","Mitglieder einladen, Registrierung ermöglichen und Berechtigungen verwalten.")+
- '<div class="card" style="padding:22px"><h2>Neues Mitglied einladen</h2><p class="field-note">Erzeuge einen einmaligen Einladungslink, der nur an die vorgesehene Person verschickt werden darf.</p>'+
+ '<div class="card" style="padding:22px"><h2>Neues Mitglied einladen</h2><p class="field-note">Verschicke eine Einladung über Supabase Auth oder erzeuge einen geschützten Link zum manuellen Versenden.</p>'+
  '<form id="invite-form" class="form-row"><div class="field" style="flex:2"><label for="invite-email">E-Mail-Adresse</label><input id="invite-email" type="email" required placeholder="name@reutlingen-university.de"></div>'+
  '<div class="field"><label for="invite-role">Rolle</label><select id="invite-role"><option value="viewer">Viewer</option><option value="analyst">Analyst</option><option value="admin">Administrator</option></select></div>'+
- '<button type="submit" class="btn primary" style="margin-bottom:13px">Einladungslink erzeugen</button></form>'+
+ '<div class="field"><label for="invite-delivery">Versand</label><select id="invite-delivery"><option value="email">Einladung per E-Mail</option><option value="link">Link zum Kopieren</option></select></div>'+
+ '<button type="submit" class="btn primary" style="margin-bottom:13px">Einladen</button></form>'+
  '<div id="invite-result"></div><p class="field-note">Mit einem Einladungskonto können Nutzer ihr Passwort selbst setzen. Keine öffentliche Selbstregistrierung.</p></div>'+
  '<section class="section"><div class="page-head"><h2 class="section-title">Mitglieder</h2><button class="btn small" id="reload-team">Aktualisieren '+icon("reset",15)+'</button></div>'+
  '<div class="card table-card" id="team-table"><div class="empty"><span class="spinner"></span> Mitglieder werden geladen …</div></div></section>';
  $("#invite-form").onsubmit=async e=>{
-  e.preventDefault();const btn=$('#invite-form button[type="submit"]');btn.disabled=true;const email=$("#invite-email").value.trim(),role=$("#invite-role").value;
-  try{const result=await memberApi({action:"invite",email,role});
-   $("#invite-result").innerHTML='<div class="notice good"><strong>Einladung erstellt.</strong> Kopiere den geschützten Link und sende ihn ausschließlich an '+esc(email)+'.</div>'+
-   '<div class="form-row" style="margin-top:8px"><div class="field" style="flex:1"><label for="invite-link">Einmaliger Einladungslink</label><input id="invite-link" readonly type="text"></div><button class="btn" id="copy-invite" type="button" style="margin-bottom:13px">'+icon("copy",16)+' Kopieren</button></div>';
-   $("#invite-link").value=result.link;
-   $("#copy-invite").onclick=async()=>{try{await navigator.clipboard.writeText($("#invite-link").value);toast("Einladungslink kopiert")}catch{ $("#invite-link").focus();$("#invite-link").select();toast("Link markiert. Bitte manuell kopieren.")}};
-   toast("Einladung erzeugt");loadTeam();
+  e.preventDefault();
+  const btn=$('#invite-form button[type="submit"]');btn.disabled=true;
+  const email=$("#invite-email").value.trim(),role=$("#invite-role").value,delivery=$("#invite-delivery").value;
+  try{
+   const result=await memberApi({action:"invite",email,role,delivery});
+   if(result.delivery==="email"){
+    $("#invite-result").innerHTML='<div class="notice good"><strong>Einladung per E-Mail angefordert.</strong> Der Versand erfolgt über Supabase Auth an '+esc(email)+'.</div>';
+    toast("Einladungs-E-Mail angefordert");
+   }else{
+    $("#invite-result").innerHTML='<div class="notice good"><strong>Einladungslink erstellt.</strong> Sende ihn nur an '+esc(email)+'.</div>'+
+    '<div class="form-row" style="margin-top:8px"><div class="field" style="flex:1"><label for="invite-link">Einmaliger Einladungslink</label><input id="invite-link" readonly type="text"></div><button class="btn" id="copy-invite" type="button" style="margin-bottom:13px">'+icon("copy",16)+' Kopieren</button></div>';
+    $("#invite-link").value=result.link;
+    $("#copy-invite").onclick=async()=>{
+     try{await navigator.clipboard.writeText($("#invite-link").value);toast("Einladungslink kopiert")}
+     catch{$("#invite-link").focus();$("#invite-link").select();toast("Link markiert. Bitte manuell kopieren.")}
+    };
+    toast("Einladungslink erstellt");
+   }
+   loadTeam();
   }catch(error){toast(error.message,"error")}finally{btn.disabled=false}
  };
  $("#reload-team").onclick=loadTeam;paintTeam();
