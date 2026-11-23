@@ -146,7 +146,8 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
  const updateDashboard=(next:NodeDashboard)=>{if(!canModify)return;setDashboards(old=>({...old,[selectedId]:next}));setDirty(true);};
  const reloadWorkspaces=useCallback(async()=>{try{setWorkspaces(await workspacesApi.list())}catch(e){say(e instanceof Error?e.message:'Workspace-Abfrage fehlgeschlagen')}},[say]);
  const reloadCatalog=useCallback(async()=>{try{setCatalog(await workspacesApi.catalog())}catch(e){say(e instanceof Error?e.message:'Filterkatalog nicht verfügbar')}},[say]);
- useEffect(()=>{void reloadWorkspaces();void reloadCatalog()},[userId,reloadWorkspaces,reloadCatalog]);
+ const reloadCandidates=useCallback(async()=>{try{setCandidates(await workspacesApi.candidates())}catch(e){say(e instanceof Error?e.message:'Filterkandidaten nicht verfügbar')}},[say]);
+ useEffect(()=>{void reloadWorkspaces();void reloadCatalog();void reloadCandidates()},[userId,reloadWorkspaces,reloadCatalog,reloadCandidates]);
  useEffect(()=>{if(toast){const t=setTimeout(()=>setToast(''),4200);return()=>clearTimeout(t)}},[toast]);
  const handleSetView=(next:View)=>{setView(next);if(next==='builder')setEditMode(canModify);if(next==='tree'||next==='analytics')setRightVisible(true)};
  const analysisNodes=useMemo(()=>nodes.map(n=>n.data.analysis),[nodes]);
@@ -160,7 +161,7 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
  const onEdgeChanges=useCallback((changes:EdgeChange<NEdge>[])=>{if(!editMode||!canModify)return;onEdgesChange(changes);setDirty(true)},[onEdgesChange,editMode,canModify]);
  const connect=useCallback((c:Connection)=>{if(!editMode||!canModify||!c.source||!c.target)return;if(!isValidReference(c.source,c.target,edges)){say('Verbindung ungültig oder bereits vorhanden');return;}
   remember();setEdges(e=>[...e,referenceEdge(c.source!,c.target!)]);say('Visuelle Referenzverbindung hinzugefügt – keine Filtervererbung.');},[edges,editMode,canModify,remember,setEdges,say]);
- const buildDocument=()=>makeDocument(serializeDraft(nodes,edges,locals,viewportRef.current),globals,dashboards);
+ const buildDocument=()=>makeDocument(serializeDraft(nodes,edges,locals,viewportRef.current),globals,dashboards,metricNames);
  const createWorkspace=async(title:string)=>{if(!isEditing(role))return;setSaving(true);try{
    const document=buildDocument();const ws=await workspacesApi.create(userId,document,title);
    localStorage.setItem(localKey,JSON.stringify(document.graph));setActiveWorkspace(ws);setWorkspaces(prev=>[ws,...prev]);setDirty(false);say('Privater Workspace in Supabase erstellt');
@@ -173,13 +174,13 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
   }catch(e){say(e instanceof Error?e.message:'Speichern fehlgeschlagen')}finally{setSaving(false)};
  };
  const selectWorkspace=async(id:string)=>{
-  if(dirty&&!confirm('Es gibt ungespeicherte Änderungen. Workspace trotzdem wechseln?'))return;
-  if(id==='local'){setActiveWorkspace(null);setDashboards({});defaultDashboardRef.current={};setDirty(false);say('Lokale Kopie aktiviert; bisherige Ansicht bleibt erhalten');return;}
-  const ws=workspaces.find(w=>w.id===id);if(!ws)return;
-  const data=validDocument(ws.document);if(!data){say('Gespeicherte Workspace-Daten sind ungültig');return;}
-  try{const graph=restoreDraft(data.graph);setNodes(graph.nodes);setEdges(graph.edges);setGlobals(validateFilters(data.globalFilters));setLocals(data.graph.localFilters||{});setDashboards(data.dashboards);setSelectedId(graph.nodes.find(n=>n.id===ROOT_ID)?.id||graph.nodes[0]?.id||ROOT_ID);setActiveWorkspace(ws);setDirty(false);initializedRef.current=true;setLoaded(true);viewportRef.current=data.graph.viewport;
-   window.setTimeout(()=>void flow.setViewport(data.graph.viewport,{duration:280}),100);say('Workspace geladen: '+ws.title);
-  }catch(e){say(e instanceof Error?e.message:'Laden fehlgeschlagen')}
+  if(dirty&&!confirm('Es gibt ungespeicherte Änderungen. Workspace trotzdem wechseln?'))return false;
+  if(id==='local'){setActiveWorkspace(null);setDashboards({});setMetricNames({});defaultDashboardRef.current={};setDirty(false);say('Lokale Kopie aktiviert; bisherige Ansicht bleibt erhalten');return true;}
+  const ws=workspaces.find(w=>w.id===id);if(!ws)return false;
+  const data=validDocument(ws.document);if(!data){say('Gespeicherte Workspace-Daten sind ungültig');return false;}
+  try{const graph=restoreDraft(data.graph);setNodes(graph.nodes);setEdges(graph.edges);setGlobals(validateFilters(data.globalFilters));setLocals(data.graph.localFilters||{});setDashboards(data.dashboards);setMetricNames(data.metricNames||{});setSelectedId(graph.nodes.find(n=>n.id===ROOT_ID)?.id||graph.nodes[0]?.id||ROOT_ID);setActiveWorkspace(ws);setDirty(false);initializedRef.current=true;setLoaded(true);viewportRef.current=data.graph.viewport;
+   window.setTimeout(()=>void flow.setViewport(data.graph.viewport,{duration:280}),100);say('Workspace geladen: '+ws.title);return true;
+  }catch(e){say(e instanceof Error?e.message:'Laden fehlgeschlagen');return false}
  };
  const toggleShare=async()=>{if(!activeWorkspace||!canModify)return;
   if(dirty){say('Bitte zuerst Änderungen speichern, bevor du den Workspace freigibst.');return;}  const publishing=activeWorkspace.status!=='published'||activeWorkspace.visibility!=='team';
@@ -195,7 +196,7 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
   try{const saved=await workspacesApi.updateCatalog(field,enabled);setCatalog(rows=>rows.map(r=>r.field_key===field?saved:r));say('Filterfreigabe aktualisiert');}catch(e){say(e instanceof Error?e.message:'Änderung nicht gespeichert')}
  };
  const resetCamera=()=>{void flow.fitView({padding:.17,duration:250})};
- const resetDraft=()=>{if(!confirm('Lokalen Entwurf verwerfen und Werk-Baum neu laden? Eine gespeicherte Server-Version bleibt erhalten.'))return;localStorage.removeItem(localKey);setActiveWorkspace(null);setDashboards({});initializedRef.current=false;setLocals({});setGlobals([]);setLoaded(false);setReloadKey(i=>i+1);say('Lokaler Entwurf zurückgesetzt')};
+ const resetDraft=()=>{if(!confirm('Lokalen Entwurf verwerfen und Werk-Baum neu laden? Eine gespeicherte Server-Version bleibt erhalten.'))return;localStorage.removeItem(localKey);setActiveWorkspace(null);setDashboards({});setMetricNames({});initializedRef.current=false;setLocals({});setGlobals([]);setLoaded(false);setReloadKey(i=>i+1);say('Lokaler Entwurf zurückgesetzt')};
  const addNode=useCallback((type:PaletteType,position:{x:number;y:number})=>{if(!editMode||!canModify){say('Zum Hinzufügen zuerst den Bearbeitungsmodus mit Schreibrechten aktivieren.');return;}
   if(type==='connector'){say('Connector: Ziehe einen Verbindungspunkt an einem Knoten zu einem anderen Verbindungspunkt.');return;}
   remember();const label=type==='metric'?'Neue KPI':type==='note'?'Neue Anmerkung':type==='condition'?'Neuer Filterknoten':'Neue Aufgliederung';
