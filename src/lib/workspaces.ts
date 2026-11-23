@@ -8,6 +8,7 @@ export type WorkspaceRecord={
  id:string;owner_id:string;title:string;description:string;visibility:WorkspaceVisibility;
  status:WorkspaceStatus;revision:number;document:WorkspaceDocument;updated_at:string;created_at:string;
 };
+export type FilterCandidate={field_key:FieldKey;suggested_name:string;distinct_values:number;available:boolean};
 export type FilterCatalogRow={field_key:FieldKey;display_name:string;enabled:boolean;sort_order:number;updated_at:string};
 const WORKSPACE_COLS='id,owner_id,title,description,visibility,status,revision,document,updated_at,created_at';
 
@@ -45,6 +46,26 @@ export const workspacesApi={
   const {data,error}=await supabase.from('nxt_filter_catalog').select('field_key,display_name,enabled,sort_order,updated_at').order('sort_order');
   if(error)throw Error('Filterbibliothek konnte nicht geladen werden: '+error.message);
   return (data||[]) as FilterCatalogRow[];
+ },
+ async candidates():Promise<FilterCandidate[]>{
+  const {data,error}=await supabase.rpc('nxt_filter_candidates');
+  if(error)throw Error('Kandidaten nicht verfügbar: '+error.message);
+  return (data||[]) as FilterCandidate[];
+ },
+ async registerFilter(field:FieldKey,displayName:string):Promise<FilterCatalogRow>{
+  if(displayName.trim().length<2||displayName.trim().length>80)throw Error('Name muss 2–80 Zeichen umfassen.');
+  const {data,error}=await supabase.rpc('nxt_register_filter',{p_field_key:field,p_display_name:displayName.trim()});
+  if(error)throw Error('Filter nicht registriert: '+error.message);
+  const saved=Array.isArray(data)?data[0]:data;
+  if(!saved?.field_key)throw Error('Keine bestätigte Filterdefinition vom Server.');
+  return saved as FilterCatalogRow;
+ },
+ async renameFilter(field:FieldKey,displayName:string):Promise<FilterCatalogRow>{
+  if(displayName.trim().length<2||displayName.trim().length>80)throw Error('Name muss 2–80 Zeichen umfassen.');
+  const {data,error}=await supabase.from('nxt_filter_catalog').update({display_name:displayName.trim(),updated_at:new Date().toISOString()}).eq('field_key',field)
+   .select('field_key,display_name,enabled,sort_order,updated_at').single();
+  if(error)throw Error('Filtername konnte nicht gespeichert werden: '+error.message);
+  return data as FilterCatalogRow;
  },
  async updateCatalog(field:FieldKey,enabled:boolean):Promise<FilterCatalogRow>{
   const {data,error}=await supabase.from('nxt_filter_catalog').update({enabled,updated_at:new Date().toISOString()}).eq('field_key',field).select('field_key,display_name,enabled,sort_order,updated_at').single();
