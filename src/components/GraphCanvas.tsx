@@ -16,7 +16,7 @@ function AnalyticNode({id,data,selected}:NodeProps<NNode>){
  const fieldNames=data.fieldNames as Record<FieldKey,string>|undefined;
  const dark=analysis.kind==='root';
  const isNote=analysis.kind==='note';const graphChart=!!analysis.visualization&&analysis.visualization!=='kpi';
- return <div className={'graph-node '+(dark?'root-node ':'')+(isNote?'note-node ':'')+(graphChart?'chart-node ':'')+(selected?'selected-node ':'')} tabIndex={0} role="group" aria-label={analysis.label+' – '+(orders==null?'Noch keine Kennzahl':number(orders)+' Aufträge')}>
+ return <div className={'graph-node '+(dark?'root-node ':'')+(isNote?'note-node ':'')+(graphChart?'chart-node ':'')+(['stacked','stacked100','heatmap','pareto','scatter','waterfall','histogram','treemap','funnel'].includes(analysis.visualization||'')?'advanced-node ':'')+(selected?'selected-node ':'')} tabIndex={0} role="group" aria-label={analysis.label+' – '+(orders==null?'Noch keine Kennzahl':number(orders)+' Aufträge')}>
   <Handle type="target" position={Position.Top} id="target" isConnectable={!!editMode} className="port" aria-label="Eingangsverbindung"/>
   <div className="graph-node-content"><span className="node-grip"><Icon name="grip-vertical" size={15}/></span>
    <div className="node-labels"><strong title={analysis.label}>{analysis.label}</strong>
@@ -40,6 +40,15 @@ export const paletteEntries=[
  {label:'Donutdiagramm',icon:'chart-pie',type:'donut' as PaletteType,enabled:true},
  {label:'SQL-Kennzahl',icon:'database',type:'calculation' as PaletteType,enabled:true},
  {label:'Liniendiagramm',icon:'chart-spline',type:'line' as PaletteType,enabled:true},
+ {label:'OTIF-Stack',icon:'layers',type:'stacked' as PaletteType,enabled:true},
+ {label:'100%-Stack',icon:'chart-column',type:'stacked100' as PaletteType,enabled:true},
+ {label:'Heatmap',icon:'grid-3x3',type:'heatmap' as PaletteType,enabled:true},
+ {label:'Pareto-Kosten',icon:'chart-bar',type:'pareto' as PaletteType,enabled:true},
+ {label:'Scatter',icon:'chart-spline',type:'scatter' as PaletteType,enabled:true},
+ {label:'Wasserfall',icon:'chart-column',type:'waterfall' as PaletteType,enabled:true},
+ {label:'Verteilung',icon:'chart-bar',type:'histogram' as PaletteType,enabled:true},
+ {label:'Kosten-Treemap',icon:'layout-dashboard',type:'treemap' as PaletteType,enabled:true},
+ {label:'OTIF-Funnel',icon:'list-filter',type:'funnel' as PaletteType,enabled:true},
  {label:'Filter',icon:'filter',type:'condition' as PaletteType,enabled:true},
  {label:'Textbaustein',icon:'type',type:'note' as PaletteType,enabled:true},
  {label:'Split-Knoten',icon:'split',type:'split' as PaletteType,enabled:true},
