@@ -20,7 +20,8 @@ export function effectiveFilters(globals:Filter[],nodes:AnalysisNode[],locals:Re
  while(at&&byId.has(at)){if(seen.has(at))throw Error('Zyklische Elternbeziehung');seen.add(at);const n=byId.get(at)!;trail.unshift(n);at=n.parentId||'';}
  const filters:Filter[]=[...globals];
  for(const n of trail){if(n.predicate)filters.push(n.predicate);filters.push(...(locals[n.id]||[]));}
- return validateFilters(filters);
+ const uniq=new Map<string,Filter>();for(const f of filters)uniq.set(f.field+'='+f.value,f);
+ return validateFilters([...uniq.values()]);
 }
 export function toBackend(filters:Filter[]){return filters.map(({field,op,value})=>({field,op,value}));}
 export function labels(filters:Filter[]){return filters.map(f=>FIELD_LABELS[f.field]+': '+f.value).join(' · ');}
