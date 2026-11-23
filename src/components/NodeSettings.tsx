@@ -16,7 +16,7 @@ export function NodeSettings({node,allowedFields,fieldNames,filters,onRemoveFilt
  onSave:(patch:Partial<AnalysisNode>)=>void;onClose:()=>void;
 }){
  const [name,setName]=useState(node.label),[viz,setViz]=useState<GraphViz>(node.visualization||'kpi');
- const [selectedMetric,setSelectedMetric]=useState<MetricKey>((node.metricId&&METRICS.includes(node.metricId as MetricKey)?node.metricId:'otifRate') as MetricKey);
+ const [selectedMetric,setSelectedMetric]=useState<MetricKey>((node.metricId==='otd'?'onTimeRate':node.metricId&&METRICS.includes(node.metricId as MetricKey)?node.metricId:'otifRate') as MetricKey);
  const [field,setField]=useState<FieldKey>(node.chartDimension||'delivery_company');
  const [template,setTemplate]=useState<CalculationTemplate>(node.calculationTemplate||'total_penalty_eur');
  const [rate,setRate]=useState<string>(node.rateEurPerKg?.toString()||'');
