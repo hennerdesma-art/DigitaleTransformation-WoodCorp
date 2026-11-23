@@ -14,12 +14,15 @@ import {DashboardRenderer,DashboardBuilder} from './components/DashboardBuilder'
 import {WorkspaceControls,FilterCatalogPage} from './components/WorkspaceControls';
 import {standardDashboard,makeDocument,validDocument,metricValue,metricFormat,METRIC_LABELS,type MetricKey,type NodeDashboard} from './core/dashboard';
 import {CalculationLogic} from './components/CalculationLogic';
+import {ProcessDefinition} from './components/ProcessCharts';
+import {E02_KEYS} from './core/processIntervals';
 import {workspacesApi,type WorkspaceRecord,type FilterCatalogRow} from './lib/workspaces';
 import './styles/dashboard.css';
 import './styles/v4.css';
 import './styles/v5.css';
 import './styles/v6.css';
 import './styles/v7.css';
+import './styles/v8.css';
 import {NodeSettings} from './components/NodeSettings';
 import {conflictingFields,filterSignature} from './core/filters';
 import {WorkspaceOverview} from './components/WorkspaceOverview';
@@ -130,7 +133,7 @@ function DetailPanel({node,detail,tab,setTab,onClose,onFilter,onExpand,onRename,
  <nav className="detail-tabs" aria-label="Dashboard-Ansichten">{tabs.map(t=><button key={t} className={t===tab?'selected':''} aria-current={t===tab?'page':undefined} onClick={()=>setTab(t)}>{t}</button>)}</nav>
  {detail.pending&&!m?<Spinner text="Knotenkennzahlen werden geladen …"/>:detail.error?<Notice kind="error">{detail.error}</Notice>:<div className="detail-body">
  {tab==='Übersicht'&&<><div className="detail-dashboard-edit"><span className="muted">Knotenbezogenes Dashboard · {dashboard.widgets.length} Elemente</span>{canEdit&&<button className="nxt-button secondary" onClick={onEdit}><Icon name="layout-dashboard" size={16}/> Dashboard bearbeiten</button>}</div><DashboardRenderer dashboard={dashboard} detail={detail} filters={filters} compact onExplain={onExplain}/></>}
- {tab==='Berechnungslogik'&&<CalculationLogic metric={explanatoryMetric} metrics={m} trace={filterTrace} fieldNames={fieldNames} node={node.data.analysis} calculated={node.data.calculation} compact/>}
+ {tab==='Berechnungslogik'&&(node.data.analysis.visualization==='process_interval'?<ProcessDefinition intervalKey={node.data.analysis.intervalKey||'order_to_production'} stat={node.data.processInterval}/>:<CalculationLogic metric={explanatoryMetric} metrics={m} trace={filterTrace} fieldNames={fieldNames} node={node.data.analysis} calculated={node.data.calculation} compact/>)}
   {tab==='Details'&&<div className="chart-box"><h3>Kennzahlen und Datenumfang</h3><dl className="detail-list"><dt>Aufträge</dt><dd>{number(m?.orders)}</dd><dt>OTIF</dt><dd>{percent(m?.otifRate)}</dd><dt>OTIF-Aufträge</dt><dd>{number(m?.otifCases)}</dd><dt>Modellierte Vertragsstrafe (0,75 €/kg)</dt><dd>{metricFormat('totalPenaltyEur',m?.totalPenaltyEur??null)}</dd><dt>Pünktlich, aber nicht mengenkonform</dt><dd>{number(m?.onTimeNotFullCases)}</dd><dt>Verspätet, aber mengenkonform</dt><dd>{number(m?.lateInFullCases)}</dd><dt>Verspätet und nicht mengenkonform</dt><dd>{number(m?.lateNotFullCases)}</dd><dt>Pünktliche Lieferungen</dt><dd>{percent(m?.onTimeRate)}</dd><dt>Mengentreue</dt><dd>{percent(m?.volumeConformanceRate)}</dd><dt>Vollständige Liefertermine</dt><dd>{number(m?.dateCoverage)}</dd><dt>Früheste Lieferung</dt><dd>{fmtDate(m?.firstDelivery)}</dd><dt>Späteste Lieferung</dt><dd>{fmtDate(m?.lastDelivery)}</dd></dl></div>}
  {tab==='Treiber'&&<><Notice kind="warning">Dies sind beobachtete Segmentunterschiede, keine nachgewiesenen Ursachen.</Notice><div className="chart-box"><h3>Potenzielle Einflussbereiche · Lieferunternehmen</h3><BarChart rows={detail.breakdown}/></div></>}
  {tab==='Vergleich'&&<div className="chart-box"><h3>Vergleich nach Lieferunternehmen</h3><div className="table-overflow"><table><thead><tr><th>Lieferunternehmen</th><th>Aufträge</th><th>On-Time</th></tr></thead><tbody>{detail.breakdown.map((r,i)=><tr key={r.label||i}><td>{r.label||'Ohne Angabe'}</td><td>{number(r.orders)}</td><td>{percent(r.on_time_rate)}</td></tr>)}</tbody></table></div></div>}
@@ -300,9 +303,9 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
  const resetDraft=()=>{if(!confirm('Lokalen Entwurf verwerfen und OTIF-Ausgangsknoten neu laden? Eine gespeicherte Server-Version bleibt erhalten.'))return;localStorage.removeItem(localKey);setActiveWorkspace(null);setDashboards({});setMetricNames({});initializedRef.current=false;setLocals({});setGlobals([]);setLoaded(false);setReloadKey(i=>i+1);say('Lokaler Entwurf zurückgesetzt')};
  const addNode=useCallback((type:PaletteType,position:{x:number;y:number})=>{if(!editMode||!canModify){say('Zum Hinzufügen zuerst den Bearbeitungsmodus mit Schreibrechten aktivieren.');return;}
   if(type==='connector'){say('Connector: Ziehe einen Verbindungspunkt an einem Knoten zu einem anderen Verbindungspunkt.');return;}
-  remember();const label=type==='root'?'Neuer Ausgangsknoten':type==='metric'?'Neue KPI':type==='note'?'Neue Anmerkung':type==='condition'?'Neuer Filterknoten':type==='donut'?'Donut · On-Time':type==='bar'?'Balken · Segmentvergleich':type==='line'?'Zeitreihe · On-Time':type==='calculation'?'Vertragsstrafe · 0,75 €/kg':
+  remember();const label=type==='root'?'Neuer Ausgangsknoten':type==='metric'?'Neue KPI':type==='note'?'Neue Anmerkung':type==='condition'?'Neuer Filterknoten':type==='donut'?'Donut · On-Time':type==='bar'?'Balken · Segmentvergleich':type==='line'?'Zeitreihe · On-Time':type==='calculation'?'Vertragsstrafe · 0,75 €/kg':type==='process_interval'?'E02 · Prozessintervall':
   ({stacked:'OTIF-Klassen',stacked100:'OTIF 100%-Vergleich',heatmap:'OTIF-Heatmap',pareto:'Strafkosten-Pareto',scatter:'OTIF-Streudiagramm',waterfall:'Kosten-Wasserfall',histogram:'Mengenänderungen-Verteilung',treemap:'Kosten-Treemap',funnel:'OTIF-Funnel'} as Record<string,string>)[type]||'Neue Aufgliederung';
-  const analysis:AnalysisNode={id:'user:'+crypto.randomUUID(),parentId:null,label,kind:type==='root'?'root':type==='metric'?'metric':type==='note'?'note':type==='condition'?'condition':'segment',metricId:type==='root'?undefined:'otifRate',createdBy:'user',description:type==='note'?'Anmerkung':undefined,visualization:({donut:'donut',bar:'bar',line:'line',calculation:'calculation',stacked:'stacked',stacked100:'stacked100',heatmap:'heatmap',pareto:'pareto',scatter:'scatter',waterfall:'waterfall',histogram:'histogram',treemap:'treemap',funnel:'funnel'} as Record<string,AnalysisNode['visualization']>)[type]||'kpi',chartDimension:'factory',calculationTemplate:'total_penalty_eur'};
+  const analysis:AnalysisNode={id:'user:'+crypto.randomUUID(),parentId:null,label,kind:type==='root'?'root':type==='metric'?'metric':type==='note'?'note':type==='condition'?'condition':'segment',metricId:type==='root'?undefined:'otifRate',createdBy:'user',description:type==='note'?'Anmerkung':undefined,visualization:({donut:'donut',bar:'bar',line:'line',calculation:'calculation',stacked:'stacked',stacked100:'stacked100',heatmap:'heatmap',pareto:'pareto',scatter:'scatter',waterfall:'waterfall',histogram:'histogram',treemap:'treemap',funnel:'funnel',process_interval:'process_interval'} as Record<string,AnalysisNode['visualization']>)[type]||'kpi',intervalKey:type==='process_interval'?'order_to_production':undefined,chartDimension:'factory',calculationTemplate:'total_penalty_eur'};
   setNodes(ns=>{
    let next={...position};
    for(let i=0;i<40;i++){
@@ -409,6 +412,7 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
   const breakdownPromises=new Map<string,ReturnType<typeof analysisApi.breakdown>>();
   const trendPromises=new Map<string,ReturnType<typeof analysisApi.trend>>();
   const calculations=new Map<string,ReturnType<typeof analysisApi.calculated>>();
+  const processPromises=new Map<string,ReturnType<typeof analysisApi.e02Summary>>();
   const update=(id:string,patch:Partial<NNode['data']>)=>{
    if(run!==graphRequest.current)return;
    setNodes(old=>old.map(n=>n.id===id?{...n,data:{...n.data,...patch,busy:false}}:n));
@@ -433,7 +437,12 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
     const viz=a.visualization||'kpi';
     const chosen=(a.metricId==='otd'?'onTimeRate':a.metricId&&Object.prototype.hasOwnProperty.call(METRIC_LABELS,a.metricId)?a.metricId:'otifRate') as MetricKey;
     const patch:Partial<NNode['data']>={orders:metrics.orders,onTimeRate:metrics.onTimeRate,fullMetrics:metrics,appliedFilters:filters,primaryValue:metricValue(chosen,metrics,null),primaryLabel:METRIC_LABELS[chosen],filterSummary:filters.map(f=>formatFilter(f,fieldNames)).join(' · '),error:undefined,chartRows:undefined,calculation:undefined};
-    if(viz==='bar'){
+    if(viz==='process_interval'){
+      let request=processPromises.get(key);
+      if(!request){request=analysisApi.e02Summary(filters);processPromises.set(key,request)}
+      const summary=await request;
+      patch.processInterval=summary.intervals.find(r=>r.key===(a.intervalKey||'order_to_production'))||null;
+    }else if(viz==='bar'){
       const dimension=a.chartDimension||'delivery_company';
       const chartKey=key+':'+dimension;
       let lookup=breakdownPromises.get(chartKey);

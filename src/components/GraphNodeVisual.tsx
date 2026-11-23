@@ -2,6 +2,7 @@ import React from 'react';
 import type {GraphNodeData} from '../core/types';
 import {formatCalculated} from '../core/calculations';
 import {number,percent} from './Ui';
+import {days,E02_INTERVALS} from '../core/processIntervals';
 import {AdvancedChart} from './AdvancedCharts';
 import type {DashboardWidget,WidgetType} from '../core/dashboard';
 import type {DashboardData} from '../core/types';
@@ -20,6 +21,16 @@ export function GraphNodeVisual({data}:{data:GraphNodeData}){
   };
   const detail:DashboardData={metrics:data.fullMetrics||null,trend:trendRows||[],breakdown:chartRows||[],pending:false,error:null};
   return <div className="graph-advanced-chart nodrag nowheel"><AdvancedChart widget={widget} detail={detail} filters={data.appliedFilters||[]}/></div>;
+ }
+ if(kind==='process_interval'){
+  const stat=data.processInterval;
+  const label=E02_INTERVALS[analysis.intervalKey||'order_to_delivery'].short;
+  return <div className="node-viz-process">
+    <small>{label}</small>
+    <strong>{stat?days(stat.medianDays):'–'}</strong>
+    <div><span>P90: {stat?days(stat.p90Days):'–'}</span><span>{stat?number(stat.validCases):'–'} gültige Fälle</span></div>
+    <p>{stat?.coveragePct==null?'Keine auswertbaren Prozessdaten':Number(stat.coveragePct).toLocaleString('de-DE',{maximumFractionDigits:1})+' % Datenabdeckung'}</p>
+   </div>;
  }
  if(kind==='calculation'){
   const estimate=calculation?.isEstimate;

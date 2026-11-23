@@ -49,6 +49,7 @@ export const paletteEntries=[
  {label:'Verteilung',icon:'chart-bar',type:'histogram' as PaletteType,enabled:true},
  {label:'Kosten-Treemap',icon:'layout-dashboard',type:'treemap' as PaletteType,enabled:true},
  {label:'OTIF-Funnel',icon:'list-filter',type:'funnel' as PaletteType,enabled:true},
+ {label:'E02-Prozessintervall',icon:'clock-3',type:'process_interval' as PaletteType,enabled:true},
  {label:'Filter',icon:'filter',type:'condition' as PaletteType,enabled:true},
  {label:'Textbaustein',icon:'type',type:'note' as PaletteType,enabled:true},
  {label:'Split-Knoten',icon:'split',type:'split' as PaletteType,enabled:true},

@@ -1,0 +1,1786 @@
+{
+  "version": 3,
+  "graph": {
+    "version": 2,
+    "nodes": [
+      {
+        "id": "woodcorp:root",
+        "position": {
+          "x": 1500,
+          "y": 0
+        },
+        "analysis": {
+          "id": "woodcorp:root",
+          "parentId": null,
+          "label": "WOODCORP · OTIF ROOT CAUSE",
+          "kind": "root",
+          "createdBy": "user",
+          "metricId": "otifRate",
+          "visualization": "kpi",
+          "chartDimension": "factory",
+          "description": "Startpunkt aller E00–E02-Analysen · ungefilterte Daten"
+        }
+      },
+      {
+        "id": "e00:overview",
+        "position": {
+          "x": 1500,
+          "y": 285
+        },
+        "analysis": {
+          "id": "e00:overview",
+          "parentId": "woodcorp:root",
+          "label": "E00 · Executive Overview",
+          "kind": "segment",
+          "createdBy": "user",
+          "metricId": "otifRate",
+          "visualization": "kpi",
+          "chartDimension": "factory",
+          "description": "Wie groß ist die OTIF-Lücke und welcher modellierte finanzielle Effekt entsteht?"
+        }
+      },
+      {
+        "id": "e00:quality",
+        "position": {
+          "x": 200,
+          "y": 635
+        },
+        "analysis": {
+          "id": "e00:quality",
+          "parentId": "e00:overview",
+          "label": "E00.1 · Lieferqualität",
+          "kind": "segment",
+          "createdBy": "user",
+          "metricId": "otifRate",
+          "visualization": "donut",
+          "chartDimension": "factory",
+          "description": "OTIF, Pünktlichkeit und Mengenkonformität"
+        }
+      },
+      {
+        "id": "e00:classes",
+        "position": {
+          "x": 1490,
+          "y": 635
+        },
+        "analysis": {
+          "id": "e00:classes",
+          "parentId": "e00:overview",
+          "label": "E00.2 · Fehlerklassen",
+          "kind": "segment",
+          "createdBy": "user",
+          "metricId": "otifRate",
+          "visualization": "stacked100",
+          "chartDimension": "factory",
+          "description": "OTIF-Klassen: pünktlich/vollständig und Kombinationen"
+        }
+      },
+      {
+        "id": "e00:financial",
+        "position": {
+          "x": 2750,
+          "y": 635
+        },
+        "analysis": {
+          "id": "e00:financial",
+          "parentId": "e00:overview",
+          "label": "E00.3 · Financial Impact",
+          "kind": "segment",
+          "createdBy": "user",
+          "metricId": "totalPenaltyEur",
+          "visualization": "waterfall",
+          "chartDimension": "factory",
+          "description": "0,75 €/kg · modellierte Vertragsstrafe, nicht Zahlung"
+        }
+      },
+      {
+        "id": "e01:overview",
+        "position": {
+          "x": 1500,
+          "y": 1000
+        },
+        "analysis": {
+          "id": "e01:overview",
+          "parentId": "e00:quality",
+          "label": "E01 · Performance Breakdown",
+          "kind": "segment",
+          "createdBy": "user",
+          "metricId": "otifRate",
+          "visualization": "kpi",
+          "chartDimension": "factory",
+          "description": "Wo konzentrieren sich OTIF-Abweichung und Vertragsstrafen?"
+        }
+      },
+      {
+        "id": "e01:factory",
+        "position": {
+          "x": 70,
+          "y": 1350
+        },
+        "analysis": {
+          "id": "e01:factory",
+          "parentId": "e01:overview",
+          "label": "E01.1 · Werkvergleich",
+          "kind": "segment",
+          "createdBy": "user",
+          "metricId": "otifRate",
+          "visualization": "pareto",
+          "chartDimension": "factory"
+        }
+      },
+      {
+        "id": "e01:product",
+        "position": {
+          "x": 1050,
+          "y": 1350
+        },
+        "analysis": {
+          "id": "e01:product",
+          "parentId": "e01:overview",
+          "label": "E01.2 · Produkttypen",
+          "kind": "segment",
+          "createdBy": "user",
+          "metricId": "otifRate",
+          "visualization": "stacked100",
+          "chartDimension": "product_type"
+        }
+      },
+      {
+        "id": "e01:carrier",
+        "position": {
+          "x": 2100,
+          "y": 1350
+        },
+        "analysis": {
+          "id": "e01:carrier",
+          "parentId": "e01:overview",
+          "label": "E01.3 · Lieferunternehmen",
+          "kind": "segment",
+          "createdBy": "user",
+          "metricId": "otifRate",
+          "visualization": "bar",
+          "chartDimension": "delivery_company"
+        }
+      },
+      {
+        "id": "e01:market",
+        "position": {
+          "x": 3050,
+          "y": 1350
+        },
+        "analysis": {
+          "id": "e01:market",
+          "parentId": "e01:overview",
+          "label": "E01.4 · Kundenmärkte",
+          "kind": "segment",
+          "createdBy": "user",
+          "metricId": "otifRate",
+          "visualization": "heatmap",
+          "chartDimension": "cust_market"
+        }
+      },
+      {
+        "id": "e01:matrix",
+        "position": {
+          "x": 1240,
+          "y": 1790
+        },
+        "analysis": {
+          "id": "e01:matrix",
+          "parentId": "e01:factory",
+          "label": "E01.5 · Segmentmatrix Werk × Produkt",
+          "kind": "segment",
+          "createdBy": "user",
+          "metricId": "otifRate",
+          "visualization": "heatmap",
+          "chartDimension": "factory"
+        }
+      },
+      {
+        "id": "e01:essen",
+        "position": {
+          "x": 0,
+          "y": 1830
+        },
+        "analysis": {
+          "id": "e01:essen",
+          "parentId": "e01:factory",
+          "label": "Werk · Essen",
+          "kind": "segment",
+          "createdBy": "user",
+          "metricId": "otifRate",
+          "visualization": "kpi",
+          "chartDimension": "factory",
+          "predicate": {
+            "id": "p:e01:essen:factory",
+            "field": "factory",
+            "op": "eq",
+            "value": "Essen",
+            "scope": "local"
+          }
+        }
+      },
+      {
+        "id": "e01:aachen",
+        "position": {
+          "x": 450,
+          "y": 1830
+        },
+        "analysis": {
+          "id": "e01:aachen",
+          "parentId": "e01:factory",
+          "label": "Werk · Aachen",
+          "kind": "segment",
+          "createdBy": "user",
+          "metricId": "otifRate",
+          "visualization": "kpi",
+          "chartDimension": "factory",
+          "predicate": {
+            "id": "p:e01:aachen:factory",
+            "field": "factory",
+            "op": "eq",
+            "value": "Aachen",
+            "scope": "local"
+          }
+        }
+      },
+      {
+        "id": "e01:crates",
+        "position": {
+          "x": 980,
+          "y": 1830
+        },
+        "analysis": {
+          "id": "e01:crates",
+          "parentId": "e01:product",
+          "label": "Produkt · Crates",
+          "kind": "segment",
+          "createdBy": "user",
+          "metricId": "otifRate",
+          "visualization": "kpi",
+          "chartDimension": "factory",
+          "predicate": {
+            "id": "p:e01:crates:product_type",
+            "field": "product_type",
+            "op": "eq",
+            "value": "Crates",
+            "scope": "local"
+          }
+        }
+      },
+      {
+        "id": "e01:focus-essen",
+        "position": {
+          "x": 470,
+          "y": 2220
+        },
+        "analysis": {
+          "id": "e01:focus-essen",
+          "parentId": "e01:essen",
+          "label": "Fokus · Essen × Crates",
+          "kind": "segment",
+          "createdBy": "user",
+          "metricId": "totalPenaltyEur",
+          "visualization": "kpi",
+          "chartDimension": "factory",
+          "description": "Gemeinsamer Filter Werk Essen UND Produkttyp Crates"
+        }
+      },
+      {
+        "id": "e01:focus-aachen",
+        "position": {
+          "x": 1250,
+          "y": 2220
+        },
+        "analysis": {
+          "id": "e01:focus-aachen",
+          "parentId": "e01:aachen",
+          "label": "Fokus · Aachen × Crates",
+          "kind": "segment",
+          "createdBy": "user",
+          "metricId": "totalPenaltyEur",
+          "visualization": "kpi",
+          "chartDimension": "factory",
+          "description": "Gemeinsamer Filter Werk Aachen UND Produkttyp Crates"
+        }
+      },
+      {
+        "id": "e02:overview",
+        "position": {
+          "x": 3000,
+          "y": 2220
+        },
+        "analysis": {
+          "id": "e02:overview",
+          "parentId": "e01:overview",
+          "label": "E02 · Gesamtprozess",
+          "kind": "segment",
+          "createdBy": "user",
+          "metricId": "otifRate",
+          "visualization": "process_interval",
+          "chartDimension": "factory",
+          "intervalKey": "order_to_delivery",
+          "description": "Fünf Intervalle im globalen Filterkontext"
+        }
+      },
+      {
+        "id": "e02:focus-essen",
+        "position": {
+          "x": 500,
+          "y": 2600
+        },
+        "analysis": {
+          "id": "e02:focus-essen",
+          "parentId": "e01:focus-essen",
+          "label": "E02 · Prozess Essen × Crates",
+          "kind": "segment",
+          "createdBy": "user",
+          "metricId": "otifRate",
+          "visualization": "process_interval",
+          "chartDimension": "factory",
+          "intervalKey": "order_to_delivery",
+          "description": "Alle E02-Prozesszeiten für Essen×Crates"
+        }
+      },
+      {
+        "id": "e02:focus-aachen",
+        "position": {
+          "x": 1370,
+          "y": 2600
+        },
+        "analysis": {
+          "id": "e02:focus-aachen",
+          "parentId": "e01:focus-aachen",
+          "label": "E02 · Prozess Aachen × Crates",
+          "kind": "segment",
+          "createdBy": "user",
+          "metricId": "otifRate",
+          "visualization": "process_interval",
+          "chartDimension": "factory",
+          "intervalKey": "order_to_delivery",
+          "description": "Alle E02-Prozesszeiten für Aachen×Crates"
+        }
+      },
+      {
+        "id": "e02:quality",
+        "position": {
+          "x": 3000,
+          "y": 2600
+        },
+        "analysis": {
+          "id": "e02:quality",
+          "parentId": "e02:overview",
+          "label": "E02 · Datenqualität & Coverage",
+          "kind": "segment",
+          "createdBy": "user",
+          "metricId": "orders",
+          "visualization": "kpi",
+          "chartDimension": "factory",
+          "description": "Negative Intervalle und valide Zeitstempel"
+        }
+      },
+      {
+        "id": "e02:interval:order_to_production",
+        "position": {
+          "x": -350,
+          "y": 3100
+        },
+        "analysis": {
+          "id": "e02:interval:order_to_production",
+          "parentId": "e02:focus-essen",
+          "label": "E02.1 · Auftrag → Produktionsstart",
+          "kind": "segment",
+          "createdBy": "user",
+          "metricId": "otifRate",
+          "visualization": "process_interval",
+          "chartDimension": "factory",
+          "intervalKey": "order_to_production",
+          "description": "Median und P90 im gefilterten Fokussegment Essen × Crates"
+        }
+      },
+      {
+        "id": "e02:interval:production_duration",
+        "position": {
+          "x": 210,
+          "y": 3100
+        },
+        "analysis": {
+          "id": "e02:interval:production_duration",
+          "parentId": "e02:focus-essen",
+          "label": "E02.2 · Produktionsstart → Produktionsende",
+          "kind": "segment",
+          "createdBy": "user",
+          "metricId": "otifRate",
+          "visualization": "process_interval",
+          "chartDimension": "factory",
+          "intervalKey": "production_duration",
+          "description": "Median und P90 im gefilterten Fokussegment Essen × Crates"
+        }
+      },
+      {
+        "id": "e02:interval:production_to_shipment",
+        "position": {
+          "x": 770,
+          "y": 3100
+        },
+        "analysis": {
+          "id": "e02:interval:production_to_shipment",
+          "parentId": "e02:focus-essen",
+          "label": "E02.3 · Produktionsende → Verladung",
+          "kind": "segment",
+          "createdBy": "user",
+          "metricId": "otifRate",
+          "visualization": "process_interval",
+          "chartDimension": "factory",
+          "intervalKey": "production_to_shipment",
+          "description": "Median und P90 im gefilterten Fokussegment Essen × Crates"
+        }
+      },
+      {
+        "id": "e02:interval:shipment_to_delivery",
+        "position": {
+          "x": 1330,
+          "y": 3100
+        },
+        "analysis": {
+          "id": "e02:interval:shipment_to_delivery",
+          "parentId": "e02:focus-essen",
+          "label": "E02.4 · Verladung → tatsächliche Lieferung",
+          "kind": "segment",
+          "createdBy": "user",
+          "metricId": "otifRate",
+          "visualization": "process_interval",
+          "chartDimension": "factory",
+          "intervalKey": "shipment_to_delivery",
+          "description": "Median und P90 im gefilterten Fokussegment Essen × Crates"
+        }
+      },
+      {
+        "id": "e02:interval:order_to_delivery",
+        "position": {
+          "x": 1890,
+          "y": 3100
+        },
+        "analysis": {
+          "id": "e02:interval:order_to_delivery",
+          "parentId": "e02:focus-essen",
+          "label": "E02.5 · Auftrag → tatsächliche Lieferung",
+          "kind": "segment",
+          "createdBy": "user",
+          "metricId": "otifRate",
+          "visualization": "process_interval",
+          "chartDimension": "factory",
+          "intervalKey": "order_to_delivery",
+          "description": "Median und P90 im gefilterten Fokussegment Essen × Crates"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "analytic:woodcorp:root=>e00:overview",
+        "source": "woodcorp:root",
+        "target": "e00:overview",
+        "kind": "analytic"
+      },
+      {
+        "id": "analytic:e00:overview=>e00:quality",
+        "source": "e00:overview",
+        "target": "e00:quality",
+        "kind": "analytic"
+      },
+      {
+        "id": "analytic:e00:overview=>e00:classes",
+        "source": "e00:overview",
+        "target": "e00:classes",
+        "kind": "analytic"
+      },
+      {
+        "id": "analytic:e00:overview=>e00:financial",
+        "source": "e00:overview",
+        "target": "e00:financial",
+        "kind": "analytic"
+      },
+      {
+        "id": "analytic:e00:quality=>e01:overview",
+        "source": "e00:quality",
+        "target": "e01:overview",
+        "kind": "analytic"
+      },
+      {
+        "id": "analytic:e00:classes=>e01:overview",
+        "source": "e00:classes",
+        "target": "e01:overview",
+        "kind": "analytic"
+      },
+      {
+        "id": "analytic:e00:financial=>e01:overview",
+        "source": "e00:financial",
+        "target": "e01:overview",
+        "kind": "analytic"
+      },
+      {
+        "id": "analytic:e01:overview=>e01:factory",
+        "source": "e01:overview",
+        "target": "e01:factory",
+        "kind": "analytic"
+      },
+      {
+        "id": "analytic:e01:overview=>e01:product",
+        "source": "e01:overview",
+        "target": "e01:product",
+        "kind": "analytic"
+      },
+      {
+        "id": "analytic:e01:overview=>e01:carrier",
+        "source": "e01:overview",
+        "target": "e01:carrier",
+        "kind": "analytic"
+      },
+      {
+        "id": "analytic:e01:overview=>e01:market",
+        "source": "e01:overview",
+        "target": "e01:market",
+        "kind": "analytic"
+      },
+      {
+        "id": "analytic:e01:factory=>e01:matrix",
+        "source": "e01:factory",
+        "target": "e01:matrix",
+        "kind": "analytic"
+      },
+      {
+        "id": "analytic:e01:product=>e01:matrix",
+        "source": "e01:product",
+        "target": "e01:matrix",
+        "kind": "analytic"
+      },
+      {
+        "id": "analytic:e01:factory=>e01:essen",
+        "source": "e01:factory",
+        "target": "e01:essen",
+        "kind": "analytic"
+      },
+      {
+        "id": "analytic:e01:factory=>e01:aachen",
+        "source": "e01:factory",
+        "target": "e01:aachen",
+        "kind": "analytic"
+      },
+      {
+        "id": "analytic:e01:product=>e01:crates",
+        "source": "e01:product",
+        "target": "e01:crates",
+        "kind": "analytic"
+      },
+      {
+        "id": "analytic:e01:essen=>e01:focus-essen",
+        "source": "e01:essen",
+        "target": "e01:focus-essen",
+        "kind": "analytic"
+      },
+      {
+        "id": "analytic:e01:crates=>e01:focus-essen",
+        "source": "e01:crates",
+        "target": "e01:focus-essen",
+        "kind": "analytic"
+      },
+      {
+        "id": "analytic:e01:aachen=>e01:focus-aachen",
+        "source": "e01:aachen",
+        "target": "e01:focus-aachen",
+        "kind": "analytic"
+      },
+      {
+        "id": "analytic:e01:crates=>e01:focus-aachen",
+        "source": "e01:crates",
+        "target": "e01:focus-aachen",
+        "kind": "analytic"
+      },
+      {
+        "id": "analytic:e01:overview=>e02:overview",
+        "source": "e01:overview",
+        "target": "e02:overview",
+        "kind": "analytic"
+      },
+      {
+        "id": "analytic:e01:carrier=>e02:overview",
+        "source": "e01:carrier",
+        "target": "e02:overview",
+        "kind": "analytic"
+      },
+      {
+        "id": "analytic:e01:market=>e02:overview",
+        "source": "e01:market",
+        "target": "e02:overview",
+        "kind": "analytic"
+      },
+      {
+        "id": "analytic:e01:focus-essen=>e02:focus-essen",
+        "source": "e01:focus-essen",
+        "target": "e02:focus-essen",
+        "kind": "analytic"
+      },
+      {
+        "id": "analytic:e01:focus-aachen=>e02:focus-aachen",
+        "source": "e01:focus-aachen",
+        "target": "e02:focus-aachen",
+        "kind": "analytic"
+      },
+      {
+        "id": "analytic:e02:overview=>e02:quality",
+        "source": "e02:overview",
+        "target": "e02:quality",
+        "kind": "analytic"
+      },
+      {
+        "id": "analytic:e02:focus-essen=>e02:interval:order_to_production",
+        "source": "e02:focus-essen",
+        "target": "e02:interval:order_to_production",
+        "kind": "analytic"
+      },
+      {
+        "id": "analytic:e02:focus-essen=>e02:interval:production_duration",
+        "source": "e02:focus-essen",
+        "target": "e02:interval:production_duration",
+        "kind": "analytic"
+      },
+      {
+        "id": "analytic:e02:focus-essen=>e02:interval:production_to_shipment",
+        "source": "e02:focus-essen",
+        "target": "e02:interval:production_to_shipment",
+        "kind": "analytic"
+      },
+      {
+        "id": "analytic:e02:focus-essen=>e02:interval:shipment_to_delivery",
+        "source": "e02:focus-essen",
+        "target": "e02:interval:shipment_to_delivery",
+        "kind": "analytic"
+      },
+      {
+        "id": "analytic:e02:focus-essen=>e02:interval:order_to_delivery",
+        "source": "e02:focus-essen",
+        "target": "e02:interval:order_to_delivery",
+        "kind": "analytic"
+      }
+    ],
+    "localFilters": {},
+    "viewport": {
+      "x": -520,
+      "y": 60,
+      "zoom": 0.68
+    },
+    "timestamp": "2026-11-23T21:30:00.000Z"
+  },
+  "globalFilters": [],
+  "dashboards": {
+    "woodcorp:root": {
+      "question": "Warum erreicht WoodCorp das OTIF-Ziel von 80 % nicht und wo liegen die größten Verbesserungspotenziale?",
+      "widgets": [
+        {
+          "id": "widget:jmlrbo6ldy",
+          "type": "kpi",
+          "title": "OTIF · 80%-Ziel",
+          "width": "half",
+          "metric": "otifRate"
+        },
+        {
+          "id": "widget:vd9bb67gh9",
+          "type": "kpi",
+          "title": "Aufträge",
+          "width": "half",
+          "metric": "orders"
+        },
+        {
+          "id": "widget:rb6hf3yiku",
+          "type": "kpi",
+          "title": "On-Time Delivery",
+          "width": "half",
+          "metric": "onTimeRate"
+        },
+        {
+          "id": "widget:5h2lok4e55",
+          "type": "kpi",
+          "title": "Mengenkonformität",
+          "width": "half",
+          "metric": "volumeConformanceRate"
+        },
+        {
+          "id": "widget:rjgfqw1yba",
+          "type": "kpi",
+          "title": "Berechnete Vertragsstrafe",
+          "width": "half",
+          "metric": "totalPenaltyEur"
+        },
+        {
+          "id": "widget:kb8h9er1hl",
+          "type": "bullet",
+          "title": "OTIF-Zielerreichung",
+          "width": "half",
+          "metric": "otifRate",
+          "target": 80
+        },
+        {
+          "id": "widget:4wslfpg1mq",
+          "type": "stacked100",
+          "title": "OTIF-Fehlerklassen je Werk",
+          "width": "full",
+          "dimension": "factory"
+        },
+        {
+          "id": "widget:lqurcqu5x1",
+          "type": "waterfall",
+          "title": "Strafkosten · Verspätung und Unterlieferung",
+          "width": "full"
+        },
+        {
+          "id": "widget:jg8z7xyesx",
+          "type": "line",
+          "title": "On-Time-Delivery-Zeitverlauf",
+          "width": "full"
+        },
+        {
+          "id": "widget:r44fjpec87",
+          "type": "text",
+          "title": "Interpretation",
+          "width": "full",
+          "text": "OTIF = pünktlich und mengenkonform. Die modellierten Strafkosten beruhen auf 0,75 €/kg für verspätet gelieferte und fehlende Menge. Sie sind kein Nachweis ausgezahlter Vertragsstrafen."
+        }
+      ]
+    },
+    "e00:overview": {
+      "question": "E00 · Wie groß ist die OTIF-Lücke, wie setzen sich Fehlerklassen und modellierte Kosten zusammen?",
+      "widgets": [
+        {
+          "id": "widget:jmlrbo6ldy:e00",
+          "type": "kpi",
+          "title": "OTIF · 80%-Ziel",
+          "width": "half",
+          "metric": "otifRate"
+        },
+        {
+          "id": "widget:vd9bb67gh9:e00",
+          "type": "kpi",
+          "title": "Aufträge",
+          "width": "half",
+          "metric": "orders"
+        },
+        {
+          "id": "widget:rb6hf3yiku:e00",
+          "type": "kpi",
+          "title": "On-Time Delivery",
+          "width": "half",
+          "metric": "onTimeRate"
+        },
+        {
+          "id": "widget:5h2lok4e55:e00",
+          "type": "kpi",
+          "title": "Mengenkonformität",
+          "width": "half",
+          "metric": "volumeConformanceRate"
+        },
+        {
+          "id": "widget:rjgfqw1yba:e00",
+          "type": "kpi",
+          "title": "Berechnete Vertragsstrafe",
+          "width": "half",
+          "metric": "totalPenaltyEur"
+        },
+        {
+          "id": "widget:kb8h9er1hl:e00",
+          "type": "bullet",
+          "title": "OTIF-Zielerreichung",
+          "width": "half",
+          "metric": "otifRate",
+          "target": 80
+        },
+        {
+          "id": "widget:4wslfpg1mq:e00",
+          "type": "stacked100",
+          "title": "OTIF-Fehlerklassen je Werk",
+          "width": "full",
+          "dimension": "factory"
+        },
+        {
+          "id": "widget:lqurcqu5x1:e00",
+          "type": "waterfall",
+          "title": "Strafkosten · Verspätung und Unterlieferung",
+          "width": "full"
+        },
+        {
+          "id": "widget:jg8z7xyesx:e00",
+          "type": "line",
+          "title": "On-Time-Delivery-Zeitverlauf",
+          "width": "full"
+        },
+        {
+          "id": "widget:r44fjpec87:e00",
+          "type": "text",
+          "title": "Interpretation",
+          "width": "full",
+          "text": "OTIF = pünktlich und mengenkonform. Die modellierten Strafkosten beruhen auf 0,75 €/kg für verspätet gelieferte und fehlende Menge. Sie sind kein Nachweis ausgezahlter Vertragsstrafen."
+        }
+      ]
+    },
+    "e00:quality": {
+      "question": "Welche Teile der Lieferqualität erklären die niedrige OTIF-Quote?",
+      "widgets": [
+        {
+          "id": "widget:hfjr5wo0p6",
+          "type": "kpi",
+          "title": "OTIF",
+          "width": "half",
+          "metric": "otifRate"
+        },
+        {
+          "id": "widget:3kjp093tz3",
+          "type": "kpi",
+          "title": "On-Time Delivery",
+          "width": "half",
+          "metric": "onTimeRate"
+        },
+        {
+          "id": "widget:beekn9qbrn",
+          "type": "kpi",
+          "title": "Mengenkonformität",
+          "width": "half",
+          "metric": "volumeConformanceRate"
+        },
+        {
+          "id": "widget:orb8paqowl",
+          "type": "bullet",
+          "title": "Abstand zum OTIF-Ziel",
+          "width": "half",
+          "metric": "otifRate",
+          "target": 80
+        },
+        {
+          "id": "widget:0k2cdqncp8",
+          "type": "line",
+          "title": "On-Time-Delivery-Zeitverlauf",
+          "width": "full"
+        },
+        {
+          "id": "widget:kcdah0lruz",
+          "type": "donut",
+          "title": "Pünktliche vs. verspätete Aufträge",
+          "width": "full"
+        }
+      ]
+    },
+    "e00:classes": {
+      "question": "Welche Kombinationen von Lieferverzug und Mengendefizit treten auf?",
+      "widgets": [
+        {
+          "id": "widget:rvchsp5vyo",
+          "type": "kpi",
+          "title": "OTIF-Aufträge",
+          "width": "half",
+          "metric": "otifCases"
+        },
+        {
+          "id": "widget:yp9ixy6d9b",
+          "type": "kpi",
+          "title": "Verspätete Aufträge",
+          "width": "half",
+          "metric": "lateOrders"
+        },
+        {
+          "id": "widget:42u2ibnfaf",
+          "type": "bar_horizontal",
+          "title": "Vier OTIF-Fehlerklassen · Fallzahl",
+          "width": "full",
+          "dimension": "otif_status",
+          "metric": "orders"
+        },
+        {
+          "id": "widget:xk9f3ko9mm",
+          "type": "stacked100",
+          "title": "OTIF-Klassen je Werk",
+          "width": "full",
+          "dimension": "factory"
+        },
+        {
+          "id": "widget:t2eitxjnfk",
+          "type": "stacked100",
+          "title": "OTIF-Klassen je Produkttyp",
+          "width": "full",
+          "dimension": "product_type"
+        },
+        {
+          "id": "widget:mb7e3u5230",
+          "type": "pareto",
+          "title": "Strafkosten nach OTIF-Fehlerklasse",
+          "width": "full",
+          "dimension": "otif_status",
+          "metric": "totalPenaltyEur"
+        }
+      ]
+    },
+    "e00:financial": {
+      "question": "Welche finanziellen Auswirkungen ergeben sich aus Verspätungen und Unterlieferungen?",
+      "widgets": [
+        {
+          "id": "widget:6je4oh6nwi",
+          "type": "kpi",
+          "title": "Gesamte Vertragsstrafe (Modell)",
+          "width": "half",
+          "metric": "totalPenaltyEur"
+        },
+        {
+          "id": "widget:v5c2v7vcan",
+          "type": "kpi",
+          "title": "Verspätungsanteil",
+          "width": "half",
+          "metric": "latePenaltyEur"
+        },
+        {
+          "id": "widget:olslq24gny",
+          "type": "kpi",
+          "title": "Unterlieferungsanteil",
+          "width": "half",
+          "metric": "shortfallPenaltyEur"
+        },
+        {
+          "id": "widget:pmc71cjgmk",
+          "type": "kpi",
+          "title": "Aufträge",
+          "width": "half",
+          "metric": "orders"
+        },
+        {
+          "id": "widget:r63gwda4e8",
+          "type": "waterfall",
+          "title": "Strafkosten-Wasserfall",
+          "width": "full"
+        },
+        {
+          "id": "widget:el6k9zv0a4",
+          "type": "pareto",
+          "title": "Vertragsstrafen nach Werk",
+          "width": "full",
+          "dimension": "factory",
+          "metric": "totalPenaltyEur"
+        },
+        {
+          "id": "widget:pll1f669l8",
+          "type": "treemap",
+          "title": "Kostenanteile nach Werk",
+          "width": "full",
+          "dimension": "factory"
+        },
+        {
+          "id": "widget:abbn0i2b1k",
+          "type": "text",
+          "title": "Berechnungsannahme",
+          "width": "full",
+          "text": "Strafkostenmodell = 0,75 €/kg × verspätet gelieferte Menge in kg + 0,75 €/kg × positive Fehlmenge. Eine doppelte Belastung desselben Auftrags ist rechnerisch möglich; ob die Vertragsregel beide Bestandteile kumulativ vorsieht, ist separat nachzuweisen."
+        }
+      ]
+    },
+    "e01:overview": {
+      "question": "E01 · In welchen Werken, Produkttypen, Lieferunternehmen und Märkten konzentrieren sich die OTIF-Abweichungen?",
+      "widgets": [
+        {
+          "id": "widget:5gz44yc9ep",
+          "type": "kpi",
+          "title": "OTIF",
+          "width": "half",
+          "metric": "otifRate"
+        },
+        {
+          "id": "widget:1ff0t99lo6",
+          "type": "kpi",
+          "title": "Vertragsstrafe (Modell)",
+          "width": "half",
+          "metric": "totalPenaltyEur"
+        },
+        {
+          "id": "widget:y0pn9qbl21",
+          "type": "kpi",
+          "title": "Aufträge",
+          "width": "half",
+          "metric": "orders"
+        },
+        {
+          "id": "widget:5bsb0p3qfv",
+          "type": "heatmap",
+          "title": "Werk × Produkttyp: OTIF-Heatmap",
+          "width": "full",
+          "dimension": "factory",
+          "compareDimension": "product_type",
+          "metric": "otifRate"
+        },
+        {
+          "id": "widget:2iu0pmz889",
+          "type": "pareto",
+          "title": "Strafkosten-Pareto nach Werk",
+          "width": "full",
+          "dimension": "factory",
+          "metric": "totalPenaltyEur"
+        },
+        {
+          "id": "widget:wtddvwoj24",
+          "type": "stacked100",
+          "title": "Fehlerklassen je Werk",
+          "width": "full",
+          "dimension": "factory"
+        },
+        {
+          "id": "widget:eltr3x4lg3",
+          "type": "scatter",
+          "title": "Auftragsvolumen × OTIF × Kosten",
+          "width": "full",
+          "dimension": "factory",
+          "metric": "otifRate"
+        }
+      ]
+    },
+    "e01:factory": {
+      "question": "E01.1 · Welches Werk hat die größte OTIF-Lücke und den höchsten wirtschaftlichen Hebel?",
+      "widgets": [
+        {
+          "id": "widget:jarmzdoll6",
+          "type": "kpi",
+          "title": "OTIF",
+          "width": "half",
+          "metric": "otifRate"
+        },
+        {
+          "id": "widget:3cjfobjv80",
+          "type": "kpi",
+          "title": "Strafkosten",
+          "width": "half",
+          "metric": "totalPenaltyEur"
+        },
+        {
+          "id": "widget:ihog3spkgu",
+          "type": "bar_vertical",
+          "title": "OTIF-Rate je Werk",
+          "width": "full",
+          "dimension": "factory",
+          "metric": "otifRate"
+        },
+        {
+          "id": "widget:znhhb0wzrn",
+          "type": "pareto",
+          "title": "Strafkosten nach Werk",
+          "width": "full",
+          "dimension": "factory"
+        },
+        {
+          "id": "widget:65iusp712i",
+          "type": "stacked100",
+          "title": "OTIF-Fehlerklassen je Werk",
+          "width": "full",
+          "dimension": "factory"
+        }
+      ]
+    },
+    "e01:product": {
+      "question": "E01.2 · Unterscheiden sich Crates und Pallets bei OTIF, Mengentreue und Strafkosten?",
+      "widgets": [
+        {
+          "id": "widget:7o9jlrmurg",
+          "type": "kpi",
+          "title": "OTIF",
+          "width": "half",
+          "metric": "otifRate"
+        },
+        {
+          "id": "widget:h3ilnusgyg",
+          "type": "kpi",
+          "title": "Mengentreue",
+          "width": "half",
+          "metric": "volumeConformanceRate"
+        },
+        {
+          "id": "widget:5jzbrn3a5c",
+          "type": "stacked100",
+          "title": "OTIF-Klassen nach Produkttyp",
+          "width": "full",
+          "dimension": "product_type"
+        },
+        {
+          "id": "widget:0pvdmr92vl",
+          "type": "bar_vertical",
+          "title": "Strafkosten je Produkttyp",
+          "width": "full",
+          "dimension": "product_type",
+          "metric": "totalPenaltyEur"
+        },
+        {
+          "id": "widget:lzd4hhoofo",
+          "type": "heatmap",
+          "title": "Produkt × Werk",
+          "width": "full",
+          "dimension": "product_type",
+          "compareDimension": "factory"
+        }
+      ]
+    },
+    "e01:carrier": {
+      "question": "E01.3 · Wie verteilen sich Lieferverzug, OTIF und Kosten auf die Lieferunternehmen?",
+      "widgets": [
+        {
+          "id": "widget:qgscksnilw",
+          "type": "kpi",
+          "title": "On-Time Delivery",
+          "width": "half",
+          "metric": "onTimeRate"
+        },
+        {
+          "id": "widget:hvzmg5sehe",
+          "type": "kpi",
+          "title": "Verspätete Aufträge",
+          "width": "half",
+          "metric": "lateOrders"
+        },
+        {
+          "id": "widget:ge1jg6miwn",
+          "type": "bar_horizontal",
+          "title": "OTIF je Lieferunternehmen",
+          "width": "full",
+          "dimension": "delivery_company",
+          "metric": "otifRate"
+        },
+        {
+          "id": "widget:hgdvewnlvb",
+          "type": "pareto",
+          "title": "Strafkosten nach Lieferunternehmen",
+          "width": "full",
+          "dimension": "delivery_company"
+        }
+      ]
+    },
+    "e01:market": {
+      "question": "E01.4 · In welchen Kundenmärkten und Ländern treten Auffälligkeiten auf?",
+      "widgets": [
+        {
+          "id": "widget:848ehaht0p",
+          "type": "kpi",
+          "title": "OTIF",
+          "width": "half",
+          "metric": "otifRate"
+        },
+        {
+          "id": "widget:d9snh3wza8",
+          "type": "kpi",
+          "title": "Strafkosten",
+          "width": "half",
+          "metric": "totalPenaltyEur"
+        },
+        {
+          "id": "widget:l96z9g43ur",
+          "type": "heatmap",
+          "title": "Markt × Produkttyp",
+          "width": "full",
+          "dimension": "cust_market",
+          "compareDimension": "product_type"
+        },
+        {
+          "id": "widget:y6jgjjoe9d",
+          "type": "bar_horizontal",
+          "title": "OTIF je Kundenmarkt",
+          "width": "full",
+          "dimension": "cust_market",
+          "metric": "otifRate"
+        }
+      ]
+    },
+    "e01:matrix": {
+      "question": "E01.5 · Welche Kombination aus Werk und Produkttyp ist wirtschaftlich prioritär?",
+      "widgets": [
+        {
+          "id": "widget:kbydjrlmrj",
+          "type": "heatmap",
+          "title": "Werk × Produkttyp",
+          "width": "full",
+          "dimension": "factory",
+          "compareDimension": "product_type"
+        },
+        {
+          "id": "widget:r4ug6bob1v",
+          "type": "pareto",
+          "title": "Strafkostenanteile je Werk",
+          "width": "full",
+          "dimension": "factory"
+        },
+        {
+          "id": "widget:0uvt1mg629",
+          "type": "stacked100",
+          "title": "OTIF-Klassen je Produkttyp",
+          "width": "full",
+          "dimension": "product_type"
+        },
+        {
+          "id": "widget:q7rmz3s1qj",
+          "type": "text",
+          "title": "Filterprinzip",
+          "width": "full",
+          "text": "Die Heatmap vergleicht Segmente, ohne sie bereits zu filtern. Konkrete UND-Filter entstehen erst durch die verbundenen Fokus-Knoten Werk = Essen bzw. Aachen und Produkttyp = Crates."
+        }
+      ]
+    },
+    "e01:essen": {
+      "question": "Welche Lieferperformance und Kosten entstehen im Segment Essen?",
+      "widgets": [
+        {
+          "id": "widget:7q13faaxnl",
+          "type": "kpi",
+          "title": "OTIF",
+          "width": "half",
+          "metric": "otifRate"
+        },
+        {
+          "id": "widget:bpz882jp3z",
+          "type": "kpi",
+          "title": "Aufträge",
+          "width": "half",
+          "metric": "orders"
+        },
+        {
+          "id": "widget:59xelaym9z",
+          "type": "kpi",
+          "title": "Modellierte Strafkosten",
+          "width": "half",
+          "metric": "totalPenaltyEur"
+        },
+        {
+          "id": "widget:sfy5d4tbt6",
+          "type": "stacked100",
+          "title": "OTIF-Fehlerklassen",
+          "width": "full",
+          "dimension": "product_type"
+        },
+        {
+          "id": "widget:8jiri1biwa",
+          "type": "histogram",
+          "title": "Mengenänderungen",
+          "width": "full",
+          "distributionMeasure": "quantity_change_count"
+        }
+      ]
+    },
+    "e01:aachen": {
+      "question": "Welche Lieferperformance und Kosten entstehen im Segment Aachen?",
+      "widgets": [
+        {
+          "id": "widget:cim1atwr00",
+          "type": "kpi",
+          "title": "OTIF",
+          "width": "half",
+          "metric": "otifRate"
+        },
+        {
+          "id": "widget:jtow3kh9vl",
+          "type": "kpi",
+          "title": "Aufträge",
+          "width": "half",
+          "metric": "orders"
+        },
+        {
+          "id": "widget:3cb20ol4v7",
+          "type": "kpi",
+          "title": "Modellierte Strafkosten",
+          "width": "half",
+          "metric": "totalPenaltyEur"
+        },
+        {
+          "id": "widget:5yk8vpveot",
+          "type": "stacked100",
+          "title": "OTIF-Fehlerklassen",
+          "width": "full",
+          "dimension": "product_type"
+        },
+        {
+          "id": "widget:vvkciwedm9",
+          "type": "histogram",
+          "title": "Mengenänderungen",
+          "width": "full",
+          "distributionMeasure": "quantity_change_count"
+        }
+      ]
+    },
+    "e01:crates": {
+      "question": "Welche Lieferperformance und Kosten entstehen im Segment Crates?",
+      "widgets": [
+        {
+          "id": "widget:h2rpgzhg93",
+          "type": "kpi",
+          "title": "OTIF",
+          "width": "half",
+          "metric": "otifRate"
+        },
+        {
+          "id": "widget:1gae9xu4la",
+          "type": "kpi",
+          "title": "Aufträge",
+          "width": "half",
+          "metric": "orders"
+        },
+        {
+          "id": "widget:9g6cgk4fwh",
+          "type": "kpi",
+          "title": "Modellierte Strafkosten",
+          "width": "half",
+          "metric": "totalPenaltyEur"
+        },
+        {
+          "id": "widget:fxnutfsyrr",
+          "type": "stacked100",
+          "title": "OTIF-Fehlerklassen",
+          "width": "full",
+          "dimension": "factory"
+        },
+        {
+          "id": "widget:4jvfphw498",
+          "type": "histogram",
+          "title": "Mengenänderungen",
+          "width": "full",
+          "distributionMeasure": "quantity_change_count"
+        }
+      ]
+    },
+    "e01:focus-essen": {
+      "question": "Wie stark ist das Kombinationssegment Essen × Crates von Lieferproblemen und Vertragsstrafen betroffen?",
+      "widgets": [
+        {
+          "id": "widget:1l3l8agy4w",
+          "type": "kpi",
+          "title": "OTIF",
+          "width": "half",
+          "metric": "otifRate"
+        },
+        {
+          "id": "widget:ziyhu6jyzo",
+          "type": "kpi",
+          "title": "Aufträge",
+          "width": "half",
+          "metric": "orders"
+        },
+        {
+          "id": "widget:5bekk8klui",
+          "type": "kpi",
+          "title": "Vertragsstrafe (Modell)",
+          "width": "half",
+          "metric": "totalPenaltyEur"
+        },
+        {
+          "id": "widget:4gqge2rk69",
+          "type": "kpi",
+          "title": "Verspätete Aufträge",
+          "width": "half",
+          "metric": "lateOrders"
+        },
+        {
+          "id": "widget:te6j2yb4a6",
+          "type": "waterfall",
+          "title": "Strafkosten im Fokussegment",
+          "width": "full"
+        },
+        {
+          "id": "widget:v67yrkbr0v",
+          "type": "histogram",
+          "title": "Mengenänderungen im Fokussegment",
+          "width": "full",
+          "distributionMeasure": "quantity_change_count"
+        },
+        {
+          "id": "widget:l4gu2w0b14",
+          "type": "text",
+          "title": "Filterabstammung",
+          "width": "full",
+          "text": "Dieser Knoten erbt den Werksfilter und den Produkttypfilter über zwei eingehende Pfeile. Beide gelten mit UND. Parallelsegmente bleiben davon unabhängig."
+        }
+      ]
+    },
+    "e01:focus-aachen": {
+      "question": "Wie stark ist das Kombinationssegment Aachen × Crates von Lieferproblemen und Vertragsstrafen betroffen?",
+      "widgets": [
+        {
+          "id": "widget:kd499eoyem",
+          "type": "kpi",
+          "title": "OTIF",
+          "width": "half",
+          "metric": "otifRate"
+        },
+        {
+          "id": "widget:c20sy62qij",
+          "type": "kpi",
+          "title": "Aufträge",
+          "width": "half",
+          "metric": "orders"
+        },
+        {
+          "id": "widget:ctamrce6ne",
+          "type": "kpi",
+          "title": "Vertragsstrafe (Modell)",
+          "width": "half",
+          "metric": "totalPenaltyEur"
+        },
+        {
+          "id": "widget:5i8cm2zgs8",
+          "type": "kpi",
+          "title": "Verspätete Aufträge",
+          "width": "half",
+          "metric": "lateOrders"
+        },
+        {
+          "id": "widget:7p7inbq5z1",
+          "type": "waterfall",
+          "title": "Strafkosten im Fokussegment",
+          "width": "full"
+        },
+        {
+          "id": "widget:bnhylenz25",
+          "type": "histogram",
+          "title": "Mengenänderungen im Fokussegment",
+          "width": "full",
+          "distributionMeasure": "quantity_change_count"
+        },
+        {
+          "id": "widget:e3821yse5d",
+          "type": "text",
+          "title": "Filterabstammung",
+          "width": "full",
+          "text": "Dieser Knoten erbt den Werksfilter und den Produkttypfilter über zwei eingehende Pfeile. Beide gelten mit UND. Parallelsegmente bleiben davon unabhängig."
+        }
+      ]
+    },
+    "e02:overview": {
+      "question": "E02 · Welche Prozessintervalle fallen auf und wie unterscheiden sich OTIF- und Nicht-OTIF-Fälle?",
+      "widgets": [
+        {
+          "id": "widget:3cobu1g3sh",
+          "type": "kpi",
+          "title": "Aufträge",
+          "width": "half",
+          "metric": "orders"
+        },
+        {
+          "id": "widget:uv65zjarmt",
+          "type": "kpi",
+          "title": "OTIF",
+          "width": "half",
+          "metric": "otifRate"
+        },
+        {
+          "id": "widget:xtcxyzoncf",
+          "type": "e02_overview",
+          "title": "Fünf Prozessintervalle · Median und P90",
+          "width": "full"
+        },
+        {
+          "id": "widget:6f7tav1pal",
+          "type": "e02_compare",
+          "title": "OTIF vs. Nicht-OTIF: Prozesszeiten",
+          "width": "full"
+        },
+        {
+          "id": "widget:3pdjtuifjy",
+          "type": "e02_quality",
+          "title": "Datenabdeckung und ungültige Zeitintervalle",
+          "width": "full"
+        },
+        {
+          "id": "widget:1vwutx69t8",
+          "type": "e02_distribution",
+          "title": "Verteilung Auftrag → tatsächliche Lieferung",
+          "width": "full",
+          "intervalKey": "order_to_delivery"
+        },
+        {
+          "id": "widget:l29lr37azs",
+          "type": "text",
+          "title": "Methodik",
+          "width": "full",
+          "text": "Die Zeitintervalle werden pro Case-Key aus Prozessereignissen berechnet. Median und P90 schließen negative oder fehlende Differenzen aus. Für die tatsächliche Lieferung gilt ausschließlich woodcorp_cases.delivered_date. Die Intervalle sind nicht einfach addierbar."
+        }
+      ]
+    },
+    "e02:focus-essen": {
+      "question": "E02 · Welche Prozessschritte tragen im Segment Essen × Crates zur beobachteten OTIF-Abweichung bei?",
+      "widgets": [
+        {
+          "id": "widget:ug3ddjcv8t",
+          "type": "kpi",
+          "title": "Aufträge",
+          "width": "half",
+          "metric": "orders"
+        },
+        {
+          "id": "widget:vxrsn73exk",
+          "type": "kpi",
+          "title": "OTIF",
+          "width": "half",
+          "metric": "otifRate"
+        },
+        {
+          "id": "widget:2yhwcybgj0",
+          "type": "e02_overview",
+          "title": "Fünf Prozessintervalle · Median und P90",
+          "width": "full"
+        },
+        {
+          "id": "widget:b3ad0d2c6w",
+          "type": "e02_compare",
+          "title": "OTIF vs. Nicht-OTIF: Prozesszeiten",
+          "width": "full"
+        },
+        {
+          "id": "widget:n6hezyr89z",
+          "type": "e02_quality",
+          "title": "Datenabdeckung und ungültige Zeitintervalle",
+          "width": "full"
+        },
+        {
+          "id": "widget:926y1penwb",
+          "type": "e02_distribution",
+          "title": "Verteilung Auftrag → tatsächliche Lieferung",
+          "width": "full",
+          "intervalKey": "order_to_delivery"
+        },
+        {
+          "id": "widget:23ndeims31",
+          "type": "text",
+          "title": "Methodik",
+          "width": "full",
+          "text": "Die Zeitintervalle werden pro Case-Key aus Prozessereignissen berechnet. Median und P90 schließen negative oder fehlende Differenzen aus. Für die tatsächliche Lieferung gilt ausschließlich woodcorp_cases.delivered_date. Die Intervalle sind nicht einfach addierbar."
+        }
+      ]
+    },
+    "e02:focus-aachen": {
+      "question": "E02 · Welche Prozessschritte fallen im Segment Aachen × Crates auf?",
+      "widgets": [
+        {
+          "id": "widget:hghcwkr59b",
+          "type": "kpi",
+          "title": "Aufträge",
+          "width": "half",
+          "metric": "orders"
+        },
+        {
+          "id": "widget:ax524ytin5",
+          "type": "kpi",
+          "title": "OTIF",
+          "width": "half",
+          "metric": "otifRate"
+        },
+        {
+          "id": "widget:zlkuzwl7q5",
+          "type": "e02_overview",
+          "title": "Fünf Prozessintervalle · Median und P90",
+          "width": "full"
+        },
+        {
+          "id": "widget:awn0x6nh0x",
+          "type": "e02_compare",
+          "title": "OTIF vs. Nicht-OTIF: Prozesszeiten",
+          "width": "full"
+        },
+        {
+          "id": "widget:fy6976b0qc",
+          "type": "e02_quality",
+          "title": "Datenabdeckung und ungültige Zeitintervalle",
+          "width": "full"
+        },
+        {
+          "id": "widget:kvaai5bmn1",
+          "type": "e02_distribution",
+          "title": "Verteilung Auftrag → tatsächliche Lieferung",
+          "width": "full",
+          "intervalKey": "order_to_delivery"
+        },
+        {
+          "id": "widget:pbuh4wt00k",
+          "type": "text",
+          "title": "Methodik",
+          "width": "full",
+          "text": "Die Zeitintervalle werden pro Case-Key aus Prozessereignissen berechnet. Median und P90 schließen negative oder fehlende Differenzen aus. Für die tatsächliche Lieferung gilt ausschließlich woodcorp_cases.delivered_date. Die Intervalle sind nicht einfach addierbar."
+        }
+      ]
+    },
+    "e02:quality": {
+      "question": "E02 · Wie belastbar sind die Zeitstempel und welche Prozessintervalle bleiben valide?",
+      "widgets": [
+        {
+          "id": "widget:9i8x1125iw",
+          "type": "e02_quality",
+          "title": "Gültigkeit und negative Zeitdifferenzen",
+          "width": "full"
+        },
+        {
+          "id": "widget:9bgi0qlxhk",
+          "type": "e02_overview",
+          "title": "Median und P90 nur über gültige Intervalle",
+          "width": "full"
+        },
+        {
+          "id": "widget:s2ckgv9lzv",
+          "type": "e02_distribution",
+          "title": "Transit Time einschließlich ungültiger Fälle",
+          "width": "full",
+          "intervalKey": "shipment_to_delivery"
+        },
+        {
+          "id": "widget:q9fiun72eb",
+          "type": "text",
+          "title": "Kritischer Datenbefund",
+          "width": "full",
+          "text": "Das Event Goods delivered entspricht in WoodCorp häufig dem zugesagten statt dem tatsächlichen Liefertermin. Deshalb verwendet E02 für Transit Time und Gesamtdurchlaufzeit nur DELIVERED_DATE. Negative Differenzen werden als Datenqualität ausgewiesen."
+        }
+      ]
+    },
+    "e02:interval:order_to_production": {
+      "question": "E02 · Auftrag → Produktionsstart – wie groß sind Median, P90, gültige Fälle und OTIF-Unterschiede?",
+      "widgets": [
+        {
+          "id": "widget:0founotdfi",
+          "type": "e02_distribution",
+          "title": "Verteilung Auftrag → Produktionsstart",
+          "width": "full",
+          "intervalKey": "order_to_production"
+        },
+        {
+          "id": "widget:ufo6al79rb",
+          "type": "e02_compare",
+          "title": "OTIF- und Nicht-OTIF-Prozessmediane",
+          "width": "full"
+        },
+        {
+          "id": "widget:gzp3oe3fi8",
+          "type": "e02_quality",
+          "title": "Zeitstempelabdeckung und negative Werte",
+          "width": "full"
+        },
+        {
+          "id": "widget:13kpnbica2",
+          "type": "e02_overview",
+          "title": "Vergleich mit den fünf Prozessintervallen",
+          "width": "full"
+        }
+      ]
+    },
+    "e02:interval:production_duration": {
+      "question": "E02 · Produktionsstart → Produktionsende – wie groß sind Median, P90, gültige Fälle und OTIF-Unterschiede?",
+      "widgets": [
+        {
+          "id": "widget:typs6b4p77",
+          "type": "e02_distribution",
+          "title": "Verteilung Produktionsstart → Produktionsende",
+          "width": "full",
+          "intervalKey": "production_duration"
+        },
+        {
+          "id": "widget:sz9lsjhapj",
+          "type": "e02_compare",
+          "title": "OTIF- und Nicht-OTIF-Prozessmediane",
+          "width": "full"
+        },
+        {
+          "id": "widget:xqt61wa39i",
+          "type": "e02_quality",
+          "title": "Zeitstempelabdeckung und negative Werte",
+          "width": "full"
+        },
+        {
+          "id": "widget:wp5zx3e8v1",
+          "type": "e02_overview",
+          "title": "Vergleich mit den fünf Prozessintervallen",
+          "width": "full"
+        }
+      ]
+    },
+    "e02:interval:production_to_shipment": {
+      "question": "E02 · Produktionsende → Verladung – wie groß sind Median, P90, gültige Fälle und OTIF-Unterschiede?",
+      "widgets": [
+        {
+          "id": "widget:bosnkq7to8",
+          "type": "e02_distribution",
+          "title": "Verteilung Produktionsende → Verladung",
+          "width": "full",
+          "intervalKey": "production_to_shipment"
+        },
+        {
+          "id": "widget:iq3lc19txx",
+          "type": "e02_compare",
+          "title": "OTIF- und Nicht-OTIF-Prozessmediane",
+          "width": "full"
+        },
+        {
+          "id": "widget:lw3gsue086",
+          "type": "e02_quality",
+          "title": "Zeitstempelabdeckung und negative Werte",
+          "width": "full"
+        },
+        {
+          "id": "widget:xbdoqlg7ct",
+          "type": "e02_overview",
+          "title": "Vergleich mit den fünf Prozessintervallen",
+          "width": "full"
+        }
+      ]
+    },
+    "e02:interval:shipment_to_delivery": {
+      "question": "E02 · Verladung → tatsächliche Lieferung – wie groß sind Median, P90, gültige Fälle und OTIF-Unterschiede?",
+      "widgets": [
+        {
+          "id": "widget:dhfcb7sntg",
+          "type": "e02_distribution",
+          "title": "Verteilung Verladung → tatsächliche Lieferung",
+          "width": "full",
+          "intervalKey": "shipment_to_delivery"
+        },
+        {
+          "id": "widget:ug1r94znv9",
+          "type": "e02_compare",
+          "title": "OTIF- und Nicht-OTIF-Prozessmediane",
+          "width": "full"
+        },
+        {
+          "id": "widget:81ck5mq35r",
+          "type": "e02_quality",
+          "title": "Zeitstempelabdeckung und negative Werte",
+          "width": "full"
+        },
+        {
+          "id": "widget:hjlhm3ep3k",
+          "type": "e02_overview",
+          "title": "Vergleich mit den fünf Prozessintervallen",
+          "width": "full"
+        }
+      ]
+    },
+    "e02:interval:order_to_delivery": {
+      "question": "E02 · Auftrag → tatsächliche Lieferung – wie groß sind Median, P90, gültige Fälle und OTIF-Unterschiede?",
+      "widgets": [
+        {
+          "id": "widget:86o0d9tfjj",
+          "type": "e02_distribution",
+          "title": "Verteilung Auftrag → tatsächliche Lieferung",
+          "width": "full",
+          "intervalKey": "order_to_delivery"
+        },
+        {
+          "id": "widget:ralmkogbui",
+          "type": "e02_compare",
+          "title": "OTIF- und Nicht-OTIF-Prozessmediane",
+          "width": "full"
+        },
+        {
+          "id": "widget:rb94rl22kk",
+          "type": "e02_quality",
+          "title": "Zeitstempelabdeckung und negative Werte",
+          "width": "full"
+        },
+        {
+          "id": "widget:nhggd9azzi",
+          "type": "e02_overview",
+          "title": "Vergleich mit den fünf Prozessintervallen",
+          "width": "full"
+        }
+      ]
+    }
+  },
+  "metricNames": {}
+}
