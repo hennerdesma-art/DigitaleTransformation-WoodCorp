@@ -1,9 +1,9 @@
 import React,{useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {ReactFlowProvider,useEdgesState,useNodesState,useReactFlow,type Connection,type EdgeChange,type NodeChange,type Viewport} from '@xyflow/react';
 import {FIELD_LABELS,FIELDS,PROJECT,FILTER_KIND,OTIF_STATUS_LABELS,type FieldKey} from './config';
-import {analysisApi,memberApi,supabase} from './lib/supabase';
+import {analysisApi,memberApi,supabase,clearAnalyticsCache} from './lib/supabase';
 import {effectiveFilters,labels,makeFilter,toBackend,validateFilters,formatFilter,traceFilters} from './core/filters';
-import {ROOT_ID,rootAnalysis,createInitialGraph,splitGraph,nodeFor,referenceEdge,isValidReference,cleanDraft,serializeDraft,restoreDraft,type NNode,type NEdge} from './core/graph';
+import {ROOT_ID,rootAnalysis,createInitialGraph,createBlankWorkspaceGraph,splitGraph,nodeFor,referenceEdge,isValidReference,cleanDraft,serializeDraft,restoreDraft,type NNode,type NEdge} from './core/graph';
 import type {Filter,Role,Ribbon,Metrics,TrendRow,BreakdownRow,PaletteType,DashboardData,SavedDraft,AnalysisNode} from './core/types';
 import {CanvasWithFlow} from './components/GraphCanvas';
 import Icon from './components/Icon';
@@ -193,10 +193,28 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
  const connect=useCallback((c:Connection)=>{if(!editMode||!canModify||!c.source||!c.target)return;if(!isValidReference(c.source,c.target,edges,nodes)){say('Verbindung ungültig, bereits vorhanden oder führt zu einem Filterkreis.');return;}
   remember();setEdges(e=>[...e,referenceEdge(c.source!,c.target!)]);say('Filterfluss verbunden: Alle Filter des Ursprungsknotens gelten nun auch im Ziel und dessen Nachfolgern.');},[edges,nodes,editMode,canModify,remember,setEdges,say]);
  const buildDocument=()=>makeDocument(serializeDraft(nodes,edges,locals,viewportRef.current),globals,dashboards,metricNames);
- const createWorkspace=async(title:string)=>{if(!isEditing(role))return;setSaving(true);try{
-   const document=buildDocument();const ws=await workspacesApi.create(userId,document,title);
-   localStorage.setItem(localKey,JSON.stringify(document.graph));setActiveWorkspace(ws);setWorkspaces(prev=>[ws,...prev]);setDirty(false);say('Privater Workspace in Supabase erstellt');
-  }catch(e){say(e instanceof Error?e.message:'Workspace konnte nicht erstellt werden')}finally{setSaving(false)}};
+ const createWorkspace=async(title:string):Promise<boolean>=>{
+  if(!isEditing(role))return false;
+  if(dirty&&!confirm('Aktuelle Änderungen sind noch nicht gespeichert. Wirklich einen neuen, leeren Workspace öffnen?'))return false;
+  setSaving(true);
+  try{
+   const base=createBlankWorkspaceGraph();
+   const viewport={x:0,y:0,zoom:1};
+   const document=makeDocument(serializeDraft(base.nodes,base.edges,{},viewport),[],{},{});
+   const ws=await workspacesApi.create(userId,document,title);
+   setNodes(base.nodes);setEdges([]);setGlobals([]);setLocals({});
+   setDashboards({});setMetricNames({});defaultDashboardRef.current={};
+   setSelectedId(base.nodes[0].id);setSelectedTab('Übersicht');
+   viewportRef.current=viewport;
+   setActiveWorkspace(ws);setWorkspaces(prev=>[ws,...prev]);
+   localStorage.setItem(localKey,JSON.stringify(document.graph));
+   initializedRef.current=true;setLoaded(true);setDirty(false);
+   window.setTimeout(()=>void flow.fitView({duration:280,padding:.45}),80);
+   say('Neuer privater Workspace: ein unkonfigurierter Ausgangsknoten, keine Unterpunkte.');
+   return true;
+  }catch(e){say(e instanceof Error?e.message:'Workspace konnte nicht erstellt werden');return false;}
+  finally{setSaving(false)}
+ };
  const saveDraft=async()=>{if(!canModify){say('Keine Berechtigung zum Speichern dieses Workspaces');return;}setSaving(true);
   try{const document=buildDocument();localStorage.setItem(localKey,JSON.stringify(document.graph));
    if(!activeWorkspace){const ws=await workspacesApi.create(userId,document,'Meine Analyse');setActiveWorkspace(ws);setWorkspaces(prev=>[ws,...prev]);}
@@ -218,9 +236,27 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
   if(publishing&&!confirm('Diesen Workspace für alle Mitglieder des NXT Analytics-Projekts sichtbar machen?'))return;
   setSaving(true);try{const saved=await workspacesApi.updateMetadata(activeWorkspace,publishing?{status:'published',visibility:'team'}:{status:'draft',visibility:'private'});setActiveWorkspace(saved);setWorkspaces(prev=>prev.map(w=>w.id===saved.id?saved:w));say(publishing?'Workspace für das Team veröffentlicht':'Workspace wieder privat gestellt');}catch(e){say(e instanceof Error?e.message:'Freigabe fehlgeschlagen')}finally{setSaving(false)}
  };
- const removeWorkspace=async()=>{if(!activeWorkspace||!canModify)return;
-  if(!confirm('Workspace unwiderruflich aus Supabase löschen? Die WoodCorp-Rohdaten bleiben unverändert.'))return;
-  try{await workspacesApi.remove(activeWorkspace.id);setWorkspaces(prev=>prev.filter(w=>w.id!==activeWorkspace.id));setActiveWorkspace(null);setDirty(false);say('Workspace entfernt')}catch(e){say(e instanceof Error?e.message:'Löschen fehlgeschlagen')}
+ const deleteWorkspace=async(id:string):Promise<void>=>{
+  const ws=workspaces.find(x=>x.id===id);
+  if(!ws||!(isEditing(role)&&(ws.owner_id===userId||role==='admin')))throw Error('Keine Löschberechtigung.');
+  setSaving(true);
+  try{
+   await workspacesApi.remove(id,ws.revision);
+   setWorkspaces(prev=>prev.filter(w=>w.id!==id));
+   if(activeWorkspace?.id===id){
+    const base=createBlankWorkspaceGraph();
+    setActiveWorkspace(null);setNodes(base.nodes);setEdges([]);setGlobals([]);
+    setLocals({});setDashboards({});setMetricNames({});defaultDashboardRef.current={};
+    setSelectedId(base.nodes[0].id);setDirty(false);setLoaded(true);
+    localStorage.removeItem(localKey);
+   }
+   say('Workspace "'+ws.title+'" wurde gelöscht. WoodCorp-Daten bleiben erhalten.');
+  }finally{setSaving(false)}
+ };
+ const removeWorkspace=async()=>{
+  if(!activeWorkspace||!canModify)return;
+  if(!confirm('Workspace "'+activeWorkspace.title+'" unwiderruflich löschen?'))return;
+  try{await deleteWorkspace(activeWorkspace.id)}catch(e){say(e instanceof Error?e.message:'Löschen fehlgeschlagen')}
  };
  const toggleCatalog=async(field:FieldKey,enabled:boolean)=>{
   if(role!=='admin')return;
@@ -365,7 +401,7 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
       <><div className={'workspace-row '+(!rightVisible?'no-detail':'')}><CanvasWithFlow {...modeActions}/>{rightVisible&&<DetailPanel node={selectedNode} detail={detail} tab={selectedTab} setTab={setSelectedTab} onClose={()=>setRightVisible(false)} onExpand={()=>setFullDashboard(true)} onRename={()=>setNameDialog('node')} onFilter={()=>setDialog({kind:'node',id:selectedId})} dashboard={currentDashboard} filters={effective()} fieldNames={fieldNames} filterTrace={traceFilters(globals,analysisNodes,locals,selectedId,topology.edges)} onExplain={metric=>setLogicContext({metric,nodeId:selectedId})} onEdit={()=>handleSetView('builder')} canEdit={canModify}/>}</div>
       {!rightVisible&&<button className="detail-reopen" onClick={()=>setRightVisible(true)}><Icon name="layers" size={17}/> Detaildashboard einblenden</button>}</>}
     <div className="bottom-disclaimer">Analyse-Ansicht · Datenbasis WoodCorp {PROJECT.years} · Das Referenzdesign enthält illustrative, nicht übernommene Beispielwerte. {isEditing(role)?'Private Entwürfe können in Supabase gespeichert und für das Team freigegeben werden.':''}</div>
-   </>:view==='workspaces'?<WorkspaceOverview items={workspaces} userId={userId} role={role} busy={saving} onOpen={id=>{void selectWorkspace(id).then(ok=>{if(ok)handleSetView('analytics')})}} onCreate={title=>{void createWorkspace(title).then(()=>handleSetView('analytics'))}} onRefresh={()=>void reloadWorkspaces()}/>:
+   </>:view==='workspaces'?<WorkspaceOverview items={workspaces} userId={userId} role={role} busy={saving} onOpen={id=>{void selectWorkspace(id).then(ok=>{if(ok)handleSetView('analytics')})}} onCreate={title=>{void createWorkspace(title).then(ok=>{if(ok)handleSetView('analytics')})}} onDelete={deleteWorkspace} onRefresh={()=>void reloadWorkspaces()}/>:
      view==='data'?<DataExplorer dimensions={dimensions}/>:
      view==='filters'?<FilterCatalogV4 rows={catalog} candidates={candidates} admin={role==='admin'} busy={catalogBusy} onRefresh={()=>{void reloadCatalog();void reloadCandidates()}} onToggle={(field,enabled)=>void toggleCatalog(field,enabled)} onRegister={addCatalogField} onRename={renameCatalogField}/>:view==='team'?<TeamPanel role={role}/>:<ProfilePage email={email} role={role}/>}
   </main>
