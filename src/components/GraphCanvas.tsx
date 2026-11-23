@@ -34,17 +34,14 @@ export const paletteEntries=[
  {label:'Textbaustein',icon:'type',type:'note' as PaletteType,enabled:true},
  {label:'Split-Knoten',icon:'split',type:'split' as PaletteType,enabled:true},
  {label:'Connector',icon:'link',type:'connector' as PaletteType,enabled:true},
- {label:'Container',icon:'square-dashed',type:'dashboard' as const,enabled:false},
  {label:'Tabelle',icon:'table-2',type:'dashboard' as const,enabled:false},
  {label:'Donut',icon:'chart-pie',type:'dashboard' as const,enabled:false},
- {label:'Heatmap',icon:'grid-3x3',type:'dashboard' as const,enabled:false},
- {label:'Bild / Logo',icon:'image',type:'dashboard' as const,enabled:false},
 ];
 function PaletteTile({item,onAdd,onUnsupported}:{item:typeof paletteEntries[number];onAdd:(type:PaletteType)=>void;onUnsupported:()=>void}){
  const {attributes,listeners,setNodeRef,transform,isDragging}=useDraggable({id:'palette:'+item.label,disabled:!item.enabled,data:{type:item.type}});
  const style:React.CSSProperties=transform?{transform:`translate(${transform.x}px,${transform.y}px)`,zIndex:isDragging?30:undefined,opacity:isDragging?.75:undefined}:{};
- return <button ref={setNodeRef} type="button" style={style} title={item.enabled?'Klicken oder in den Canvas ziehen':'Dashboard-Komponente wird in Phase 4 umgesetzt'} className={'palette-tile '+(!item.enabled?'planned':'')} onClick={()=>item.enabled?onAdd(item.type as PaletteType):onUnsupported()} {...(item.enabled?listeners:{})} {...(item.enabled?attributes:{})}>
- <Icon name={item.icon} size={21}/><span>{item.label}</span>{!item.enabled&&<small>Phase 4</small>}</button>;
+ return <button ref={setNodeRef} type="button" style={style} title={item.enabled?'Klicken oder in den Canvas ziehen':'Dashboard-Komponente im Dashboard Builder bearbeiten'} className={'palette-tile '+(!item.enabled?'planned':'')} onClick={()=>item.enabled?onAdd(item.type as PaletteType):onUnsupported()} {...(item.enabled?listeners:{})} {...(item.enabled?attributes:{})}>
+ <Icon name={item.icon} size={21}/><span>{item.label}</span>{!item.enabled&&<small>Dashboard</small>}</button>;
 }
 export function Palette({onAdd,onUnsupported,tab,setTab,enabled}:{onAdd:(type:PaletteType)=>void;onUnsupported:()=>void;tab:'builder'|'filter';setTab:(s:'builder'|'filter')=>void;enabled:boolean}){
  return <aside className="workspace-palette"><div className="palette-tabs"><button className={tab==='builder'?'active':''} onClick={()=>setTab('builder')}>Builder</button><button className={tab==='filter'?'active':''} onClick={()=>setTab('filter')}>Filter</button></div>
