@@ -4,6 +4,16 @@ Geschützte, interaktive **NXT Analytics**-Web-App für WoodCorp Order-to-Cash a
 
 **Webseite:** https://hennerdesma-art.github.io/DigitaleTransformation-WoodCorp/
 
+## Neuerungen: Workspace-Verzeichnis & Datenbrowser (v4)
+
+- **Workspaces**: Übersicht eigener privater, freigegebener Team- und (für Admins) anderer privater Workspaces. Zugriff weiterhin RLS-geschützt.
+- **Datenquellen**: Originaltabellen als durchsuchbare Listen mit Paging, Sortierung, Spaltenfilter und Seitenexport.
+- **Filterbibliothek**: Administratoren können geprüfte kategoriale Felder hinzufügen, aktivieren und umbenennen.
+- **KPI-/Knotennamen**: In der Analyse über **KPI-Titel** oder **Knotenname**, Widgets unter **Dashboard Builder → Eigenschaften → Überschrift**.
+- **Dashboard-Fullscreen**: Über **Dashboard öffnen**, Schließen und späteres Wiederöffnen möglich.
+
+Siehe [`docs/PHASE_6_NAV_DATA_FILTERS.md`](docs/PHASE_6_NAV_DATA_FILTERS.md) für Details, Grenzen und Sicherheit.
+
 ## Erste Schritte
 
 - Mit einem bereits freigegebenen Supabase-Auth-Konto anmelden.
