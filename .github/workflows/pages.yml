@@ -11,27 +11,36 @@ concurrency:
   group: pages
   cancel-in-progress: true
 jobs:
-  deploy:
+  test-and-deploy:
+    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Check JavaScript syntax
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Check graph and filter logic
+        run: npm run test
+      - name: Build React website
+        run: npm run build
+      - name: Verify static assets
         run: |
-          node --check js/config.js
-          node --check js/filters.js
-          node --check js/app.js
-      - name: Test filter inheritance
-        run: node --test tests/filter-engine.test.cjs
-      - name: Configure Pages
+          test -f dist/index.html
+          test -f dist/icons/sprite.svg
+          test -f dist/nxt-logo.png
+      - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
-      - name: Upload static NXT app
+      - name: Upload compiled website
         uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: dist/
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
