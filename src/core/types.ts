@@ -1,0 +1,10 @@
+import type {FieldKey} from '../config';
+export type Role='viewer'|'analyst'|'admin';export type Filter={id:string;field:FieldKey;op:'eq';value:string;scope?:'global'|'local'};export type NodeKind='root'|'segment'|'metric'|'note'|'condition';
+export type AnalysisNode={id:string;parentId:string|null;label:string;kind:NodeKind;predicate?:Filter;metricId?:'otd';createdBy:'system'|'user';splitBy?:FieldKey;description?:string};
+export type GraphNodeData={analysis:AnalysisNode;orders?:number|null;onTimeRate?:number|null;busy?:boolean;selected?:boolean;localCount?:number;editMode?:boolean;onFilter?:(id:string)=>void;onSplit?:(id:string)=>void;onRemove?:(id:string)=>void;[key:string]:unknown};
+export type Metrics={orders:number;onTimeRate:number|null;volumeConformanceRate:number|null;dateCoverage:number;firstDelivery?:string|null;lastDelivery?:string|null};
+export type Ribbon={orders:number;onTimeRate:number|null;lateOrders:number;avgDelayDays:number|null;affectedFactories:number;factories:number;deliveryDateCount:number};
+export type BreakdownRow={label:string|null;orders:number;on_time_rate:number|null;volume_rate:number|null};
+export type TrendRow={month:string;orders:number;on_time_rate:number|null};export type DashboardData={metrics:Metrics|null;trend:TrendRow[];breakdown:BreakdownRow[];pending:boolean;error:string|null};
+export type PaletteType='metric'|'note'|'condition'|'split'|'connector';
+export type SavedDraft={version:2;nodes:Array<{id:string;position:{x:number;y:number};analysis:AnalysisNode}>;edges:Array<{id:string;source:string;target:string;kind:'analytic'|'reference'}>;localFilters:Record<string,Filter[]>;viewport:{x:number;y:number;zoom:number};timestamp:string};
