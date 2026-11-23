@@ -9,7 +9,7 @@ import {CanvasWithFlow} from './components/GraphCanvas';
 import Icon from './components/Icon';
 import {Brand,Button,IconButton,Modal,Notice,Spinner,number,percent,decimal,SmallTrend} from './components/Ui';
 import AuthScreen from './components/AuthScreen';
-import {extractInviteToken,isInviteFragment} from './lib/invite';
+import {extractInviteTicket,isInviteFragment,type InvitationTicket} from './lib/invite';
 import {DashboardRenderer,DashboardBuilder} from './components/DashboardBuilder';
 import {WorkspaceControls,FilterCatalogPage} from './components/WorkspaceControls';
 import {standardDashboard,makeDocument,validDocument,metricValue,metricFormat,METRIC_LABELS,type MetricKey,type NodeDashboard} from './core/dashboard';
@@ -23,6 +23,7 @@ import './styles/v5.css';
 import './styles/v6.css';
 import './styles/v7.css';
 import './styles/v8.css';
+import './styles/v9.css';
 import {NodeSettings} from './components/NodeSettings';
 import {conflictingFields,filterSignature} from './core/filters';
 import {WorkspaceOverview} from './components/WorkspaceOverview';
@@ -139,23 +140,148 @@ function DetailPanel({node,detail,tab,setTab,onClose,onFilter,onExpand,onRename,
  {tab==='Vergleich'&&<div className="chart-box"><h3>Vergleich nach Lieferunternehmen</h3><div className="table-overflow"><table><thead><tr><th>Lieferunternehmen</th><th>Aufträge</th><th>On-Time</th></tr></thead><tbody>{detail.breakdown.map((r,i)=><tr key={r.label||i}><td>{r.label||'Ohne Angabe'}</td><td>{number(r.orders)}</td><td>{percent(r.on_time_rate)}</td></tr>)}</tbody></table></div></div>}
  <button className="detail-refine" onClick={onFilter}><Icon name="filter" size={17}/> Diesen Knoten filtern</button><p className="dashboard-foot">Datenquelle: Supabase · Case-basiert · Historische Daten {PROJECT.years}</p></div>}</aside>;
 }
+type TeamMember={
+ user_id:string;email?:string;display_name?:string;role:Role;
+ confirmed?:boolean;lastSignIn?:string;workspace_count?:number;
+};
 function TeamPanel({role}:{role:Role}){
- const [members,setMembers]=useState<Array<{user_id:string;email?:string;role:Role;confirmed?:boolean}>>([]);const [email,setEmail]=useState('');const [roleNew,setRoleNew]=useState<Role>('viewer');const [link,setLink]=useState('');const [success,setSuccess]=useState('');const [error,setError]=useState('');const [busy,setBusy]=useState(false);
- const getToken=async()=>{const r=await supabase.auth.getSession();return r.data.session?.access_token||''};
- const reload=useCallback(async()=>{try{const r=await memberApi({action:'list'},await getToken());setMembers(r.members||[]);}catch(e){setError(e instanceof Error?e.message:'Mitglieder konnten nicht geladen werden.')}},[]);
+ const [members,setMembers]=useState<TeamMember[]>([]);
+ const [name,setName]=useState(''),[email,setEmail]=useState('');
+ const [roleNew,setRoleNew]=useState<Role>('viewer');
+ const [link,setLink]=useState(''),[success,setSuccess]=useState(''),[error,setError]=useState('');
+ const [busy,setBusy]=useState(false),[renewing,setRenewing]=useState('');
+ const [ownId,setOwnId]=useState('');
+ const [deleteTarget,setDeleteTarget]=useState<TeamMember|null>(null);
+ const [deleteEmail,setDeleteEmail]=useState(''),[deleteError,setDeleteError]=useState('');
+ const [deleting,setDeleting]=useState(false);
+ const getToken=async()=>{
+  const {data,error}=await supabase.auth.getSession();
+  if(error||!data.session)throw Error('Deine Administrator-Sitzung ist abgelaufen. Bitte erneut anmelden.');
+  setOwnId(data.session.user.id);
+  return data.session.access_token;
+ };
+ const reload=useCallback(async()=>{
+  try{
+   const {data}=await supabase.auth.getSession();
+   if(!data.session)throw Error('Bitte erneut anmelden.');
+   setOwnId(data.session.user.id);
+   const r=await memberApi({action:'list'},data.session.access_token);
+   setMembers(r.members||[]);
+  }catch(e){setError(e instanceof Error?e.message:'Mitglieder konnten nicht geladen werden.')}
+ },[]);
  useEffect(()=>{if(role==='admin')void reload()},[role,reload]);
  if(role!=='admin')return <Notice kind="error">Administratorrechte erforderlich.</Notice>;
- const invite=async(e:React.FormEvent)=>{e.preventDefault();setBusy(true);setError('');setLink('');setSuccess('');try{const r=await memberApi({action:'invite',email,role:roleNew,delivery:'link'},await getToken());if(r.link){if(!r.link.startsWith('https://hennerdesma-art.github.io/DigitaleTransformation-WoodCorp/#nxt_invite='))throw Error('Server lieferte keinen gültigen NXT-Einladungslink.');setLink(r.link)}setSuccess(r.message||'Zugang bereitgestellt.');await reload();}catch(e){setError(e instanceof Error?e.message:'Einladung fehlgeschlagen.')}finally{setBusy(false)}};
- const changeRole=async(id:string,next:Role)=>{try{await memberApi({action:'role',userId:id,role:next},await getToken());await reload()}catch(e){setError(e instanceof Error?e.message:'Rolle konnte nicht geändert werden.')}};
- const remove=async(id:string)=>{if(!confirm('Zugriff dieses Mitglieds entfernen?'))return;try{await memberApi({action:'remove',userId:id},await getToken());await reload()}catch(e){setError(e instanceof Error?e.message:'Fehler bei der Entfernung.')}};
- return <section className="content-page"><h2>Team & Zugänge</h2><p className="muted">Einladung und Rollenverwaltung über die bestehende geschützte Supabase-Schnittstelle.</p>
- <div className="standard-card"><h3>Mitglied einladen</h3><form className="team-form" onSubmit={invite}><label className="field">E-Mail<input type="email" required value={email} onChange={e=>setEmail(e.target.value)}/></label><label className="field">Rolle<select value={roleNew} onChange={e=>setRoleNew(e.target.value as Role)}><option value="viewer">Viewer</option><option value="analyst">Analyst</option><option value="admin">Administrator</option></select></label><Button type="submit" disabled={busy} kind="primary" icon="plus">Einladen</Button></form>
- {success&&<Notice kind="success">{success}</Notice>}
- {link&&<div className="generated-link"><label>NXT-Webseitenlink · einmaliger Zugangscode<input readOnly value={link} onFocus={e=>e.target.select()}/></label>
- <Button icon="copy" onClick={()=>{void navigator.clipboard?.writeText(link)}}>NXT-Link kopieren</Button>
- <span className="invite-privacy">Nur an die eingeladene Person über einen sicheren Kanal senden. Der Code ist einmalig und verfällt nach der Supabase-Einladungsfrist. Die Zielperson legt das Passwort direkt auf der NXT-Webseite fest.</span></div>}
- {error&&<Notice kind="error">{error}</Notice>}</div>
- <div className="standard-card"><div className="card-heading"><h3>Mitglieder</h3><Button onClick={reload} icon="refresh-cw">Aktualisieren</Button></div><div className="table-overflow"><table><thead><tr><th>E-Mail</th><th>Status</th><th>Rolle</th><th>Aktion</th></tr></thead><tbody>{members.map(m=><tr key={m.user_id}><td>{m.email||m.user_id}</td><td>{m.confirmed?'Bestätigt':'Ausstehend'}</td><td><select value={m.role} onChange={e=>changeRole(m.user_id,e.target.value as Role)}><option value="viewer">Viewer</option><option value="analyst">Analyst</option><option value="admin">Admin</option></select></td><td><Button kind="danger" icon="trash-2" onClick={()=>remove(m.user_id)}>Entfernen</Button></td></tr>)}</tbody></table></div></div></section>;
+ const invite=async(e:React.FormEvent)=>{
+  e.preventDefault();if(busy)return;
+  if(name.trim().length<2){setError('Bitte einen vollständigen Namen eingeben.');return}
+  setBusy(true);setError('');setLink('');setSuccess('');
+  try{
+   const r=await memberApi({action:'invite',display_name:name.trim(),email:email.trim(),role:roleNew},await getToken());
+   if(!r.link?.startsWith('https://hennerdesma-art.github.io/DigitaleTransformation-WoodCorp/#nxt_invite='))
+    throw Error('Die Funktion lieferte keinen gültigen NXT-Zugangslink.');
+   setLink(r.link);setSuccess(r.message||'Einladung erstellt.');
+   setName('');setEmail('');
+   await reload();
+  }catch(e){setError(e instanceof Error?e.message:'Einladung fehlgeschlagen.')}
+  finally{setBusy(false)}
+ };
+ const changeRole=async(id:string,next:Role)=>{
+  if(id===ownId){setError('Eigene Administratorrolle kann hier nicht verändert werden.');return}
+  setBusy(true);setError('');
+  try{await memberApi({action:'role',userId:id,role:next},await getToken());await reload()}
+  catch(e){setError(e instanceof Error?e.message:'Rolle konnte nicht geändert werden.')}
+  finally{setBusy(false)}
+ };
+ const renew=async(m:TeamMember)=>{
+  if(busy||renewing||m.user_id===ownId)return;
+  setRenewing(m.user_id);setLink('');setError('');setSuccess('');
+  try{
+   const r=await memberApi({action:'renew',userId:m.user_id},await getToken());
+   if(!r.link?.startsWith('https://hennerdesma-art.github.io/DigitaleTransformation-WoodCorp/#nxt_invite='))
+    throw Error('Der Dienst hat keinen NXT-Einmallink erzeugt.');
+   setLink(r.link);setSuccess(r.message||'Ein neuer Einmallink wurde erzeugt.');
+   await reload();
+  }catch(e){setError(e instanceof Error?e.message:'Einladungslink konnte nicht erneuert werden.')}
+  finally{setRenewing('')}
+ };
+ const remove=async(e:React.FormEvent)=>{
+  e.preventDefault();if(!deleteTarget||deleting||deleteEmail.trim().toLowerCase()!==deleteTarget.email?.trim().toLowerCase())return;
+  setDeleting(true);setDeleteError('');setError('');
+  try{
+   const r=await memberApi({action:'remove',userId:deleteTarget.user_id,confirmEmail:deleteEmail.trim()},await getToken());
+   if(r.status!=='deleted')throw Error('Der Server hat keine vollständige Kontolöschung bestätigt.');
+   setSuccess(r.warning||r.message||'Teamzugang und Auth-Konto wurden gelöscht.');
+   setLink('');setDeleteTarget(null);setDeleteEmail('');
+   await reload();
+  }catch(e){setDeleteError(e instanceof Error?e.message:'Vollständige Kontolöschung fehlgeschlagen.')}
+  finally{setDeleting(false)}
+ };
+ const display=(m:TeamMember)=>m.display_name?.trim()||'Name nicht hinterlegt';
+ return <section className="content-page"><h2>Team & Zugänge</h2>
+  <p className="muted">Persönliche Einladungen mit Namen, Rolle und einmaligem Link zur NXT-Webseite. Bereits entfernte Personen erhalten niemals allein durch Eingabe ihrer E-Mail-Adresse erneut Zugriff.</p>
+  <div className="standard-card"><h3>Teammitglied einladen</h3>
+   <form className="team-form nxt-team-invite-form" onSubmit={invite}>
+    <label className="field">Vor- und Nachname
+     <input type="text" minLength={2} maxLength={100} autoComplete="name" required
+       value={name} onChange={e=>setName(e.target.value)} placeholder="Vorname Nachname"/>
+    </label>
+    <label className="field">E-Mail-Adresse
+     <input type="email" autoComplete="off" required value={email} onChange={e=>setEmail(e.target.value)}
+       placeholder="name@reutlingen-university.de"/>
+    </label>
+    <label className="field">Rolle
+     <select value={roleNew} onChange={e=>setRoleNew(e.target.value as Role)}>
+      <option value="viewer">Viewer</option><option value="analyst">Analyst</option><option value="admin">Administrator</option>
+     </select>
+    </label>
+    <Button type="submit" disabled={busy||!!renewing} kind="primary" icon="plus">{busy?'Erstelle Zugang …':'Einmaligen NXT-Link erstellen'}</Button>
+   </form>
+   {success&&<Notice kind="success">{success}</Notice>}
+   {link&&<div className="generated-link" role="status">
+    <label>Einmaliger NXT-Zugangslink<input readOnly value={link} onFocus={e=>e.target.select()} aria-label="Einmaligen NXT-Zugangslink auswählen"/></label>
+    <Button icon="copy" onClick={()=>{void navigator.clipboard?.writeText(link).catch(()=>setError('Automatisches Kopieren fehlgeschlagen. Bitte den Link manuell markieren und kopieren.'))}}>NXT-Link kopieren</Button>
+    <span className="invite-privacy">Nur über einen vertraulichen Kanal an die betreffende Person senden. Sie legt ihr Passwort direkt auf der NXT-Webseite fest. Ein abgelaufener oder bereits genutzter Link kann über die Mitgliederliste erneuert werden.</span>
+   </div>}
+   {error&&<Notice kind="error">{error}</Notice>}
+  </div>
+  <div className="standard-card">
+   <div className="card-heading"><h3>Mitglieder</h3><Button disabled={busy||deleting||!!renewing} onClick={()=>void reload()} icon="refresh-cw">Aktualisieren</Button></div>
+   <div className="table-overflow"><table className="nxt-team-member-table">
+    <thead><tr><th>Teammitglied</th><th>Status</th><th>Rolle</th><th>Aktionen</th></tr></thead>
+    <tbody>{members.map(m=><tr key={m.user_id}>
+     <td><div className="nxt-member-person"><strong>{display(m)}</strong><small>{m.email||'E-Mail nicht verfügbar'}</small></div></td>
+     <td><span className={'nxt-member-status '+(m.confirmed?'confirmed':'pending')}>{m.confirmed?'Bestätigt':'Einladung ausstehend'}</span></td>
+     <td><select value={m.role} disabled={busy||!!renewing||deleting||m.user_id===ownId}
+       aria-label={'Rolle von '+display(m)} onChange={e=>void changeRole(m.user_id,e.target.value as Role)}>
+       <option value="viewer">Viewer</option><option value="analyst">Analyst</option><option value="admin">Admin</option>
+      </select></td>
+     <td><div className="nxt-member-actions">
+       {m.user_id!==ownId&&<Button disabled={busy||deleting||!!renewing} icon="refresh-cw" onClick={()=>void renew(m)}>
+        {renewing===m.user_id?'Erstelle Link …':'Zugangslink erneuern'}</Button>}
+       {m.user_id!==ownId&&<Button kind="danger" disabled={busy||deleting||!!renewing||!m.email} icon="trash-2"
+        onClick={()=>{setDeleteTarget(m);setDeleteEmail('');setDeleteError('')}}>Endgültig löschen</Button>}
+       {m.user_id===ownId&&<span className="muted">Eigenes Konto</span>}
+      </div></td>
+    </tr>)}</tbody>
+   </table></div>
+  </div>
+  {deleteTarget&&<Modal title="Teamzugang endgültig löschen" onClose={()=>{if(!deleting)setDeleteTarget(null)}}>
+   <form className="nxt-team-delete-confirm" onSubmit={e=>void remove(e)}>
+    <p>Das Supabase-Auth-Konto von <strong>{display(deleteTarget)}</strong> wird dauerhaft entfernt – einschließlich seiner Projektberechtigung, aktiven Auth-Sitzungen, bisherigen Einladungen und <strong>{deleteTarget.workspace_count||0} eigenen Workspaces</strong>. Die WoodCorp-Rohdaten und die Workspaces anderer Mitglieder bleiben erhalten.</p>
+    <p>Ein späterer Zugang erfordert eine vollständig neue Einladung mit Name, E-Mail-Adresse und einmaligem Link.</p>
+    <label className="field">Zur Bestätigung die vollständige E-Mail-Adresse eingeben
+     <input autoFocus type="email" autoComplete="off" value={deleteEmail} onChange={e=>setDeleteEmail(e.target.value)}
+      placeholder={deleteTarget.email||'E-Mail-Adresse'} required/>
+    </label>
+    {deleteError&&<Notice kind="error">{deleteError}</Notice>}
+    <div className="modal-actions">
+     <Button disabled={deleting} onClick={()=>setDeleteTarget(null)}>Abbrechen</Button>
+     <Button kind="danger" type="submit" icon="trash-2" disabled={deleting||deleteEmail.trim().toLowerCase()!==deleteTarget.email?.trim().toLowerCase()}>
+      {deleting?'Lösche Konto …':'Auth-Konto vollständig löschen'}</Button>
+    </div>
+   </form>
+  </Modal>}
+ </section>;
 }
 function DataPage(){return <section className="content-page"><h2>Datenquellen</h2><p className="muted">Verifizierter Datenbestand des Projekts WoodCorp Process Intelligence</p><div className="data-grid"><div className="standard-card"><Icon name="database"/><h3>woodcorp_cases</h3><b>19.953</b><small>Aufträge · Schlüssel case_key</small></div><div className="standard-card"><Icon name="network"/><h3>woodcorp_activities</h3><b>210.135</b><small>Ereignisse · Referenz case_key</small></div><div className="standard-card"><Icon name="lock"/><h3>RLS & Auth</h3><b>Geschützt</b><small>Persönliche Projektberechtigung</small></div></div><Notice kind="warning">Datenqualität: Das historische Flag <code>order_date_met</code> weicht bei 9.618 Aufträgen vom Vergleich <code>delivered_date ≤ promised_date</code> ab. Die aktuelle On-Time-Kennzahl verwendet den Datumsvergleich.</Notice></section>}
 function FilterLibrary({dimensions,admin}:{dimensions:Record<string,string[]>;admin:boolean}){
@@ -503,56 +629,48 @@ export default function App(){
  const [state,setState]=useState<'loading'|'login'|'app'|'no-access'>('loading');
  const [authMode,setAuthMode]=useState<'login'|'invite'|'recovery'>('login');
  const [inviteError,setInviteError]=useState('');
+ const [inviteTicket,setInviteTicket]=useState<InvitationTicket|null>(null);
  const invitePending=useRef(false),booted=useRef(false);
  const [role,setRole]=useState<Role|null>(null);
  const [email,setEmail]=useState(''),[userId,setUserId]=useState('');
  const refreshAuth=useCallback(async()=>{
+  // Do not route another already signed-in account into a pending invite flow.
+  if(invitePending.current){setAuthMode('invite');setState('login');return}
   const {data,error}=await supabase.auth.getUser();
-  if(error||!data.user){setState('login');setAuthMode('login');return;}
+  if(error||!data.user){setState('login');setAuthMode('login');return}
   setEmail(data.user.email||'');setUserId(data.user.id);
   const membership=await supabase.from('woodcorp_access').select('role')
     .eq('user_id',data.user.id).maybeSingle();
-  if(!membership.data?.role){setState('no-access');return;}
+  if(!membership.data?.role){setState('no-access');return}
   setRole(membership.data.role as Role);
-  const params=new URLSearchParams(location.search);
-  if(invitePending.current||params.has('invite')){
-   setAuthMode('invite');setState('login');
-  }else if(params.has('recovery')){
+  if(new URLSearchParams(location.search).has('recovery')){
    setAuthMode('recovery');setState('login');
   }else{setAuthMode('login');setState('app')}
  },[]);
  useEffect(()=>{
-  // Subscribe even if StrictMode replays the effect, but consume the token once.
   const {data}=supabase.auth.onAuthStateChange(event=>{
-   if(event==='SIGNED_OUT'){setState('login');setAuthMode('login');invitePending.current=false;}
-   else if(event==='SIGNED_IN'&&!invitePending.current){
+   if(invitePending.current)return; // Verify the invite only on password submission.
+   if(event==='SIGNED_OUT'){setState('login');setAuthMode('login')}
+   else if(event==='SIGNED_IN'||event==='PASSWORD_RECOVERY'){
+    // Defer Supabase calls outside its synchronous auth-state callback.
     setTimeout(()=>void refreshAuth(),0);
    }
   });
   if(!booted.current){
    booted.current=true;
    const start=async()=>{
-    const hash=window.location.hash;
-    const token=extractInviteToken(hash);
-    if(token){
+    const hash=location.hash;
+    const ticket=extractInviteTicket(hash);
+    if(ticket){
      invitePending.current=true;
-     // Clear secrets before any other browser navigation, logging or API call.
-     window.history.replaceState({},document.title,location.pathname+location.search);
-     setState('loading');setInviteError('');
-     try{
-      const {data:verified,error}=await supabase.auth.verifyOtp({token_hash:token,type:'invite'});
-      if(error||!verified?.user)throw Error('Einladung ungültig oder abgelaufen.');
-      await refreshAuth();return;
-     }catch{
-      invitePending.current=false;
-      setInviteError('Der Einladungslink ist ungültig oder abgelaufen. Bitte den Administrator um einen neuen Einladungslink bitten.');
-      setAuthMode('login');setState('login');
-      return;
-     }
+     // Token stays in component memory, NEVER in history or network navigation.
+     history.replaceState({},document.title,location.pathname+location.search);
+     setInviteTicket(ticket);setInviteError('');
+     setAuthMode('invite');setState('login');return;
     }
     if(isInviteFragment(hash)){
-     window.history.replaceState({},document.title,location.pathname+location.search);
-     setInviteError('Ungültiger Einladungslink. Bitte einen neuen Link anfordern.');
+     history.replaceState({},document.title,location.pathname+location.search);
+     setInviteError('Ungültiger Einladungslink. Bitte in „Team & Zugänge“ einen neuen Link erzeugen lassen.');
      setAuthMode('login');setState('login');return;
     }
     await refreshAuth();
@@ -561,10 +679,10 @@ export default function App(){
   }
   return()=>data.subscription.unsubscribe();
  },[refreshAuth]);
- const signout=async()=>{await supabase.auth.signOut();setState('login')};
+ const signout=async()=>{invitePending.current=false;setInviteTicket(null);await supabase.auth.signOut();setState('login')};
  if(state==='loading')return <div className="boot-screen"><Spinner text="NXT Analytics wird vorbereitet …"/></div>;
- if(state==='login')return <AuthScreen client={supabase} mode={authMode} initialNotice={inviteError} onDone={()=>{
-   invitePending.current=false;setInviteError('');void refreshAuth();
+ if(state==='login')return <AuthScreen client={supabase} mode={authMode} inviteTicket={inviteTicket} initialNotice={inviteError} onDone={()=>{
+   invitePending.current=false;setInviteTicket(null);setInviteError('');void refreshAuth();
  }}/>;
  if(state==='no-access')return <div className="access-denied"><Brand/><h1>Für dieses Projekt ist eine Freigabe erforderlich.</h1><p>Du bist angemeldet, aber noch nicht für NXT Analytics berechtigt. Bitte wende dich an die Administration.</p><Button icon="log-out" onClick={signout}>Abmelden</Button></div>;
  return <ReactFlowProvider><AnalyticsWorkspace userId={userId} role={role!} email={email} onSignOut={signout}/></ReactFlowProvider>;
