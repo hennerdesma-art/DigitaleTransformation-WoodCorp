@@ -39,7 +39,7 @@ assets/favicon.svg        NXT-inspiriertes Favicon
 .github/workflows/pages.yml   GitHub Pages Deployment
 ```
 
-Das **Original-Logo** wird derzeit von der bestehenden öffentlichen NXT-Netzwerkforschungs-Asset-Datei referenziert und nicht grafisch verändert.
+Das **Original-Logo** liegt unverändert in `assets/nxt-logo.png` und wird direkt von der eigenen Web-App geladen.
 
 ## Daten-/Qualitätskonventionen
 
