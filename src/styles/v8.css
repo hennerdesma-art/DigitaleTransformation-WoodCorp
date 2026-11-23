@@ -1,0 +1,46 @@
+/* NXT v8 — chart-node actions live INSIDE the card, never outside clipping bounds. */
+.react-flow__node-analytics .graph-node.chart-node{
+  padding-top:46px;
+  overflow:visible;
+  isolation:isolate;
+}
+.react-flow__node-analytics .graph-node.chart-node .node-buttons{
+  position:absolute;
+  top:9px;
+  right:10px;
+  left:auto;
+  display:flex;
+  flex-wrap:nowrap;
+  justify-content:flex-end;
+  align-items:center;
+  gap:5px;
+  z-index:15;
+}
+.react-flow__node-analytics .graph-node.chart-node .node-buttons .node-action{
+  flex:0 0 25px;
+  min-width:25px;
+  height:25px;
+  border-radius:7px;
+}
+.react-flow__node-analytics .graph-node.chart-node .node-action:focus-visible{
+  outline:2px solid #008B92;
+  outline-offset:2px;
+}
+.react-flow__node-analytics .graph-node.advanced-node{
+  max-height:none;
+  overflow:visible;
+}
+.graph-node.chart-node .graph-node-content{min-width:0;}
+.graph-node.advanced-node .graph-advanced-chart{
+  overflow:auto;
+  max-height:355px;
+  overscroll-behavior:contain;
+}
+/* Prevent the enlarged advanced charts from obscuring their own controls. */
+.react-flow__node-analytics:has(.chart-node:hover),
+.react-flow__node-analytics:has(.chart-node:focus-within){z-index:15!important;}
+@media(max-width:650px){
+  .react-flow__node-analytics .graph-node.chart-node{padding-top:45px;}
+  .react-flow__node-analytics .graph-node.chart-node .node-buttons{top:8px;right:8px;gap:3px;}
+  .react-flow__node-analytics .graph-node.chart-node .node-buttons .node-action{flex-basis:24px;min-width:24px;height:24px;}
+}
