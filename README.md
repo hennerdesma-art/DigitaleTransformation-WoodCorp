@@ -23,6 +23,18 @@ Siehe [`docs/PHASE_6_NAV_DATA_FILTERS.md`](docs/PHASE_6_NAV_DATA_FILTERS.md) fü
 
 Weitere Informationen: [PHASE_7_FILTER_GRAPH_SQL.md](docs/PHASE_7_FILTER_GRAPH_SQL.md).
 
+## Fachliche KPI-Basis – OTIF, Filter und Berechnungslogik
+
+Die neue Standardansicht startet bei **OTIF** statt bei einer hart verdrahteten Werk-Hierarchie. Über die Canvas-Palette lassen sich mehrere unabhängige **Ausgangsknoten** anlegen. Frühere, gespeicherte Workspaces bleiben unverändert ladbar.
+
+Der KPI-Header bietet OTIF, On-Time Delivery, Mengenkonformität, die **berechnete Vertragsstrafe nach dem 0,75-€/kg-Modell** sowie Anzahl Aufträge. Diese Vertragsstrafe ist eine Datenmodellrechnung, **kein Nachweis gezahlter Rechnungsbeträge**.
+
+Im Filterdialog stehen nun Mehrfachauswahl, Datumsbereiche, numerische Grenzen, OTIF-Fehlerklassen und fallbasierte Prozessänderungszahlen bereit. Der Tab **Berechnungslogik** erklärt Zähler, Nenner, Formel, Ausschlüsse, Datenquellen und den gesamten geerbten Filterpfad. Auch Info-Buttons an KPI-Karten und Widgets öffnen die Details.
+
+Die geplanten Dashboards E00 / E01 / E02 / A01 können als Knoten-Dashboards innerhalb **eines einzigen Workspaces** ergänzt werden.
+
+Technische und fachliche Details: [PHASE_1_OTIF_FILTERS_AND_EXPLAINABILITY.md](docs/PHASE_1_OTIF_FILTERS_AND_EXPLAINABILITY.md).
+
 ## Erste Schritte
 
 - Mit einem bereits freigegebenen Supabase-Auth-Konto anmelden.
