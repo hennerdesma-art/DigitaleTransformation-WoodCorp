@@ -74,6 +74,7 @@ function harness(revoked=false){
  const transpiled=ts.transpileModule(code,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText;
  let handler:(req:Request)=>Promise<Response>=async()=>new Response('Not initialized');
  vm.runInNewContext(transpiled,{
+  exports:{},
   require:(mod:string)=>mod.startsWith('npm:@supabase/supabase-js')?{createClient:()=>admin}:null,
   Deno:{env:{get:(key:string)=>key==='SUPABASE_URL'?'https://example.supabase.co':'dummy-key'},serve:(cb:any)=>{handler=cb}},
   Request,Response,Headers,TextEncoder,crypto:globalThis.crypto,console
