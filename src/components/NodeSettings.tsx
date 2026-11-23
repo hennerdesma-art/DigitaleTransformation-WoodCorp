@@ -18,11 +18,11 @@ export function NodeSettings({node,allowedFields,fieldNames,filters,onRemoveFilt
  const [name,setName]=useState(node.label),[viz,setViz]=useState<GraphViz>(node.visualization||'kpi');
  const [selectedMetric,setSelectedMetric]=useState<MetricKey>((node.metricId&&METRICS.includes(node.metricId as MetricKey)?node.metricId:'otifRate') as MetricKey);
  const [field,setField]=useState<FieldKey>(node.chartDimension||'delivery_company');
- const [template,setTemplate]=useState<CalculationTemplate>(node.calculationTemplate||'shortfall_kg');
+ const [template,setTemplate]=useState<CalculationTemplate>(node.calculationTemplate||'total_penalty_eur');
  const [rate,setRate]=useState<string>(node.rateEurPerKg?.toString()||'');
  const [error,setError]=useState('');
  const calc=CALCULATION_TEMPLATES[template];
- const suggestedNames:Record<GraphViz,string>={kpi:'Neue KPI',donut:'Donut · On-Time',bar:'Balken · Segmentvergleich',line:'Zeitreihe · On-Time',calculation:'Unterlieferte Menge (kg)'};
+ const suggestedNames:Record<GraphViz,string>={kpi:'Neue KPI',donut:'Donut · On-Time',bar:'Balken · Segmentvergleich',line:'Zeitreihe · On-Time',calculation:'Vertragsstrafe · 0,75 €/kg'};
  const isSuggested=(label:string)=>Object.values(suggestedNames).includes(label)||label==='SQL · Unterlieferte Menge'||TEMPLATES.some(id=>CALCULATION_TEMPLATES[id].label===label);
  const changeVisual=(next:GraphViz)=>{if(isSuggested(name))setName(suggestedNames[next]);setViz(next)};
  const changeTemplate=(next:CalculationTemplate)=>{if(isSuggested(name))setName(CALCULATION_TEMPLATES[next].label);setTemplate(next);setError('')};
