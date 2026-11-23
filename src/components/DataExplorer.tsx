@@ -91,6 +91,7 @@ export function DataExplorer({dimensions}:{dimensions:Record<string,string[]>}){
    finally{if(req===requestId.current)setLoading(false)}
   };void load();return()=>{abort.abort();requestId.current++};
  },[table,page,search,columnFilter,columnValue,sortBy,direction,refresh]);
+ useEffect(()=>{if(!detail)return;const close=(event:KeyboardEvent)=>{if(event.key==='Escape')setDetail(null)};document.addEventListener('keydown',close);return()=>document.removeEventListener('keydown',close)},[detail]);
  const totalPages=count===null?0:Math.ceil(count/PAGE_SIZE);
  const sort=(key:string)=>{if(!cols.some(c=>c.key===key))return;setPage(0);if(sortBy===key)setDirection(v=>v==='asc'?'desc':'asc');else{setSortBy(key);setDirection('asc');}};
  const exportPage=()=>{
