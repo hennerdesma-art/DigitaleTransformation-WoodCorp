@@ -71,18 +71,18 @@ function WidgetItem({widget,detail,filters,selected,onSelect,disabled,index,onRe
  </article>;
 }
 function EndDrop(){const {setNodeRef,isOver}=useDroppable({id:'drop:end'});return <div ref={setNodeRef} className={'dashboard-drop-end '+(isOver?'drop-target':'')}>Widget hier ablegen</div>}
-function WidgetInspector({widget,onPatch,onRemove,disabled}:{widget?:DashboardWidget;onPatch:(patch:Partial<DashboardWidget>)=>void;onRemove:()=>void;disabled:boolean}){
+function WidgetInspector({widget,onPatch,onRemove,disabled,fieldNames,allowedFields}:{widget?:DashboardWidget;onPatch:(patch:Partial<DashboardWidget>)=>void;onRemove:()=>void;disabled:boolean;fieldNames:Record<FieldKey,string>;allowedFields:FieldKey[]}){
  if(!widget)return <aside className="dashboard-inspector"><h3>Eigenschaften</h3><p className="muted">Wähle ein Dashboard-Element aus, um es zu konfigurieren.</p></aside>;
  return <aside className="dashboard-inspector"><h3><Icon name="sliders-horizontal" size={18}/> Eigenschaften</h3><label className="field">Überschrift<input value={widget.title} maxLength={100} disabled={disabled} onChange={e=>onPatch({title:e.target.value})}/></label>
   <label className="field">Breite<select value={widget.width} disabled={disabled} onChange={e=>onPatch({width:e.target.value as DashboardWidget['width']})}><option value="half">1/2 Breite</option><option value="full">Volle Breite</option></select></label>
   {widget.type==='kpi'&&<label className="field">Kennzahl<select value={widget.metric||'onTimeRate'} disabled={disabled} onChange={e=>onPatch({metric:e.target.value as DashboardWidget['metric']})}>{METRICS.map(m=><option value={m} key={m}>{METRIC_LABELS[m]}</option>)}</select></label>}
-  {(widget.type==='bar'||widget.type==='table')&&<label className="field">Vergleichsdimension<select value={widget.dimension||'delivery_company'} disabled={disabled} onChange={e=>onPatch({dimension:e.target.value as FieldKey})}>{FIELDS.map(f=><option value={f} key={f}>{FIELD_LABELS[f]}</option>)}</select></label>}
+  {(widget.type==='bar'||widget.type==='table')&&<label className="field">Vergleichsdimension<select value={widget.dimension||'delivery_company'} disabled={disabled} onChange={e=>onPatch({dimension:e.target.value as FieldKey})}>{[...new Set([...allowedFields,widget.dimension||'delivery_company'])].map(f=><option value={f} key={f}>{fieldNames[f]}</option>)}</select></label>}
   {widget.type==='text'&&<label className="field">Freitext<textarea rows={6} maxLength={3000} value={widget.text||''} disabled={disabled} onChange={e=>onPatch({text:e.target.value})}/></label>}
   <button className="nxt-button secondary" type="button" disabled={disabled} onClick={onRemove}><Icon name="trash-2" size={16}/> Widget entfernen</button>
   <p className="muted">Kennzahlen werden live im aktuellen Knoten-Filterkontext berechnet.</p>
  </aside>;
 }
-export function DashboardBuilder({nodeId,nodeLabel,nodeOptions,onSelectNode,dashboard,onChange,detail,filters,onBack,onSave,canEdit,saving}:{nodeId:string;nodeLabel:string;nodeOptions:Array<{id:string;label:string}>;onSelectNode:(id:string)=>void;dashboard:NodeDashboard;onChange:(dashboard:NodeDashboard)=>void;detail:DashboardData;filters:Filter[];onBack:()=>void;onSave:()=>void;canEdit:boolean;saving:boolean}){
+export function DashboardBuilder({nodeId,nodeLabel,nodeOptions,onSelectNode,dashboard,onChange,detail,filters,onBack,onSave,canEdit,saving,fieldNames,allowedFields}:{nodeId:string;nodeLabel:string;nodeOptions:Array<{id:string;label:string}>;onSelectNode:(id:string)=>void;dashboard:NodeDashboard;onChange:(dashboard:NodeDashboard)=>void;detail:DashboardData;filters:Filter[];onBack:()=>void;onSave:()=>void;canEdit:boolean;saving:boolean;fieldNames:Record<FieldKey,string>;allowedFields:FieldKey[]}){
  const [selected,setSelected]=useState<string|null>(null);
  const sensors=useSensors(useSensor(PointerSensor,{activationConstraint:{distance:6}}),useSensor(KeyboardSensor));
  const selectedWidget=useMemo(()=>dashboard.widgets.find(w=>w.id===selected)||undefined,[dashboard,selected]);
@@ -104,6 +104,6 @@ export function DashboardBuilder({nodeId,nodeLabel,nodeOptions,onSelectNode,dash
    <div className="dashboard-design-canvas"><div className="dashboard-edit-grid">{dashboard.widgets.map((w,i)=><WidgetItem key={w.id} index={i} widget={w} detail={detail} filters={filters} selected={selected===w.id} onSelect={()=>setSelected(w.id)} disabled={!canEdit} onRemove={()=>{update(removeWidget(dashboard,w.id));if(selected===w.id)setSelected(null)}} onMove={index=>update(moveWidget(dashboard,w.id,index))}/>)}<EndDrop/></div></div>
    <p className="dashboard-save-note">{canEdit?'Änderungen werden beim Speichern in deinem Workspace gesichert.':'Du kannst dieses Dashboard ansehen, benötigst für Änderungen jedoch Editorrechte.'}</p>
   </section>
-  <WidgetInspector widget={selectedWidget} disabled={!canEdit} onPatch={patch=>selectedWidget&&update(updateWidget(dashboard,selectedWidget.id,patch))} onRemove={()=>{if(selectedWidget)update(removeWidget(dashboard,selectedWidget.id));setSelected(null)}}/>
+  <WidgetInspector widget={selectedWidget} fieldNames={fieldNames} allowedFields={allowedFields} disabled={!canEdit} onPatch={patch=>selectedWidget&&update(updateWidget(dashboard,selectedWidget.id,patch))} onRemove={()=>{if(selectedWidget)update(removeWidget(dashboard,selectedWidget.id));setSelected(null)}}/>
  </div></div></DndContext>;
 }

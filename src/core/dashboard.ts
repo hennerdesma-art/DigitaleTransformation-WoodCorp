@@ -10,7 +10,7 @@ export type DashboardWidget={
  metric?:MetricKey;dimension?:FieldKey;text?:string;
 };
 export type NodeDashboard={question:string;widgets:DashboardWidget[]};
-export type WorkspaceDocument={version:3;graph:SavedDraft;globalFilters:Filter[];dashboards:Record<string,NodeDashboard>};
+export type WorkspaceDocument={version:3;graph:SavedDraft;globalFilters:Filter[];dashboards:Record<string,NodeDashboard>;metricNames?:Partial<Record<MetricKey,string>>};
 
 export const METRIC_LABELS:Record<MetricKey,string>={
  orders:'Aufträge',onTimeRate:'On-Time Delivery',volumeConformanceRate:'Mengenkonformität',
@@ -82,6 +82,9 @@ export function validDocument(value:unknown):WorkspaceDocument|null{
  if(!value||typeof value!=='object')return null;
  const d=value as WorkspaceDocument;
  if(d.version!==3||!cleanDraft(d.graph)||!Array.isArray(d.globalFilters)||d.globalFilters.length>12||!d.dashboards||typeof d.dashboards!=='object')return null;
+ if(d.metricNames!==undefined){if(!d.metricNames||typeof d.metricNames!=='object'||Array.isArray(d.metricNames))return null;
+  for(const [key,value] of Object.entries(d.metricNames)){if(!METRICS.includes(key as MetricKey)||typeof value!=='string'||value.length>80||value.trim().length<1)return null;}
+ }
  const clean:Record<string,NodeDashboard>={};
  const entries=Object.entries(d.dashboards);
  if(entries.length>300)return null;
@@ -104,8 +107,8 @@ export function metricFormat(metric:MetricKey,value:number|null):string{
  if(metric==='avgDelayDays')return decimal+' Tage';
  return value.toLocaleString('de-DE',{maximumFractionDigits:0});
 }
-export function makeDocument(graph:SavedDraft,globalFilters:Filter[],dashboards:Record<string,NodeDashboard>):WorkspaceDocument{
- const result={version:3 as const,graph,globalFilters,dashboards};
+export function makeDocument(graph:SavedDraft,globalFilters:Filter[],dashboards:Record<string,NodeDashboard>,metricNames:Partial<Record<MetricKey,string>>={}):WorkspaceDocument{
+ const result={version:3 as const,graph,globalFilters,dashboards,metricNames};
  if(!validDocument(result))throw Error('Ungültige Workspace-Daten. Bitte überprüfe die Einstellungen.');
  return result;
 }

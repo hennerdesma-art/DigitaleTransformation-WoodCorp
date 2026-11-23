@@ -5,10 +5,11 @@ import type {NNode,NEdge} from '../core/graph';
 import type {PaletteType} from '../core/types';
 import Icon from './Icon';
 import {IconButton,number,percent} from './Ui';
-import {FIELD_LABELS} from '../config';
+import {FIELD_LABELS,type FieldKey} from '../config';
 
 function AnalyticNode({id,data,selected}:NodeProps<NNode>){
  const {analysis,onTimeRate,orders,editMode,localCount,onFilter,onSplit,onRemove,busy}=data;
+ const fieldNames=data.fieldNames as Record<FieldKey,string>|undefined;
  const dark=analysis.kind==='root';
  const isNote=analysis.kind==='note';
  return <div className={'graph-node '+(dark?'root-node ':'')+(isNote?'note-node ':'')+(selected?'selected-node ':'')} tabIndex={0} role="group" aria-label={analysis.label+' – '+(orders==null?'Noch keine Kennzahl':number(orders)+' Aufträge')}>
@@ -18,7 +19,7 @@ function AnalyticNode({id,data,selected}:NodeProps<NNode>){
     {dark&&<span className="root-subtitle">KPI-Analyse</span>}
     {isNote?<small>{analysis.description||'Freie Anmerkung'}</small>:<><b className="node-measure">{busy?'…':onTimeRate==null?(dark?'On-Time Delivery':'–'):percent(onTimeRate)}</b><small>{dark?'WoodCorp · Order-to-Cash':orders==null?'Noch nicht konfiguriert':number(orders)+' Aufträge'}</small></>}
    </div></div>
-  {analysis.predicate&&<div className="node-dimension" title={FIELD_LABELS[analysis.predicate.field]}>{FIELD_LABELS[analysis.predicate.field]}</div>}
+  {analysis.predicate&&<div className="node-dimension" title={fieldNames?.[analysis.predicate.field]||FIELD_LABELS[analysis.predicate.field]}>{fieldNames?.[analysis.predicate.field]||FIELD_LABELS[analysis.predicate.field]}</div>}
   <div className="node-buttons"><button className="node-action nodrag" type="button" title="Knotenfilter hinzufügen" aria-label={'Filter für '+analysis.label} onClick={e=>{e.stopPropagation();onFilter?.(id)}}><Icon name="filter" size={14}/>{!!localCount&&<em>{localCount}</em>}</button>
    {editMode&&<><button className="node-action nodrag" type="button" title="Nach Dimension aufgliedern" aria-label={'Aufgliederung für '+analysis.label} onClick={e=>{e.stopPropagation();onSplit?.(id)}}><Icon name="split" size={14}/></button>{analysis.createdBy==='user'&&<button className="node-action nodrag" type="button" title="Knoten entfernen" aria-label={'Knoten '+analysis.label+' entfernen'} onClick={e=>{e.stopPropagation();onRemove?.(id)}}><Icon name="trash-2" size={14}/></button>}</>}
   </div>
@@ -52,9 +53,9 @@ export interface CanvasProps{
  nodes:NNode[];edges:NEdge[];onNodesChange:(changes:NodeChange<NNode>[])=>void;onEdgesChange:(changes:EdgeChange<NEdge>[])=>void;onConnect:(connection:Connection)=>void;
  onSelect:(id:string)=>void;onSelectionClear:()=>void;selectedId:string;editMode:boolean;onEditToggle:()=>void;onFilter:(id:string)=>void;onSplit:(id:string)=>void;onRemove:(id:string)=>void;
  onAdd:(type:PaletteType,pos:{x:number;y:number})=>void;onSave:()=>void;onReset:()=>void;onGraphMove:()=>void;onGraphStart:()=>void;onUndo:()=>void;onRedo:()=>void;
- onViewportChange:(v:Viewport)=>void;fullscreen:boolean;setFullscreen:(v:boolean)=>void;canEdit:boolean;dirty:boolean;onHelp:()=>void;
+ onViewportChange:(v:Viewport)=>void;fieldNames:Record<FieldKey,string>;fullscreen:boolean;setFullscreen:(v:boolean)=>void;canEdit:boolean;dirty:boolean;onHelp:()=>void;
 }
-export function CanvasWithFlow({nodes,edges,onNodesChange,onEdgesChange,onConnect,onSelect,onSelectionClear,selectedId,editMode,onEditToggle,onFilter,onSplit,onRemove,onAdd,onSave,onReset,onGraphMove,onGraphStart,onUndo,onRedo,onViewportChange,fullscreen,setFullscreen,canEdit,dirty,onHelp}:CanvasProps){
+export function CanvasWithFlow({nodes,edges,onNodesChange,onEdgesChange,onConnect,onSelect,onSelectionClear,selectedId,editMode,onEditToggle,onFilter,onSplit,onRemove,onAdd,onSave,onReset,onGraphMove,onGraphStart,onUndo,onRedo,onViewportChange,fieldNames,fullscreen,setFullscreen,canEdit,dirty,onHelp}:CanvasProps){
  const flow=useReactFlow<NNode,NEdge>();const canvasRef=useRef<HTMLDivElement>(null);const [tab,setTab]=React.useState<'builder'|'filter'>('builder');const [showPalette,setShowPalette]=React.useState(true);const [showMap,setShowMap]=React.useState(false);const [zoom,setZoom]=React.useState(100);const [tool,setTool]=React.useState<'select'|'pan'|'connect'>('select');
  const sensors=useSensors(useSensor(PointerSensor,{activationConstraint:{distance:8}}),useSensor(KeyboardSensor));
  const addNearCenter=(type:PaletteType)=>{const bounds=canvasRef.current?.getBoundingClientRect();if(!bounds)return;const pos=flow.screenToFlowPosition({x:bounds.left+bounds.width/2,y:bounds.top+bounds.height/2});onAdd(type,pos);};
@@ -69,7 +70,7 @@ export function CanvasWithFlow({nodes,edges,onNodesChange,onEdgesChange,onConnec
  React.useEffect(()=>{const key=(e:KeyboardEvent)=>{if(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement)return;
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?onRedo():onUndo()}else if(e.key==='Escape'&&fullscreen){setFullscreen(false)};
  };document.addEventListener('keydown',key);return()=>document.removeEventListener('keydown',key);},[fullscreen,onUndo,onRedo,setFullscreen]);
- const enriched=useMemo(()=>nodes.map(n=>({...n,draggable:editMode,connectable:editMode,data:{...n.data,editMode,onFilter,onSplit,onRemove}})),[nodes,editMode,onFilter,onSplit,onRemove]);
+ const enriched=useMemo(()=>nodes.map(n=>({...n,draggable:editMode,connectable:editMode,data:{...n.data,fieldNames,editMode,onFilter,onSplit,onRemove}})),[nodes,fieldNames,editMode,onFilter,onSplit,onRemove]);
  return <DndContext sensors={sensors} onDragEnd={onDragEnd}><div className={'canvas-stack '+(fullscreen?'fullscreen-active':'')}>
   {showPalette&&!fullscreen&&<Palette tab={tab} setTab={setTab} enabled={editMode} onAdd={addNearCenter} onUnsupported={onHelp}/>}
   <section className="canvas-panel" ref={canvasRef} aria-label="Interaktiver Decision Tree Canvas"><div className="canvas-title"><div><Icon name="network" size={20}/><strong>Decision Tree</strong><span className="canvas-status">{dirty?'● Nicht gespeichert':'● Lokaler Entwurf'}</span></div>
