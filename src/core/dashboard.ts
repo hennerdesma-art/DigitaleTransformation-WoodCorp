@@ -1,13 +1,14 @@
 import {FIELDS,type FieldKey} from '../config';
+import {validE02Key,type E02IntervalKey} from './processIntervals';
 import {cleanDraft,type NNode,type NEdge} from './graph';
 import type {SavedDraft,Filter,Metrics,Ribbon} from './types';
 
-export type WidgetType='kpi'|'line'|'bar'|'table'|'donut'|'text'|'bar_horizontal'|'bar_vertical'|'stacked'|'stacked100'|'heatmap'|'pareto'|'scatter'|'waterfall'|'bullet'|'histogram'|'treemap'|'funnel';
+export type WidgetType='kpi'|'line'|'bar'|'table'|'donut'|'text'|'bar_horizontal'|'bar_vertical'|'stacked'|'stacked100'|'heatmap'|'pareto'|'scatter'|'waterfall'|'bullet'|'histogram'|'treemap'|'funnel'|'e02_overview'|'e02_compare'|'e02_quality'|'e02_distribution';
 export type MetricKey='orders'|'otifRate'|'onTimeRate'|'volumeConformanceRate'|'otifCases'|'lateOrders'|'avgDelayDays'|'affectedFactories'|'totalPenaltyEur'|'latePenaltyEur'|'shortfallPenaltyEur';
 export type Width='half'|'full';
 export type DashboardWidget={
  id:string;type:WidgetType;title:string;width:Width;
- metric?:MetricKey;dimension?:FieldKey;compareDimension?:FieldKey;target?:number;distributionMeasure?:'quantity_change_count'|'lateness_days';text?:string;
+ metric?:MetricKey;dimension?:FieldKey;compareDimension?:FieldKey;target?:number;distributionMeasure?:'quantity_change_count'|'lateness_days';intervalKey?:E02IntervalKey;text?:string;
 };
 export type NodeDashboard={question:string;widgets:DashboardWidget[]};
 export type WorkspaceDocument={version:3;graph:SavedDraft;globalFilters:Filter[];dashboards:Record<string,NodeDashboard>;metricNames?:Partial<Record<MetricKey,string>>};
@@ -17,13 +18,13 @@ export const METRIC_LABELS:Record<MetricKey,string>={
 };
 export const WIDGET_LABELS:Record<WidgetType,string>={
  kpi:'KPI-Karte',line:'Zeitreihe',bar:'Balkendiagramm',table:'Datentabelle',donut:'Donutdiagramm',text:'Text / Forschungsfrage',
- bar_horizontal:'Horizontales Ranking',bar_vertical:'Vertikale Säulen',stacked:'Gestapelte OTIF-Klassen',stacked100:'100%-gestapelte OTIF-Klassen',heatmap:'Werk × Produkt Heatmap',pareto:'Pareto-Kostenanalyse',scatter:'Streudiagramm',waterfall:'Kosten-Wasserfall',bullet:'Zielerreichung / Bullet',histogram:'Häufigkeitsverteilung',treemap:'Kosten-Treemap',funnel:'OTIF-Funnel'
+ bar_horizontal:'Horizontales Ranking',bar_vertical:'Vertikale Säulen',stacked:'Gestapelte OTIF-Klassen',stacked100:'100%-gestapelte OTIF-Klassen',heatmap:'Werk × Produkt Heatmap',pareto:'Pareto-Kostenanalyse',scatter:'Streudiagramm',waterfall:'Kosten-Wasserfall',bullet:'Zielerreichung / Bullet',histogram:'Häufigkeitsverteilung',treemap:'Kosten-Treemap',funnel:'OTIF-Funnel',e02_overview:'E02 · Prozessintervalle / Median & P90',e02_compare:'E02 · OTIF vs. Nicht-OTIF',e02_quality:'E02 · Datenqualität / Abdeckung',e02_distribution:'E02 · Zeitverteilung'
 };
 export const WIDGET_ICONS:Record<WidgetType,string>={
  kpi:'chart-column',line:'chart-no-axes-combined',bar:'chart-column',table:'table-2',donut:'chart-pie',text:'type',
- bar_horizontal:'chart-bar',bar_vertical:'chart-column',stacked:'layers',stacked100:'chart-column',heatmap:'grid-3x3',pareto:'chart-no-axes-combined',scatter:'chart-spline',waterfall:'chart-column',bullet:'target',histogram:'chart-bar',treemap:'layout-dashboard',funnel:'list-filter'
+ bar_horizontal:'chart-bar',bar_vertical:'chart-column',stacked:'layers',stacked100:'chart-column',heatmap:'grid-3x3',pareto:'chart-no-axes-combined',scatter:'chart-spline',waterfall:'chart-column',bullet:'target',histogram:'chart-bar',treemap:'layout-dashboard',funnel:'list-filter',e02_overview:'clock-3',e02_compare:'git-compare',e02_quality:'shield-check',e02_distribution:'chart-column'
 };
-export const WIDGET_TYPES:WidgetType[]=['kpi','line','bar','table','donut','text','bar_horizontal','bar_vertical','stacked','stacked100','heatmap','pareto','scatter','waterfall','bullet','histogram','treemap','funnel'];
+export const WIDGET_TYPES:WidgetType[]=['kpi','line','bar','table','donut','text','bar_horizontal','bar_vertical','stacked','stacked100','heatmap','pareto','scatter','waterfall','bullet','histogram','treemap','funnel','e02_overview','e02_compare','e02_quality','e02_distribution'];
 export const METRICS=Object.keys(METRIC_LABELS) as MetricKey[];
 
 export function freshWidget(type:WidgetType):DashboardWidget{
@@ -45,7 +46,11 @@ export function freshWidget(type:WidgetType):DashboardWidget{
   bullet:{title:'OTIF gegenüber dem Zielwert',metric:'otifRate',target:80,width:'half'},
   histogram:{title:'Häufigkeit von Mengenänderungen',distributionMeasure:'quantity_change_count',width:'full'},
   treemap:{title:'Kostenanteile nach Werk',dimension:'factory',metric:'totalPenaltyEur',width:'full'},
-  funnel:{title:'OTIF-Schritte vom Auftrag zur Erfüllung',metric:'otifRate',width:'full'}
+  funnel:{title:'OTIF-Schritte vom Auftrag zur Erfüllung',metric:'otifRate',width:'full'},
+  e02_overview:{title:'E02 · Median, P90 und Abdeckung je Prozessintervall',width:'full'},
+  e02_compare:{title:'E02 · OTIF / Nicht-OTIF: Prozessmediane',width:'full'},
+  e02_quality:{title:'E02 · Gültige und negative Zeitintervalle',width:'full'},
+  e02_distribution:{title:'E02 · Verteilung des Prozessintervalls',intervalKey:'order_to_delivery',width:'full'}
  };
  return {id:crypto.randomUUID(),type,...standard[type]};
 }
@@ -91,6 +96,7 @@ export function normalizeDashboard(value:unknown):NodeDashboard|null{
   if(w.compareDimension&&!FIELDS.includes(w.compareDimension))return null;
   if(w.target!==undefined&&(!Number.isFinite(w.target)||w.target<0||w.target>100))return null;
   if(w.distributionMeasure&&!['quantity_change_count','lateness_days'].includes(w.distributionMeasure))return null;
+  if(w.intervalKey&&!validE02Key(w.intervalKey))return null;
   ids.add(w.id);widgets.push(w);
  }
  return {question:d.question,widgets};
