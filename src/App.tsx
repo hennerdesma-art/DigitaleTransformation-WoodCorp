@@ -195,6 +195,28 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
   if(role!=='admin')return;
   try{const saved=await workspacesApi.updateCatalog(field,enabled);setCatalog(rows=>rows.map(r=>r.field_key===field?saved:r));say('Filterfreigabe aktualisiert');}catch(e){say(e instanceof Error?e.message:'Änderung nicht gespeichert')}
  };
+ const addCatalogField=async(field:FieldKey,name:string)=>{
+  if(role!=='admin')throw Error('Administratorrechte erforderlich');
+  setCatalogBusy(true);try{
+   await workspacesApi.registerFilter(field,name);
+   await Promise.all([reloadCatalog(),reloadCandidates()]);
+   say('Filter validiert und zur Bibliothek hinzugefügt: '+name);
+  }finally{setCatalogBusy(false)}
+ };
+ const renameCatalogField=async(field:FieldKey,name:string)=>{
+  if(role!=='admin')throw Error('Administratorrechte erforderlich');
+  setCatalogBusy(true);try{
+   await workspacesApi.renameFilter(field,name);
+   await reloadCatalog();say('Filterbezeichnung geändert: '+name);
+  }finally{setCatalogBusy(false)}
+ };
+ const renameSelectedNode=(name:string)=>{
+  if(!canModify)return;
+  if(name.trim().length<2||name.trim().length>100){say('Name muss 2–100 Zeichen umfassen.');return;}
+  remember();
+  setNodes(prev=>prev.map(n=>n.id===selectedId?{...n,data:{...n.data,analysis:{...n.data.analysis,label:name.trim()}}}:n));
+  setDirty(true);say('Knoten umbenannt. Änderungen im Workspace speichern.');
+ };
  const resetCamera=()=>{void flow.fitView({padding:.17,duration:250})};
  const resetDraft=()=>{if(!confirm('Lokalen Entwurf verwerfen und Werk-Baum neu laden? Eine gespeicherte Server-Version bleibt erhalten.'))return;localStorage.removeItem(localKey);setActiveWorkspace(null);setDashboards({});setMetricNames({});initializedRef.current=false;setLocals({});setGlobals([]);setLoaded(false);setReloadKey(i=>i+1);say('Lokaler Entwurf zurückgesetzt')};
  const addNode=useCallback((type:PaletteType,position:{x:number;y:number})=>{if(!editMode||!canModify){say('Zum Hinzufügen zuerst den Bearbeitungsmodus mit Schreibrechten aktivieren.');return;}
