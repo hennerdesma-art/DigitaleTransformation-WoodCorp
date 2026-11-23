@@ -1,57 +1,93 @@
 # NXT | Digital Transformation · Analytics
 
-Interaktive, geschützte Web-App für WoodCorp Order-to-Cash / Reutlingen University NXT.
-Designvorgaben: NXT-Türkis `#008B92`, Interaktion nach **NXT | Digital Transformation** und UI UX Pro Max.
+Geschützte, interaktive **NXT Analytics**-Web-App für WoodCorp Order-to-Cash an der Hochschule Reutlingen. Aktuelle Web-App: **React 19 + TypeScript + Vite + React Flow** im NXT-Design.
 
-## Live-Architektur (Stand 23.11.2026)
+**Webseite:** https://hennerdesma-art.github.io/DigitaleTransformation-WoodCorp/
 
-- Statische NXT Web-App auf GitHub Pages (HTML/CSS/JavaScript, responsive).
-- Supabase Auth (E-Mail/Passwort, Session, Wiederherstellung) und `woodcorp_access` (Rollen `viewer`, `analyst`, `admin`).
-- Supabase-Projekt: Woodcorp Process Intelligence (`maqyirapxoygcsljdqyk`); Daten über RLS geschützte Tabellen.
-- Admin-Edge-Funktion `nxt-members` (erste Einrichtung, Mitglieder anzeigen, einmalige Einladungslinks, Rollen ändern, Rechte entziehen).
-- Analyse-RPCs `nxt_case_metrics`, `nxt_breakdown`, `nxt_monthly`, `nxt_dimensions` (sichere, erlaubte Filter, aggregiert auf Auftragsebene).
-- Hauptansichten: Übersicht, Analysebaum, Dashboards, Datenbasis, Team (nur Admin), Profil.
-- Der Baum unterstützt Knotenauswahl, Knoten-Filter, globale Filter, Drilldown von Werk zu Produkttyp, Verschieben, Zoom und Verlauf.
-- Case/Event-Verknüpfung: `case_key`; 19.953 Aufträge, 210.135 Aktivitäten (Bestandsaufnahme zum 23.11.2026).
-- Die Beispielabbildungen dienen **nur als Designreferenz**; echte KPIs stammen aus Supabase.
+## Erste Schritte
 
-## Erste Einrichtung und Login
+- Mit einem bereits freigegebenen Supabase-Auth-Konto anmelden.
+- Hauptansicht **KPI-Analyse** / **Decision Tree**: Knoten untersuchen, global oder lokal filtern, Zoom, Pan, Fullscreen, Verbindungen und Split-Dimensionen nutzen.
+- In **Dashboard Builder**: Knoten auswählen, Widgets per Drag & Drop hinzufügen, Reihenfolge, Diagrammdimensionen, KPI-Definitionen, Text und Breite verändern.
+- Unter **Workspace**: einen privaten Entwurf in Supabase speichern. Mit **Für Team freigeben** wird die aktuelle, gespeicherte Analyse für andere freigegebene Projektmitglieder sichtbar. Die Freigabe betrifft **nicht** die WoodCorp-Rohdaten.
+- Unter **Filterbibliothek** kann ein Admin freigegebene Server-Dimensionen ein- und ausschalten.
+- **Team & Zugänge** (Admin): Einladungen per E-Mail oder vertraulichem Link und Rollenverwaltung.
 
-1. GitHub Pages für `main` in **Settings > Pages > Build and deployment > Source: GitHub Actions** aktivieren, sofern noch nicht aktiv.
-2. Zieladresse: `https://hennerdesma-art.github.io/DigitaleTransformation-WoodCorp/`.
-3. Für die einmalige Admin-Einrichtung die URL mit `?setup=1` öffnen. E-Mail ist vorgegeben; das Initialpasswort und den **separat bereitgestellten** einmaligen Einrichtungscode manuell eingeben.
-4. Der Code ist nur einmal und zeitlich begrenzt gültig. Er steht **nicht** im Repository. Supabase Auth speichert den Passwort-Hash. Der Client enthält niemals einen Secret-/Service-Role-Key.
-5. Danach über das normale Login einloggen. Unter **Team & Zugänge** E-Mail, Rolle und Versandart wählen: Einladung per Supabase-E-Mail **oder** einmaligen Link zum Kopieren. Empfänger öffnen den Link und legen selbst ein Passwort fest.
-6. Unter **Authentication > URL Configuration** im Supabase Dashboard die GitHub-Pages-URL als Site URL / erlaubten Redirect konfigurieren; ggf. den genauen Pfad mit `?invite=1` und `?recovery=1` erlauben.
-7. Für zuverlässige E-Mail-Einladungen SMTP in Supabase Auth einrichten. Alternativ einen einmaligen Einladungslink erzeugen und persönlich verschicken. Der Link ist vertraulich.
+### Benutzerrechte
 
-> Wichtig: Direktes ungeschütztes Self-Signup ist nicht vorgesehen; nur Mitglieder mit Eintrag in `woodcorp_access` können auf Analyse-Daten zugreifen. Für öffentliches Hosting gelten RLS und serverseitige Admin-Prüfung, nicht nur sichtbare Menüs.
+`viewer`: freigegebene Team-Workspaces ansehen, Analysefilter temporär nutzen.
+
+`analyst`: eigene private Workspaces und konfigurierbare Dashboards erstellen/bearbeiten und veröffentlichen.
+
+`admin`: zusätzlich Teamverwaltung, Filterkatalog und Verwaltung anderer Workspaces.
+
+Rechte werden serverseitig über Supabase Row Level Security und die vorhandene `woodcorp_access`-Liste durchgesetzt. Die App enthält ausschließlich den öffentlichen Supabase-Publishable-Key, **niemals** Service-Role-Keys oder Passwörter.
+
+## Technische Architektur
+
+| Bereich | Umsetzung |
+|---|---|
+| Website | React 19, TypeScript, Vite |
+| Decision Tree | `@xyflow/react`, strukturierte Knoten, analytische vs. rein visuelle Verbindungen |
+| Drag & Drop | `@dnd-kit/core`, Widgetbibliothek / Sortierung |
+| Design | NXT `#008B92`, `#707173`, originale Logo-Grafik, 71 lokal exportierte SVG-Icons |
+| Backend | Supabase Auth, PostgreSQL RLS, validierte Analytics-RPCs |
+| Kennzahlen | `nxt_case_metrics`, `nxt_ribbon_kpis`, `nxt_breakdown`, `nxt_monthly`, `nxt_dimensions` |
+| Speichern | `nxt_workspaces`, optimistische Versionierung mit `nxt_save_workspace` |
+| Filterkonfiguration | `nxt_filter_catalog`: sechs erlaubte Dimensionen, Admin-Freigaben |
+| Veröffentlichung | GitHub Actions: `npm ci` → Tests → Build → GitHub Pages aus `dist/` |
+
+**Supabase:** Projekt `maqyirapxoygcsljdqyk` (Woodcorp Process Intelligence, eu-central-1). Die separate NXT-Netzwerkforschungs-App ist nicht betroffen.
+
+## Datenbasis und fachliche Definitionen
+
+- `woodcorp_cases`: 19.953 Aufträge (Case-Grain; Schlüssel `case_key`).
+- `woodcorp_activities`: 210.135 Ereignisse; 1:n-Verknüpfung über `case_key`.
+- Zeitbereich: historische WoodCorp-Daten 2017–2019.
+- On-Time Delivery: `delivered_date <= promised_date`, nur mit vollständigen Datumswerten im Nenner.
+- Mengen-Konformität: `order_tolerance_met = 1`, nur Datensätze mit belegtem Flag im Nenner.
+- Das ursprüngliche Feld `order_date_met` widerspricht bei 9.618 Aufträgen dem Datumvergleich. Die Abweichung ist **Datenqualität**, keine stillschweigend bestätigte neue Geschäftsdefinition.
+- Keine Kennzahlen aus generierten Designbildern übernehmen. Segmentvergleiche allein sind keine Ursachenbeweise.
+- Neue Filterfelder nur nach Prüfung der SQL-Allowlist, Grain und Rechte.
 
 ## Projektstruktur
 
 ```text
-index.html                App-Einstieg
-css/styles.css            NXT Design- und Komponentenregeln
-js/config.js              öffentliche Supabase-Konfiguration
-js/filters.js             globale und lokale Filtervererbung
-js/app.js                 Auth, Navigation, Baum, Dashboards, Team
-assets/favicon.svg        NXT-inspiriertes Favicon\nassets/nxt-logo.png        Originales NXT-Logo (unverändert)
-.github/workflows/pages.yml   GitHub Pages Deployment
+src/App.tsx                           Navigation, Auth, Analyseoberfläche und Workspace-Status
+src/components/GraphCanvas.tsx        frei beweglicher Decision Tree
+src/components/DashboardBuilder.tsx   Widgets, Diagramme, Builder
+src/components/WorkspaceControls.tsx  Speichern, Auswahl, Team-Freigaben, Filterkatalog
+src/core/dashboard.ts                 Widget-/Workspace-Verträge und Validierung
+src/core/filters.ts                   globale / vererbte Knotenfilter
+src/core/graph.ts                     Knoten, Verbindungen, gespeicherter Graph
+src/lib/supabase.ts                   Auth / KPI-Abfragen
+src/lib/workspaces.ts                 serverseitige Workspace-/Katalog-API
+src/styles/                           NXT-Tokens, Website- und Builder-Styles
+public/nxt-logo.png                   originales NXT-Logo
+scripts/export-icons.mjs              erstellt lokale SVG-Icons
+sql/nxt_analytics_v3_workspaces.sql   geprüfter SQL-Stand für Workspaces und Katalog
+docs/PHASE_4_5.md                     Funktions- und Sicherheitsgrenzen
+.github/workflows/pages.yml           GitHub-Pages-Deployment von Vite dist/
 ```
 
-Das **Original-Logo** liegt unverändert in `assets/nxt-logo.png` und wird direkt von der eigenen Web-App geladen.
+## Entwicklung
 
-## Daten-/Qualitätskonventionen
+```bash
+npm ci
+npm run dev
+npm run test
+npm run build
+```
 
-- On-Time Delivery: `delivered_date <= promised_date`; Vergleich mit `order_date_met` ergab bei 9.618 Aufträgen Abweichungen. Vor geschäftlicher Interpretation der Kennzahl Definition klären.
-- Mengen-Konformität: `order_tolerance_met = 1`, Nenner nur Datensätze mit vorhandenem Flag.
-- Nicht ohne spezifische Freigabe Änderungen an Tabellen `woodcorp_cases`/`woodcorp_activities` durchführen.
-- Keine Kennzahlen aus dem Design-Mockup als echte Daten verwenden.
-- Keine Secret-Keys, Passwörter oder Einladungslinks in Commits, URLs von geteilten Analytics-Ansichten oder Logs speichern.
-- Für erweiterte Filter je Dimension nur erlaubte Feldnamen/Werte und gleiche Filterbasis im Baum sowie im Dashboard.
-- Anpassungen zuerst in der tatsächlichen App testen (Maus, Touch, Tastatur, reduzierte Bewegung, schmale Bildschirme).
-- Bei späterer Umstellung auf eigenständiges Hosting die erlaubten Origins der Edge-Funktion entsprechend kontrolliert aktualisieren.
+GitHub Pages liegt auf dem Projektpfad `/DigitaleTransformation-WoodCorp/`, nicht auf dem Domain-Root.
 
-## Entwicklungsstand
+## Status und Qualitätsgrenzen (23.11.2026)
 
-Die App wurde als grundsätzliche Architektur mit realen RPCs implementiert. Syntax und Backend-SQL-RPCs wurden überprüft. Ein vollständiger Browser-E2E-Test inklusive GitHub-Pages-Hosting und erster Admin-Registrierung steht aus, bis GitHub Pages erreichbar ist und der Einrichtungscode über den Browser einmalig eingelöst wurde.
+- Dashboard-Builder, Graph, Filtervererbung, Workspace-Speicherung und Freigabe sind implementiert.
+- Unit-Tests, TypeScript-Build und SVG-Export laufen in GitHub Actions.
+- Zusätzlich wurde der gebaute Login, die Analyseoberfläche, der Builder und Speichern/Veröffentlichen in einem isolierten Chromium-Test mit **simulierten** API-Antworten ohne JavaScript-Fehler durchgespielt. Dieser Test verwendet keine realen Benutzerkonten.
+- Supabase-RLS, Mitgliederanlage sowie Revisionskonflikte wurden direkt in Datenbanktransaktionen überprüft; QA-Datensätze wurden zurückgerollt.
+- Ein vollständiger E2E-Durchlauf über echte Nutzerrollen, Auth-Einladungen, SMTP und alle Geräte muss weiterhin auf der Live-Website erfolgen.
+- Für sichere Auth-E-Mails: erlaubte Redirect-URLs unter **Supabase Auth → URL Configuration** pflegen und SMTP konfigurieren.
+
+**Wichtig:** `main` ist produktiv. Neue Funktionen zunächst in `feat/*` mit CI testen, danach per PR zusammenführen. WoodCorp-Rohdaten nicht durch UI-Arbeiten überschreiben.
