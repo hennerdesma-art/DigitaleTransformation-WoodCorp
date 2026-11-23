@@ -23,6 +23,7 @@ import './styles/v5.css';
 import './styles/v6.css';
 import './styles/v7.css';
 import './styles/v8.css';
+import './styles/v9.css';
 import {NodeSettings} from './components/NodeSettings';
 import {conflictingFields,filterSignature} from './core/filters';
 import {WorkspaceOverview} from './components/WorkspaceOverview';
