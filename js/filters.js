@@ -28,7 +28,7 @@ function parseShareState(){
  const hash=new URLSearchParams(location.search).get("view");
  if(!hash)return null;
  try{
-  const raw=JSON.parse(decodeURIComponent(atob(hash.replace(/-/g,"+").replace(/_/g,"/"))));
+  const raw=JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(hash.replace(/-/g,"+").replace(/_/g,"/")),c=>c.charCodeAt(0))));
   if(raw.version!==1 || typeof raw.selected!=="string")return null;
   return {global:validate(raw.global||[]),selected:raw.selected.slice(0,120)};
  }catch{return null}
