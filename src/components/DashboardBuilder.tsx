@@ -3,7 +3,7 @@ import {DndContext,KeyboardSensor,PointerSensor,useDraggable,useDroppable,useSen
 import {FIELD_LABELS,FIELDS,type FieldKey} from '../config';
 import {analysisApi} from '../lib/supabase';
 import type {Filter,DashboardData,BreakdownRow,TrendRow} from '../core/types';
-import {WIDGET_LABELS,WIDGET_ICONS,WIDGET_TYPES,METRICS,METRIC_LABELS,addWidget,dashboardFor,metricFormat,metricValue,moveWidget,removeWidget,updateWidget,type DashboardWidget,type NodeDashboard,type WidgetType} from '../core/dashboard';
+import {WIDGET_LABELS,WIDGET_ICONS,WIDGET_TYPES,METRICS,METRIC_LABELS,addWidget,dashboardFor,metricFormat,metricValue,moveWidget,removeWidget,updateWidget,type DashboardWidget,type NodeDashboard,type WidgetType,type MetricKey} from '../core/dashboard';
 import Icon from './Icon';
 import {Button,Notice,Spinner,number,percent} from './Ui';
 
@@ -12,7 +12,7 @@ const fallbackRows:BreakdownRow[]=[];
 function useBreakdown(widget:DashboardWidget,detail:DashboardData,filters:Filter[]){
  const [extra,setExtra]=useState<{key:string;rows:BreakdownRow[];loading:boolean;error:string}>({key:'',rows:[],loading:false,error:''});
  const field=widget.dimension||'delivery_company';
- const key=JSON.stringify(filters.map(f=>[f.field,f.value]).sort())+':'+field;
+ const key=JSON.stringify(filters.map(f=>[f.field,f.op,f.value]).sort())+':'+field;
  useEffect(()=>{
   if(widget.type!=='bar'&&widget.type!=='table')return;
   if(field==='delivery_company')return;
@@ -57,7 +57,7 @@ export function DashboardWidgetView({widget,detail,filters}:DataProps){
  }
  return null;
 }
-export function DashboardRenderer({dashboard,detail,filters,compact=false}:{dashboard:NodeDashboard;detail:DashboardData;filters:Filter[];compact?:boolean}){ return <div className={'node-dashboard-renderer '+(compact?'compact':'')}><p className="dashboard-question"><Icon name="circle-help" size={17}/>{dashboard.question}</p><div className="node-dashboard-widgets">{dashboard.widgets.map(w=><section key={w.id} className={'nxt-widget '+(w.width==='full'?'full':'half')}><header><Icon name={WIDGET_ICONS[w.type]} size={17}/><h4>{w.title}</h4></header><DashboardWidgetView widget={w} detail={detail} filters={filters}/></section>)}{!dashboard.widgets.length&&<div className="widget-empty">Noch keine Dashboard-Elemente. Im Dashboard Builder können Widgets hinzugefügt werden.</div>}</div></div>;
+export function DashboardRenderer({dashboard,detail,filters,compact=false,onExplain}:{dashboard:NodeDashboard;detail:DashboardData;filters:Filter[];compact?:boolean;onExplain?:(metric:MetricKey)=>void}){ return <div className={'node-dashboard-renderer '+(compact?'compact':'')}><p className="dashboard-question"><Icon name="circle-help" size={17}/>{dashboard.question}</p><div className="node-dashboard-widgets">{dashboard.widgets.map(w=><section key={w.id} className={'nxt-widget '+(w.width==='full'?'full':'half')}><header><Icon name={WIDGET_ICONS[w.type]} size={17}/><h4>{w.title}</h4>{onExplain&&w.type!=='text'&&<button type="button" className="nxt-widget-explain" onClick={()=>onExplain(w.type==='kpi'?(w.metric||'otifRate'):'onTimeRate')} title={"Berechnungslogik für "+w.title} aria-label={"Berechnungslogik für "+w.title}><Icon name="info" size={15}/></button>}</header><DashboardWidgetView widget={w} detail={detail} filters={filters}/></section>)}{!dashboard.widgets.length&&<div className="widget-empty">Noch keine Dashboard-Elemente. Im Dashboard Builder können Widgets hinzugefügt werden.</div>}</div></div>;
 }
 function LibraryTile({type,onClick,disabled}:{type:WidgetType;onClick:()=>void;disabled:boolean}){
  const drag=useDraggable({id:'palette:'+type,disabled,data:{type}});

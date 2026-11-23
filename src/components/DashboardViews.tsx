@@ -24,8 +24,8 @@ export function RenameNodeDialog({label,onSave,onClose}:{label:string;onSave:(va
   <div className="modal-actions"><Button onClick={onClose}>Abbrechen</Button><Button kind="primary" type="submit" icon="check">Speichern</Button></div>
  </form></Modal>;
 }
-export function DashboardFullView({title,dashboard,detail,filters,onClose,onEdit,canEdit}:{
- title:string;dashboard:NodeDashboard;detail:DashboardData;filters:Filter[];onClose:()=>void;onEdit:()=>void;canEdit:boolean;
+export function DashboardFullView({title,dashboard,detail,filters,onClose,onEdit,onExplain,canEdit}:{
+ title:string;dashboard:NodeDashboard;detail:DashboardData;filters:Filter[];onClose:()=>void;onEdit:()=>void;onExplain:(metric:MetricKey)=>void;canEdit:boolean;
 }){
  const closeRef=useRef<HTMLButtonElement>(null);
  useEffect(()=>{const prior=document.activeElement instanceof HTMLElement?document.activeElement:null;closeRef.current?.focus();
@@ -36,7 +36,7 @@ export function DashboardFullView({title,dashboard,detail,filters,onClose,onEdit
   <header className="nxt-dashboard-fullscreen-header">
    <div><span className="nxt-eyebrow">NXT · Knoten-Dashboard</span><h2><Icon name="layout-dashboard" size={25}/>{title}</h2><p>Vollbildansicht · Echtzeit-Kennzahlen im aktuellen Filterkontext</p></div>
    <div className="directory-actions">{canEdit&&<Button icon="settings" onClick={onEdit}>Bearbeiten</Button>}<button ref={closeRef} className="nxt-button primary" onClick={onClose}><Icon name="minimize" size={18}/> Vollbild schließen</button></div>
-  </header><main className="nxt-dashboard-fullscreen-body"><DashboardRenderer dashboard={dashboard} detail={detail} filters={filters}/></main>
+  </header><main className="nxt-dashboard-fullscreen-body"><DashboardRenderer dashboard={dashboard} detail={detail} filters={filters} onExplain={onExplain}/></main>
   <footer className="nxt-dashboard-fullscreen-foot">Escape zum Schließen · Das Dashboard kann jederzeit erneut geöffnet werden.</footer>
  </div>;
 }

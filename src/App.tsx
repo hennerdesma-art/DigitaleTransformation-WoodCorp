@@ -1,9 +1,9 @@
 import React,{useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {ReactFlowProvider,useEdgesState,useNodesState,useReactFlow,type Connection,type EdgeChange,type NodeChange,type Viewport} from '@xyflow/react';
-import {FIELD_LABELS,FIELDS,PROJECT,type FieldKey} from './config';
+import {FIELD_LABELS,FIELDS,PROJECT,FILTER_KIND,OTIF_STATUS_LABELS,type FieldKey} from './config';
 import {analysisApi,memberApi,supabase} from './lib/supabase';
-import {effectiveFilters,labels,makeFilter,toBackend,validateFilters} from './core/filters';
-import {ROOT_ID,createInitialGraph,splitGraph,nodeFor,referenceEdge,isValidReference,cleanDraft,serializeDraft,restoreDraft,type NNode,type NEdge} from './core/graph';
+import {effectiveFilters,labels,makeFilter,toBackend,validateFilters,formatFilter,traceFilters} from './core/filters';
+import {ROOT_ID,rootAnalysis,createInitialGraph,splitGraph,nodeFor,referenceEdge,isValidReference,cleanDraft,serializeDraft,restoreDraft,type NNode,type NEdge} from './core/graph';
 import type {Filter,Role,Ribbon,Metrics,TrendRow,BreakdownRow,PaletteType,DashboardData,SavedDraft,AnalysisNode} from './core/types';
 import {CanvasWithFlow} from './components/GraphCanvas';
 import Icon from './components/Icon';
@@ -11,11 +11,13 @@ import {Brand,Button,IconButton,Modal,Notice,Spinner,number,percent,decimal,Smal
 import AuthScreen from './components/AuthScreen';
 import {DashboardRenderer,DashboardBuilder} from './components/DashboardBuilder';
 import {WorkspaceControls,FilterCatalogPage} from './components/WorkspaceControls';
-import {standardDashboard,makeDocument,validDocument,type NodeDashboard} from './core/dashboard';
+import {standardDashboard,makeDocument,validDocument,metricValue,metricFormat,METRIC_LABELS,type MetricKey,type NodeDashboard} from './core/dashboard';
+import {CalculationLogic} from './components/CalculationLogic';
 import {workspacesApi,type WorkspaceRecord,type FilterCatalogRow} from './lib/workspaces';
 import './styles/dashboard.css';
 import './styles/v4.css';
 import './styles/v5.css';
+import './styles/v6.css';
 import {NodeSettings} from './components/NodeSettings';
 import {conflictingFields,filterSignature} from './core/filters';
 import {WorkspaceOverview} from './components/WorkspaceOverview';
@@ -36,14 +38,32 @@ const fmtDate=(value:string|null|undefined)=>value?new Date(value).toLocaleDateS
 const isEditing=(role:Role|null)=>role==='admin'||role==='analyst';
 
 function FilterDialog({target,dimensions,allowedFields,fieldNames,onApply,onClose}:{target:{kind:'global'|'node';id?:string};dimensions:Record<string,string[]>;allowedFields:FieldKey[];fieldNames:Record<FieldKey,string>;onApply:(f:Filter)=>void;onClose:()=>void}){
- const [field,setField]=useState<FieldKey>(allowedFields[0]||'factory');const [value,setValue]=useState('');const entries=allowedFields.filter(f=>(dimensions[f]||[]).length>0);
- useEffect(()=>{setValue(dimensions[field]?.[0]||'');},[field,dimensions]);
- return <Modal title={target.kind==='global'?'Globalen Filter hinzufügen':'Filter für ausgewählten Knoten'} onClose={onClose}>
-  <p className="muted">{target.kind==='global'?'Dieser Filter gilt für alle Analysen und den KPI-Header.':'Dieser Filter gilt nur für den Knoten und seine analytischen Nachfahren – niemals für Geschwister.'}</p>
-  <form onSubmit={e=>{e.preventDefault();try{onApply(makeFilter(field,value,target.kind==='global'?'global':'local'));onClose();}catch(e){alert(e instanceof Error?e.message:'Fehler beim Filter')}}}>
-   <label className="field">Dimension<select value={field} onChange={e=>setField(e.target.value as FieldKey)}>{entries.map(f=><option key={f} value={f}>{fieldNames[f]}</option>)}</select></label>
-   <label className="field">Wert<select value={value} onChange={e=>setValue(e.target.value)}>{(dimensions[field]||[]).map(v=><option value={v} key={v}>{v}</option>)}</select></label>
-   <div className="modal-actions"><Button onClick={onClose}>Abbrechen</Button><Button kind="primary" icon="check" type="submit" disabled={!value}>Filter anwenden</Button></div>
+ const [field,setField]=useState<FieldKey>(allowedFields[0]||'factory');
+ const kind=FILTER_KIND(field), options=dimensions[field]||[];
+ const [op,setOp]=useState<Filter['op']>('eq'),[value,setValue]=useState(''),[multi,setMulti]=useState<string[]>([]);
+ const [from,setFrom]=useState(''),[to,setTo]=useState(''),[error,setError]=useState('');
+ useEffect(()=>{setOp(FILTER_KIND(field)==='category'?'eq':'between');setValue((dimensions[field]||[])[0]||'');setMulti([]);setFrom('');setTo('');setError('');},[field,dimensions]);
+ const categorical=kind==='category', numeric=kind==='number';
+ const submit=(e:React.FormEvent)=>{
+  e.preventDefault();setError('');
+  try{
+   const payload:string|string[]=categorical?(op==='in'?multi:value):op==='between'?[from,to]:from;
+   onApply(makeFilter(field,payload,target.kind==='global'?'global':'local',op));onClose();
+  }catch(err){setError(err instanceof Error?err.message:'Ungültiger Filter');}
+ };
+ return <Modal title={target.kind==='global'?'Globalen Filter hinzufügen':'Lokalen Filter für den Knoten'} onClose={onClose}>
+  <p className="muted">{target.kind==='global'?'Dieser Filter gilt für alle Knoten, Diagramme und Dashboards.':'Der Filter gilt für diesen Knoten und alle über Pfeile erreichbaren Nachfolger, nicht für unabhängige Zweige.'}</p>
+  <form onSubmit={submit} className="nxt-typed-filter">
+   <label className="field">Dimension<select value={field} onChange={e=>setField(e.target.value as FieldKey)}>{allowedFields.map(f=><option key={f} value={f}>{fieldNames[f]}</option>)}</select></label>
+   <label className="field">Vergleich<select value={op} onChange={e=>{setOp(e.target.value as Filter['op']);setError('')}}>{categorical?<><option value="eq">Ist gleich</option><option value="in">Ist einer von (Mehrfachauswahl)</option></>:<><option value="between">Zwischen / Zeitraum</option><option value="gte">Ab (≥)</option><option value="lte">Bis (≤)</option><option value="eq">Gleich (=)</option></>}</select></label>
+   {categorical&&(op==='eq'?<label className="field">Wert<select value={value} onChange={e=>setValue(e.target.value)}><option value="">Bitte wählen</option>{options.map(v=><option value={v} key={v}>{OTIF_STATUS_LABELS[v]||v}</option>)}</select></label>:
+    <fieldset className="nxt-multiselect"><legend>Mehrere Werte auswählen (max. 20)</legend>{options.map(v=><label key={v}><input type="checkbox" checked={multi.includes(v)} onChange={e=>setMulti(old=>e.target.checked?[...old,v].slice(0,20):old.filter(x=>x!==v))}/>{OTIF_STATUS_LABELS[v]||v}</label>)}</fieldset>)}
+   {!categorical&&<div className="nxt-filter-range">
+    <label className="field">{op==='between'?'Von':op==='gte'?'Ab':op==='lte'?'Bis':'Wert'}<input type={numeric?'number':'date'} step={numeric?'any':undefined} required value={from} onChange={e=>setFrom(e.target.value)}/></label>
+    {op==='between'&&<label className="field">Bis<input type={numeric?'number':'date'} step={numeric?'any':undefined} required value={to} onChange={e=>setTo(e.target.value)}/></label>}
+   </div>}
+   {error&&<Notice kind="error">{error}</Notice>}
+   <div className="modal-actions"><Button onClick={onClose}>Abbrechen</Button><Button kind="primary" icon="check" type="submit">Filter anwenden</Button></div>
   </form>
  </Modal>;
 }
@@ -67,19 +87,24 @@ function Sidebar({view,onNavigate,collapsed,setCollapsed,role}:{view:View;onNavi
  return <aside className={'navigation '+(collapsed?'collapsed':'')} aria-label="Hauptnavigation"><nav><button className="nav-toggle" type="button" onClick={()=>setCollapsed(!collapsed)} aria-label={collapsed?'Navigation ausklappen':'Navigation einklappen'} title={collapsed?'Navigation ausklappen':'Navigation einklappen'}><Icon name={collapsed?'panel-left-open':'panel-left-close'} size={18}/>{!collapsed&&'Navigation'}</button>
  {NAV.filter(n=>!n.admin||role==='admin').map(n=><button className={'nav-entry '+(n.id===view?'active':'')} key={n.id} aria-current={n.id===view?'page':undefined} onClick={()=>onNavigate(n.id)} title={n.label} type="button"><Icon name={n.icon} size={19}/>{!collapsed&&<span>{n.label}</span>}</button>)}
  </nav><div className="nav-spacer"/><div className="nav-bottom">{!collapsed&&<><div className="nav-label"><Icon name="star" size={16}/> FAVORITEN</div><button type="button" onClick={()=>onNavigate('analytics')}><Icon name="target" size={16}/> On-Time Delivery</button><p>WoodCorp · O2C</p></>}<div className="nav-dots" aria-hidden="true"/></div></aside>;}
-function MetricRibbon({ribbon,trend,pending,names}:{ribbon:Ribbon|null;trend:TrendRow[];pending:boolean;names:MetricNames}){
- const values=trend.filter(r=>r.on_time_rate!=null).map(t=>Number(t.on_time_rate));
- const cards=[
-  {title:names.onTimeRate||'On-Time Delivery',value:percent(ribbon?.onTimeRate),icon:'target',unit:'Lieferdatum ≤ Zusage',highlight:true,graph:values},
-  {title:names.orders||'Aufträge',value:number(ribbon?.orders),icon:'package',unit:'Aufträge in Auswahl'},
-  {title:names.avgDelayDays||'Ø Lieferverzug',value:ribbon?.avgDelayDays==null?'–':decimal(ribbon.avgDelayDays)+' Tage',icon:'clock-3',unit:'Nur verspätete Lieferungen'},
-  {title:names.lateOrders||'Verspätete Aufträge',value:number(ribbon?.lateOrders),icon:'triangle-alert',unit:'Lieferdatum > Zusage'},
-  {title:names.affectedFactories||'Betroffene Werke',value:ribbon?`${ribbon.affectedFactories} / ${ribbon.factories}`:'–',icon:'factory',unit:'Werke mit Verspätungen'}
+function MetricRibbon({ribbon,trend,pending,names,onExplain}:{ribbon:Ribbon|null;trend:TrendRow[];pending:boolean;names:MetricNames;onExplain:(metric:MetricKey)=>void}){
+ const graph=trend.filter(r=>r.on_time_rate!=null).map(r=>Number(r.on_time_rate));
+ const cards:{key:MetricKey;icon:string;hint:string;highlight?:boolean;graph?:number[]}[]=[
+  {key:'otifRate',icon:'target',hint:'On Time In Full · Ziel 80 %',highlight:true},
+  {key:'onTimeRate',icon:'clock-3',hint:'Pünktliche Lieferungen',graph},
+  {key:'volumeConformanceRate',icon:'check-circle-2',hint:'Mengenkonforme Lieferungen'},
+  {key:'totalPenaltyEur',icon:'triangle-alert',hint:'Vertragsstrafenmodell · 0,75 €/kg'},
+  {key:'orders',icon:'package',hint:'Case-basierte Aufträge'}
  ];
- return <div className="kpi-ribbon">{cards.map(c=><section className={'ribbon-card '+(c.highlight?'featured':'')} key={c.title} title={c.unit}><div className="ribbon-symbol"><Icon name={c.icon} size={23}/></div><div className="ribbon-content"><h3>{c.title}</h3><div className="ribbon-value">{pending&&!ribbon?'…':c.value}</div><small>{c.unit}</small></div>{c.graph&&<SmallTrend values={c.graph}/>}</section>)}</div>;
+ return <div className="kpi-ribbon">{cards.map(card=><section className={'ribbon-card '+(card.highlight?'featured':'')} key={card.key}>
+   <div className="ribbon-symbol"><Icon name={card.icon} size={23}/></div>
+   <div className="ribbon-content"><h3>{names[card.key]||METRIC_LABELS[card.key]}</h3><div className="ribbon-value">{pending&&!ribbon?'…':metricFormat(card.key,ribbon?metricValue(card.key,ribbon,ribbon):null)}</div><small>{card.hint}</small></div>
+   {card.graph&&<SmallTrend values={card.graph}/>}
+   <button className="ribbon-explain" type="button" onClick={()=>onExplain(card.key)} aria-label={'Berechnungslogik für '+METRIC_LABELS[card.key]} title="Berechnungslogik öffnen"><Icon name="info" size={15}/></button>
+ </section>)}</div>;
 }
 function FilterStrip({globals,fieldNames,onRemove,onAdd,onReset,onShare}:{globals:Filter[];fieldNames:Record<FieldKey,string>;onRemove:(id:string)=>void;onAdd:()=>void;onReset:()=>void;onShare:()=>void}){
- return <div className="filter-strip"><div className="filter-title"><Icon name="filter" size={17}/> Aktive Filter <b>({globals.length})</b></div><div className="filter-chips">{globals.map(f=><div className="filter-chip" key={f.id}><span>{fieldNames[f.field]}: <b>{f.value}</b></span><button title="Filter entfernen" aria-label={'Filter '+fieldNames[f.field]+' '+f.value+' entfernen'} onClick={()=>onRemove(f.id)}>×</button></div>)}{!globals.length&&<span className="no-filters">Alle Werke · alle historischen Lieferungen</span>}</div>
+ return <div className="filter-strip"><div className="filter-title"><Icon name="filter" size={17}/> Aktive Filter <b>({globals.length})</b></div><div className="filter-chips">{globals.map(f=><div className="filter-chip" key={f.id}><span><b>{formatFilter(f,fieldNames)}</b></span><button title="Filter entfernen" aria-label={'Filter '+formatFilter(f,fieldNames)+' entfernen'} onClick={()=>onRemove(f.id)}>×</button></div>)}{!globals.length&&<span className="no-filters">Alle Werke · alle historischen Lieferungen</span>}</div>
  <button className="filter-add" onClick={onAdd}><Icon name="plus" size={17}/> Filter</button><IconButton name="refresh-cw" title="Globale Filter zurücksetzen" disabled={!globals.length} onClick={onReset}/><IconButton name="share-2" title="Gefilterte Ansicht teilen" onClick={onShare}/></div>;
 }
 function TrendChart({rows}:{rows:TrendRow[]}){
@@ -96,14 +121,15 @@ function BarChart({rows}:{rows:BreakdownRow[]}){
  if(!filtered.length)return <div className="chart-empty">Keine Vergleichsdaten verfügbar</div>;
  return <div className="bar-chart">{filtered.map(r=><div className="bar-row" key={r.label}><span title={r.label||''}>{r.label}</span><div className="bar-track"><div style={{width:Math.max(0,Math.min(100,Number(r.on_time_rate)))+'%'}}/></div><b>{percent(r.on_time_rate)}</b></div>)}</div>;
 }
-function DetailPanel({node,detail,tab,setTab,onClose,onFilter,onExpand,onRename,dashboard,filters,fieldNames,onEdit,canEdit}:{node:NNode|undefined;detail:DashboardData;tab:string;setTab:(v:string)=>void;onClose:()=>void;onFilter:()=>void;onExpand:()=>void;onRename:()=>void;dashboard:NodeDashboard;filters:Filter[];fieldNames:Record<FieldKey,string>;onEdit:()=>void;canEdit:boolean}){
+function DetailPanel({node,detail,tab,setTab,onClose,onFilter,onExpand,onRename,dashboard,filters,fieldNames,filterTrace,onExplain,onEdit,canEdit}:{node:NNode|undefined;detail:DashboardData;tab:string;setTab:(v:string)=>void;onClose:()=>void;onFilter:()=>void;onExpand:()=>void;onRename:()=>void;dashboard:NodeDashboard;filters:Filter[];fieldNames:Record<FieldKey,string>;filterTrace:ReturnType<typeof traceFilters>;onExplain:(metric:MetricKey)=>void;onEdit:()=>void;canEdit:boolean}){
  if(!node)return <section className="detail-panel"><div className="detail-header"><strong>Knoten-Dashboard</strong></div><div className="chart-empty">Knoten im Analysebaum auswählen.</div></section>;
- const m=detail.metrics;const late=detail.ribbon?.lateOrders;const tabs=['Übersicht','Details','Treiber','Vergleich'];
+ const m=detail.metrics;const late=detail.ribbon?.lateOrders;const viz=node.data.analysis.visualization;const explanatoryMetric=(viz==='bar'||viz==='line'?'onTimeRate':viz==='donut'?(node.data.analysis.metricId||'otifRate'):node.data.analysis.metricId==='otd'?'onTimeRate':node.data.analysis.metricId||'otifRate') as MetricKey;const tabs=['Übersicht','Details','Treiber','Vergleich','Berechnungslogik'];
  return <aside className="detail-panel"><div className="detail-header"><div><Icon name="layers" size={20}/><div><strong>Knoten-Dashboard: {node.data.analysis.label}</strong><small>{node.data.analysis.predicate?fieldNames[node.data.analysis.predicate.field]:'Kennzahl'} · WoodCorp O2C</small></div></div><div className="detail-head-actions">{canEdit&&<IconButton name="type" title="Knoten umbenennen" onClick={onRename}/>}<IconButton name="maximize" title="Dashboard als Vollbild öffnen" onClick={onExpand}/><IconButton name="x" title="Detailbereich schließen" onClick={onClose}/></div></div>
  <nav className="detail-tabs" aria-label="Dashboard-Ansichten">{tabs.map(t=><button key={t} className={t===tab?'selected':''} aria-current={t===tab?'page':undefined} onClick={()=>setTab(t)}>{t}</button>)}</nav>
  {detail.pending&&!m?<Spinner text="Knotenkennzahlen werden geladen …"/>:detail.error?<Notice kind="error">{detail.error}</Notice>:<div className="detail-body">
- {tab==='Übersicht'&&<><div className="detail-dashboard-edit"><span className="muted">Knotenbezogenes Dashboard · {dashboard.widgets.length} Elemente</span>{canEdit&&<button className="nxt-button secondary" onClick={onEdit}><Icon name="layout-dashboard" size={16}/> Dashboard bearbeiten</button>}</div><DashboardRenderer dashboard={dashboard} detail={detail} filters={filters} compact/></>}
- {tab==='Details'&&<div className="chart-box"><h3>Kennzahlen und Datenumfang</h3><dl className="detail-list"><dt>Aufträge</dt><dd>{number(m?.orders)}</dd><dt>Pünktliche Lieferungen</dt><dd>{percent(m?.onTimeRate)}</dd><dt>Mengentreue</dt><dd>{percent(m?.volumeConformanceRate)}</dd><dt>Vollständige Liefertermine</dt><dd>{number(m?.dateCoverage)}</dd><dt>Früheste Lieferung</dt><dd>{fmtDate(m?.firstDelivery)}</dd><dt>Späteste Lieferung</dt><dd>{fmtDate(m?.lastDelivery)}</dd></dl></div>}
+ {tab==='Übersicht'&&<><div className="detail-dashboard-edit"><span className="muted">Knotenbezogenes Dashboard · {dashboard.widgets.length} Elemente</span>{canEdit&&<button className="nxt-button secondary" onClick={onEdit}><Icon name="layout-dashboard" size={16}/> Dashboard bearbeiten</button>}</div><DashboardRenderer dashboard={dashboard} detail={detail} filters={filters} compact onExplain={onExplain}/></>}
+ {tab==='Berechnungslogik'&&<CalculationLogic metric={explanatoryMetric} metrics={m} trace={filterTrace} fieldNames={fieldNames} node={node.data.analysis} calculated={node.data.calculation} compact/>}
+  {tab==='Details'&&<div className="chart-box"><h3>Kennzahlen und Datenumfang</h3><dl className="detail-list"><dt>Aufträge</dt><dd>{number(m?.orders)}</dd><dt>OTIF</dt><dd>{percent(m?.otifRate)}</dd><dt>OTIF-Aufträge</dt><dd>{number(m?.otifCases)}</dd><dt>Modellierte Vertragsstrafe (0,75 €/kg)</dt><dd>{metricFormat('totalPenaltyEur',m?.totalPenaltyEur??null)}</dd><dt>Pünktlich, aber nicht mengenkonform</dt><dd>{number(m?.onTimeNotFullCases)}</dd><dt>Verspätet, aber mengenkonform</dt><dd>{number(m?.lateInFullCases)}</dd><dt>Verspätet und nicht mengenkonform</dt><dd>{number(m?.lateNotFullCases)}</dd><dt>Pünktliche Lieferungen</dt><dd>{percent(m?.onTimeRate)}</dd><dt>Mengentreue</dt><dd>{percent(m?.volumeConformanceRate)}</dd><dt>Vollständige Liefertermine</dt><dd>{number(m?.dateCoverage)}</dd><dt>Früheste Lieferung</dt><dd>{fmtDate(m?.firstDelivery)}</dd><dt>Späteste Lieferung</dt><dd>{fmtDate(m?.lastDelivery)}</dd></dl></div>}
  {tab==='Treiber'&&<><Notice kind="warning">Dies sind beobachtete Segmentunterschiede, keine nachgewiesenen Ursachen.</Notice><div className="chart-box"><h3>Potenzielle Einflussbereiche · Lieferunternehmen</h3><BarChart rows={detail.breakdown}/></div></>}
  {tab==='Vergleich'&&<div className="chart-box"><h3>Vergleich nach Lieferunternehmen</h3><div className="table-overflow"><table><thead><tr><th>Lieferunternehmen</th><th>Aufträge</th><th>On-Time</th></tr></thead><tbody>{detail.breakdown.map((r,i)=><tr key={r.label||i}><td>{r.label||'Ohne Angabe'}</td><td>{number(r.orders)}</td><td>{percent(r.on_time_rate)}</td></tr>)}</tbody></table></div></div>}
  <button className="detail-refine" onClick={onFilter}><Icon name="filter" size={17}/> Diesen Knoten filtern</button><p className="dashboard-foot">Datenquelle: Supabase · Case-basiert · Historische Daten {PROJECT.years}</p></div>}</aside>;
@@ -131,8 +157,8 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
  const flow=useReactFlow<NNode,NEdge>();const [view,setView]=useState<View>('analytics');const [collapsed,setCollapsed]=useState(false);
  const [globals,setGlobals]=useState<Filter[]>([]);const [locals,setLocals]=useState<Record<string,Filter[]>>({});
  const [dimensions,setDimensions]=useState<Record<string,string[]>>({});const [ribbon,setRibbon]=useState<Ribbon|null>(null);const [rootMetrics,setRootMetrics]=useState<Metrics|null>(null);const [ribbonTrend,setRibbonTrend]=useState<TrendRow[]>([]);
- const [selectedId,setSelectedId]=useState(ROOT_ID);const [selectedTab,setSelectedTab]=useState('Übersicht');const [detail,setDetail]=useState<DashboardData>(emptyDetail);
- const [nodes,setNodes,onNodesChange]=useNodesState<NNode>([nodeFor({id:ROOT_ID,parentId:null,label:'On-Time Delivery',kind:'root',createdBy:'system'}, {x:550,y:35})]);
+ const [selectedId,setSelectedId]=useState(ROOT_ID);const [selectedTab,setSelectedTab]=useState('Übersicht');const [logicContext,setLogicContext]=useState<{metric:MetricKey;nodeId:string|null}|null>(null);const [detail,setDetail]=useState<DashboardData>(emptyDetail);
+ const [nodes,setNodes,onNodesChange]=useNodesState<NNode>([nodeFor(rootAnalysis(),{x:500,y:70})]);
  const [dashboards,setDashboards]=useState<Record<string,NodeDashboard>>({});const [metricNames,setMetricNames]=useState<MetricNames>({});const [fullDashboard,setFullDashboard]=useState(false);const [nameDialog,setNameDialog]=useState<'node'|'metrics'|null>(null);const defaultDashboardRef=useRef<Record<string,NodeDashboard>>({});
  const [workspaces,setWorkspaces]=useState<WorkspaceRecord[]>([]);const [activeWorkspace,setActiveWorkspace]=useState<WorkspaceRecord|null>(null);
  const [catalog,setCatalog]=useState<FilterCatalogRow[]>([]);const [candidates,setCandidates]=useState<FilterCandidate[]>([]);const [saving,setSaving]=useState(false);const [catalogBusy,setCatalogBusy]=useState(false);
@@ -223,11 +249,11 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
   setDirty(true);say('Knoten umbenannt. Änderungen im Workspace speichern.');
  };
  const resetCamera=()=>{void flow.fitView({padding:.17,duration:250})};
- const resetDraft=()=>{if(!confirm('Lokalen Entwurf verwerfen und Werk-Baum neu laden? Eine gespeicherte Server-Version bleibt erhalten.'))return;localStorage.removeItem(localKey);setActiveWorkspace(null);setDashboards({});setMetricNames({});initializedRef.current=false;setLocals({});setGlobals([]);setLoaded(false);setReloadKey(i=>i+1);say('Lokaler Entwurf zurückgesetzt')};
+ const resetDraft=()=>{if(!confirm('Lokalen Entwurf verwerfen und OTIF-Ausgangsknoten neu laden? Eine gespeicherte Server-Version bleibt erhalten.'))return;localStorage.removeItem(localKey);setActiveWorkspace(null);setDashboards({});setMetricNames({});initializedRef.current=false;setLocals({});setGlobals([]);setLoaded(false);setReloadKey(i=>i+1);say('Lokaler Entwurf zurückgesetzt')};
  const addNode=useCallback((type:PaletteType,position:{x:number;y:number})=>{if(!editMode||!canModify){say('Zum Hinzufügen zuerst den Bearbeitungsmodus mit Schreibrechten aktivieren.');return;}
   if(type==='connector'){say('Connector: Ziehe einen Verbindungspunkt an einem Knoten zu einem anderen Verbindungspunkt.');return;}
-  remember();const label=type==='metric'?'Neue KPI':type==='note'?'Neue Anmerkung':type==='condition'?'Neuer Filterknoten':type==='donut'?'Donut · On-Time':type==='bar'?'Balken · Segmentvergleich':type==='line'?'Zeitreihe · On-Time':type==='calculation'?'SQL · Unterlieferte Menge':'Neue Aufgliederung';
-  const analysis:AnalysisNode={id:'user:'+crypto.randomUUID(),parentId:null,label,kind:type==='metric'?'metric':type==='note'?'note':type==='condition'?'condition':'segment',createdBy:'user',description:type==='note'?'Anmerkung':undefined,visualization:({donut:'donut',bar:'bar',line:'line',calculation:'calculation'} as Record<string,AnalysisNode['visualization']>)[type]||'kpi',chartDimension:'delivery_company',calculationTemplate:'shortfall_kg'};
+  remember();const label=type==='root'?'Neuer Ausgangsknoten':type==='metric'?'Neue KPI':type==='note'?'Neue Anmerkung':type==='condition'?'Neuer Filterknoten':type==='donut'?'Donut · On-Time':type==='bar'?'Balken · Segmentvergleich':type==='line'?'Zeitreihe · On-Time':type==='calculation'?'Vertragsstrafe · 0,75 €/kg':'Neue Aufgliederung';
+  const analysis:AnalysisNode={id:'user:'+crypto.randomUUID(),parentId:null,label,kind:type==='root'?'root':type==='metric'?'metric':type==='note'?'note':type==='condition'?'condition':'segment',metricId:'otifRate',createdBy:'user',description:type==='note'?'Anmerkung':undefined,visualization:({donut:'donut',bar:'bar',line:'line',calculation:'calculation'} as Record<string,AnalysisNode['visualization']>)[type]||'kpi',chartDimension:'delivery_company',calculationTemplate:'total_penalty_eur'};
   setNodes(ns=>{
    let next={...position};
    for(let i=0;i<40;i++){
@@ -237,7 +263,7 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
    return [...ns,nodeFor(analysis,next)];
   });setSelectedId(analysis.id);say('Knoten hinzugefügt. Einstellungen über das Zahnrad am Knoten konfigurieren.');
  },[editMode,canModify,remember,setNodes,say]);
- const removeNode=(id:string)=>{const n=nodes.find(n=>n.id===id);if(!editMode||!canModify||n?.data.analysis.createdBy!=='user')return;if(!confirm('Knoten und seine Verbindungen entfernen?'))return;remember();setNodes(ns=>ns.filter(n=>n.id!==id));setEdges(es=>es.filter(e=>e.source!==id&&e.target!==id));if(selectedId===id)setSelectedId(ROOT_ID);say('Knoten entfernt');};
+ const removeNode=(id:string)=>{const n=nodes.find(n=>n.id===id);if(!editMode||!canModify||!n)return;if(!confirm('Knoten und seine Verbindungen entfernen?'))return;remember();setNodes(ns=>ns.filter(n=>n.id!==id));setEdges(es=>es.filter(e=>e.source!==id&&e.target!==id));if(selectedId===id)setSelectedId(nodes.find(n=>n.id!==id)?.id||ROOT_ID);say('Knoten entfernt');};
  const applyFilter=(f:Filter)=>{if(canModify)setDirty(true);if(dialog?.kind==='global'){setGlobals(gs=>{try{return validateFilters([...gs,f])}catch(e){say((e as Error).message);return gs}})}else if(dialog?.id){setLocals(old=>{const current=old[dialog.id!]||[];try{return {...old,[dialog.id!]:validateFilters([...current,f])}}catch(e){say((e as Error).message);return old}})} };
  const removeGlobal=(id:string)=>{setGlobals(gs=>gs.filter(f=>f.id!==id));if(canModify)setDirty(true)};
  const share=async()=>{const data={v:1,g:globals.map(({field,op,value})=>({field,op,value})),selected:selectedId};const u=new URL(location.href);u.searchParams.set('view',btoa(unescape(encodeURIComponent(JSON.stringify(data)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''));try{await navigator.clipboard.writeText(u.toString());say('Link kopiert. Lokale Knotenfilter werden nicht mitgeteilt.')}catch{say('Zwischenablage nicht verfügbar. URL bitte manuell kopieren.')}};
@@ -245,9 +271,9 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
  useEffect(()=>{const query=new URLSearchParams(location.search).get('view');if(!query)return;try{const raw=JSON.parse(decodeURIComponent(escape(atob(query.replace(/-/g,'+').replace(/_/g,'/')))));if(raw.v!==1)return;const gs=validateFilters((raw.g||[]).map((f:Filter)=>({...f,id:crypto.randomUUID()})));setGlobals(gs);if(typeof raw.selected==='string')setSelectedId(raw.selected);}catch{say('Ungültiger Ansichtslink ignoriert.')}},[]);
  useEffect(()=>{analysisApi.dimensions().then(setDimensions).catch(e=>setWarning('Filterkatalog konnte nicht geladen werden: '+e.message));},[]);
  useEffect(()=>{const run=++requestRef.current;setBusy(true);setWarning('');const fetchAll=async()=>{
-  try{const [rb,m,factories,trend]=await Promise.all([analysisApi.ribbon(globals),analysisApi.metrics(globals),analysisApi.breakdown('factory',globals),analysisApi.trend(globals)]);
+  try{const [rb,m,trend]=await Promise.all([analysisApi.ribbon(globals),analysisApi.metrics(globals),analysisApi.trend(globals)]);
    if(run!==requestRef.current)return;setRibbon(rb);setRootMetrics(m);setRibbonTrend(trend);
-   if(!initializedRef.current){const base=createInitialGraph(factories,{orders:rb.orders,onTimeRate:rb.onTimeRate});const saved=localStorage.getItem(localKey);
+   if(!initializedRef.current){const base=createInitialGraph([],{orders:rb.orders,onTimeRate:rb.onTimeRate});const saved=localStorage.getItem(localKey);
     if(saved){try{const d=cleanDraft(JSON.parse(saved));if(d){const recovered=restoreDraft(d);const counts=new Map(base.nodes.map(n=>[n.id,n.data]));setNodes(recovered.nodes.map(n=>({...n,data:{...n.data,orders:counts.get(n.id)?.orders??null,onTimeRate:counts.get(n.id)?.onTimeRate??null}})));setEdges(recovered.edges);setLocals(d.localFilters||{});viewportRef.current=d.viewport;setTimeout(()=>flow.setViewport(d.viewport),150);say('Lokaler Entwurf geladen');}else{setNodes(base.nodes);setEdges(base.edges)}}catch{setNodes(base.nodes);setEdges(base.edges)}}else{setNodes(base.nodes);setEdges(base.edges)}initializedRef.current=true;setLoaded(true);
    }
   }catch(e){if(run===requestRef.current)setWarning('Live-Daten konnten nicht geladen werden: '+(e instanceof Error?e.message:String(e)))}finally{if(run===requestRef.current)setBusy(false)}};
@@ -295,7 +321,8 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
     const metrics=await promise;
     if(run!==graphRequest.current)return;
     const viz=a.visualization||'kpi';
-    const patch:Partial<NNode['data']>={orders:metrics.orders,onTimeRate:metrics.onTimeRate,filterSummary:filters.map(f=>(fieldNames[f.field]||f.field)+': '+f.value).join(' · '),error:undefined,chartRows:undefined,trendRows:undefined,calculation:undefined};
+    const chosen=(a.metricId==='otd'?'onTimeRate':a.metricId&&Object.prototype.hasOwnProperty.call(METRIC_LABELS,a.metricId)?a.metricId:'otifRate') as MetricKey;
+    const patch:Partial<NNode['data']>={orders:metrics.orders,onTimeRate:metrics.onTimeRate,primaryValue:metricValue(chosen,metrics,null),primaryLabel:METRIC_LABELS[chosen],filterSummary:filters.map(f=>formatFilter(f,fieldNames)).join(' · '),error:undefined,chartRows:undefined,calculation:undefined};
     if(viz==='bar'){
       const dimension=a.chartDimension||'delivery_company';
       const chartKey=key+':'+dimension;
@@ -324,7 +351,7 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
  const split=async(id:string,field:FieldKey)=>{const f=effective(id);const rows=await analysisApi.breakdown(field,f);if(!rows.length)throw Error('Keine Teilgruppen für diese Filter verfügbar');
   remember();const next=splitGraph(nodes,edges,id,field,rows);setNodes(next.nodes);setEdges(next.edges);say(rows.length+' Teilgruppen geladen');};
  const pageSearch=(term:string)=>{setSearch(term);if(term.trim().length<2)return;const item=nodes.find(n=>n.data.analysis.label.toLowerCase().includes(term.toLowerCase()));if(item){setSelectedId(item.id);setView('analytics');void flow.fitView({nodes:[{id:item.id}],duration:250,padding:.6});}};
- const modeActions={nodes,edges,onNodesChange:onNodeChanges,onEdgesChange:onEdgeChanges,onConnect:connect,onSelect:setSelectedId,onSelectionClear:()=>{},selectedId,editMode,onEditToggle:()=>{if(canModify)setEditMode(v=>!v)},onFilter:(id:string)=>setDialog({kind:'node',id}),onSplit:(id:string)=>setDialog({kind:'split',id}),onRemove:removeNode,onConfigure:(id:string)=>{setSelectedId(id);setConfigureNodeId(id)},onAdd:addNode,onSave:saveDraft,onReset:resetDraft,onGraphMove:()=>{setDirty(true);},onGraphStart:remember,onUndo:undo,onRedo:redo,fieldNames,onViewportChange:(v:Viewport)=>{viewportRef.current=v;},fullscreen,setFullscreen,canEdit:canModify,dirty,onHelp:()=>handleSetView('builder')};
+ const modeActions={nodes,edges,onNodesChange:onNodeChanges,onEdgesChange:onEdgeChanges,onConnect:connect,onSelect:setSelectedId,onSelectionClear:()=>{},selectedId,editMode,onEditToggle:()=>{if(canModify)setEditMode(v=>!v)},onFilter:(id:string)=>setDialog({kind:'node',id}),onSplit:(id:string)=>setDialog({kind:'split',id}),onRemove:removeNode,onConfigure:(id:string)=>{setSelectedId(id);setConfigureNodeId(id)},onExplain:(id:string)=>{setSelectedId(id);setRightVisible(true);setSelectedTab('Berechnungslogik')},onAdd:addNode,onSave:saveDraft,onReset:resetDraft,onGraphMove:()=>{setDirty(true);},onGraphStart:remember,onUndo:undo,onRedo:redo,fieldNames,onViewportChange:(v:Viewport)=>{viewportRef.current=v;},fullscreen,setFullscreen,canEdit:canModify,dirty,onHelp:()=>handleSetView('builder')};
  return <div className={'app-shell '+(collapsed?'sidebar-collapsed':'')}><Header userEmail={email} onSignOut={onSignOut} onProfile={()=>handleSetView('profile')} onSearch={pageSearch} onHelp={()=>setHelp(true)}/>
   <Sidebar view={view} onNavigate={handleSetView} collapsed={collapsed} setCollapsed={setCollapsed} role={role}/>
   <main className="app-main">
@@ -332,10 +359,10 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
     <div className="page-title-row"><div className="page-heading"><Icon name="chart-column" size={28}/><div><h1>{view==='tree'?'Decision Tree':view==='builder'?'Dashboard Builder':view==='home'?'Willkommen bei NXT Analytics':'KPI-Analyse'}</h1><p>Interaktive Ursachenanalyse mit Decision Tree · {PROJECT.years}</p></div></div><div className="top-actions"><Button icon="save" onClick={()=>void saveDraft()} disabled={!canModify||saving}>{saving?'Speichert …':'Speichern'}</Button><Button icon="share-2" onClick={share}>Teilen</Button><Button icon="layout-dashboard" onClick={()=>{setRightVisible(true);setFullDashboard(true)}}>Dashboard öffnen</Button>{canModify&&<Button icon="type" onClick={()=>setNameDialog('node')}>Knotenname</Button>}{canModify&&<Button icon="settings" onClick={()=>setNameDialog('metrics')}>KPI-Titel</Button>}<Button kind="primary" icon="play" onClick={triggerReload} disabled={busy}>Analyse ausführen</Button></div></div>
     {warning&&<Notice kind="warning">{warning}</Notice>}
     <WorkspaceControls workspaces={workspaces} active={activeWorkspace} canEdit={canModify} role={role} saving={saving} onSelect={id=>void selectWorkspace(id)} onCreate={name=>void createWorkspace(name)} onSave={()=>void saveDraft()} onToggleShare={()=>void toggleShare()} onRemove={()=>void removeWorkspace()}/>
-    <MetricRibbon ribbon={ribbon} trend={ribbonTrend} pending={busy} names={metricNames}/>
+    <MetricRibbon ribbon={ribbon} trend={ribbonTrend} pending={busy} names={metricNames} onExplain={metric=>setLogicContext({metric,nodeId:null})}/>
     <FilterStrip globals={globals} fieldNames={fieldNames} onRemove={removeGlobal} onAdd={()=>setDialog({kind:'global'})} onReset={()=>{setGlobals([]);if(canModify)setDirty(true)}} onShare={share}/>
     {view==='builder'?<DashboardBuilder nodeId={selectedId} nodeLabel={selectedNode?.data.analysis.label||'Knoten'} nodeOptions={nodes.filter(n=>n.data.analysis.kind!=='note').map(n=>({id:n.id,label:n.data.analysis.label}))} onSelectNode={setSelectedId} dashboard={currentDashboard} onChange={updateDashboard} detail={detail} filters={effective()} onBack={()=>handleSetView('analytics')} onSave={()=>void saveDraft()} canEdit={canModify} saving={saving} fieldNames={fieldNames} allowedFields={allowedFields}/>:
-      <><div className={'workspace-row '+(!rightVisible?'no-detail':'')}><CanvasWithFlow {...modeActions}/>{rightVisible&&<DetailPanel node={selectedNode} detail={detail} tab={selectedTab} setTab={setSelectedTab} onClose={()=>setRightVisible(false)} onExpand={()=>setFullDashboard(true)} onRename={()=>setNameDialog('node')} onFilter={()=>setDialog({kind:'node',id:selectedId})} dashboard={currentDashboard} filters={effective()} fieldNames={fieldNames} onEdit={()=>handleSetView('builder')} canEdit={canModify}/>}</div>
+      <><div className={'workspace-row '+(!rightVisible?'no-detail':'')}><CanvasWithFlow {...modeActions}/>{rightVisible&&<DetailPanel node={selectedNode} detail={detail} tab={selectedTab} setTab={setSelectedTab} onClose={()=>setRightVisible(false)} onExpand={()=>setFullDashboard(true)} onRename={()=>setNameDialog('node')} onFilter={()=>setDialog({kind:'node',id:selectedId})} dashboard={currentDashboard} filters={effective()} fieldNames={fieldNames} filterTrace={traceFilters(globals,analysisNodes,locals,selectedId,topology.edges)} onExplain={metric=>setLogicContext({metric,nodeId:selectedId})} onEdit={()=>handleSetView('builder')} canEdit={canModify}/>}</div>
       {!rightVisible&&<button className="detail-reopen" onClick={()=>setRightVisible(true)}><Icon name="layers" size={17}/> Detaildashboard einblenden</button>}</>}
     <div className="bottom-disclaimer">Analyse-Ansicht · Datenbasis WoodCorp {PROJECT.years} · Das Referenzdesign enthält illustrative, nicht übernommene Beispielwerte. {isEditing(role)?'Private Entwürfe können in Supabase gespeichert und für das Team freigegeben werden.':''}</div>
    </>:view==='workspaces'?<WorkspaceOverview items={workspaces} userId={userId} role={role} busy={saving} onOpen={id=>{void selectWorkspace(id).then(ok=>{if(ok)handleSetView('analytics')})}} onCreate={title=>{void createWorkspace(title).then(()=>handleSetView('analytics'))}} onRefresh={()=>void reloadWorkspaces()}/>:
@@ -344,8 +371,9 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
   </main>
   {dialog&&dialog.kind!=='split'&&<FilterDialog target={{kind:dialog.kind==='global'?'global':'node',id:dialog.id}} dimensions={dimensions} allowedFields={allowedFields} fieldNames={fieldNames} onApply={applyFilter} onClose={()=>setDialog(null)}/>}
   {dialog?.kind==='split'&&<SplitDialog nodeName={nodes.find(n=>n.id===dialog.id)?.data.analysis.label||'Knoten'} dimensions={dimensions} allowedFields={allowedFields} fieldNames={fieldNames} onSplit={field=>split(dialog.id!,field)} onClose={()=>setDialog(null)}/>}
-  {fullDashboard&&<DashboardFullView title={selectedNode?.data.analysis.label||'Knoten-Dashboard'} dashboard={currentDashboard} detail={detail} filters={effective()} onClose={()=>setFullDashboard(false)} onEdit={()=>{setFullDashboard(false);handleSetView('builder')}} canEdit={canModify}/>}
-  {nameDialog==='node'&&<RenameNodeDialog label={selectedNode?.data.analysis.label||'KPI'} onSave={renameSelectedNode} onClose={()=>setNameDialog(null)}/>}
+  {fullDashboard&&<DashboardFullView title={selectedNode?.data.analysis.label||'Knoten-Dashboard'} dashboard={currentDashboard} detail={detail} filters={effective()} onClose={()=>setFullDashboard(false)} onEdit={()=>{setFullDashboard(false);handleSetView('builder')}} onExplain={metric=>{setFullDashboard(false);setLogicContext({metric,nodeId:selectedId})}} canEdit={canModify}/>}
+  {logicContext&&<Modal title={'Berechnungslogik · '+METRIC_LABELS[logicContext.metric]} onClose={()=>setLogicContext(null)}><CalculationLogic metric={logicContext.metric} metrics={logicContext.nodeId?detail.metrics:ribbon} trace={logicContext.nodeId?traceFilters(globals,analysisNodes,locals,logicContext.nodeId,topology.edges):globals.map(filter=>({nodeId:null,sourceLabel:'Global',filter,scope:'global' as const}))} fieldNames={fieldNames}/></Modal>}
+   {nameDialog==='node'&&<RenameNodeDialog label={selectedNode?.data.analysis.label||'KPI'} onSave={renameSelectedNode} onClose={()=>setNameDialog(null)}/>}
   {nameDialog==='metrics'&&<KpiNameDialog names={metricNames} onSave={names=>{if(canModify){setMetricNames(names);setDirty(true);say('KPI-Titel aktualisiert. Im Workspace speichern.')}}} onClose={()=>setNameDialog(null)}/>}
   {configureNodeId&&nodes.find(n=>n.id===configureNodeId)&&<NodeSettings node={nodes.find(n=>n.id===configureNodeId)!.data.analysis} allowedFields={allowedFields} fieldNames={fieldNames} filters={locals[configureNodeId]||[]} onRemoveFilter={fid=>{if(!canModify)return;setLocals(old=>({...old,[configureNodeId]:(old[configureNodeId]||[]).filter(f=>f.id!==fid)}));setDirty(true)}} onSave={patch=>saveNodeSettings(configureNodeId,patch)} onClose={()=>setConfigureNodeId(null)}/>}
   {help&&<Modal title="NXT Analytics – Bedienung" onClose={()=>setHelp(false)}><div className="help-copy"><p><b>Analysieren:</b> Knoten auswählen, global filtern und im rechten Dashboard die Detaildaten ansehen.</p><p><b>Bearbeiten:</b> Im Bearbeitungsmodus Knoten frei verschieben, Notizen aus der Palette ziehen und Verbindungspunkte mit der Maus verbinden. Jede neu gezeichnete Linie überträgt Filter in Pfeilrichtung; Rückverbindungen, die einen Zyklus bilden würden, werden verhindert.</p><p><b>Split:</b> Über die Knoten-Aktion eine Dimension auswählen. Die Filter jedes Vorgängers werden entlang aller eingehenden Pfeile vererbt (UND). Im Canvas lassen sich außerdem Balken-, Donut- und Zeitreihendiagramme sowie sichere SQL-Kennzahlen hinzufügen.</p><p><b>Speichern:</b> Änderungen lassen sich in privaten Supabase-Workspaces speichern und später für alle Projektmitglieder veröffentlichen. Dashboard-Widgets werden pro Knoten gesichert.</p></div></Modal>}

@@ -3,7 +3,7 @@ import {cleanDraft,type NNode,type NEdge} from './graph';
 import type {SavedDraft,Filter,Metrics,Ribbon} from './types';
 
 export type WidgetType='kpi'|'line'|'bar'|'table'|'donut'|'text';
-export type MetricKey='orders'|'onTimeRate'|'volumeConformanceRate'|'lateOrders'|'avgDelayDays'|'affectedFactories';
+export type MetricKey='orders'|'otifRate'|'onTimeRate'|'volumeConformanceRate'|'otifCases'|'lateOrders'|'avgDelayDays'|'affectedFactories'|'totalPenaltyEur'|'latePenaltyEur'|'shortfallPenaltyEur';
 export type Width='half'|'full';
 export type DashboardWidget={
  id:string;type:WidgetType;title:string;width:Width;
@@ -13,8 +13,7 @@ export type NodeDashboard={question:string;widgets:DashboardWidget[]};
 export type WorkspaceDocument={version:3;graph:SavedDraft;globalFilters:Filter[];dashboards:Record<string,NodeDashboard>;metricNames?:Partial<Record<MetricKey,string>>};
 
 export const METRIC_LABELS:Record<MetricKey,string>={
- orders:'Aufträge',onTimeRate:'On-Time Delivery',volumeConformanceRate:'Mengenkonformität',
- lateOrders:'Verspätete Aufträge',avgDelayDays:'Ø Lieferverzug',affectedFactories:'Betroffene Werke'
+ orders:'Aufträge',otifRate:'OTIF · On Time In Full',onTimeRate:'On-Time Delivery',volumeConformanceRate:'Mengenkonformität',otifCases:'OTIF-Aufträge',lateOrders:'Verspätete Aufträge',avgDelayDays:'Ø Lieferverzug',affectedFactories:'Betroffene Werke',totalPenaltyEur:'Berechnete Vertragsstrafe',latePenaltyEur:'Verspätungsstrafe',shortfallPenaltyEur:'Unterlieferungsstrafe'
 };
 export const WIDGET_LABELS:Record<WidgetType,string>={
  kpi:'KPI-Karte',line:'Zeitreihe',bar:'Balkendiagramm',table:'Datentabelle',donut:'Donutdiagramm',text:'Text / Forschungsfrage'
@@ -27,7 +26,7 @@ export const METRICS=Object.keys(METRIC_LABELS) as MetricKey[];
 
 export function freshWidget(type:WidgetType):DashboardWidget{
  const standard:Record<WidgetType,Omit<DashboardWidget,'id'|'type'>>={
-  kpi:{title:'On-Time Delivery',metric:'onTimeRate',width:'half'},
+  kpi:{title:'OTIF · On Time In Full',metric:'otifRate',width:'half'},
   line:{title:'Lieferperformance im Zeitverlauf',width:'full'},
   bar:{title:'Vergleich der Lieferunternehmen',dimension:'delivery_company',width:'full'},
   table:{title:'Lieferunternehmen im Detail',dimension:'delivery_company',width:'full'},
@@ -37,9 +36,10 @@ export function freshWidget(type:WidgetType):DashboardWidget{
  return {id:crypto.randomUUID(),type,...standard[type]};
 }
 export function standardDashboard():NodeDashboard{
- return {question:'Welche Faktoren beeinflussen die pünktliche Lieferung?',widgets:[
-  {...freshWidget('kpi'),metric:'onTimeRate'}, {...freshWidget('kpi'),title:'Aufträge',metric:'orders'},
-  {...freshWidget('line')}, {...freshWidget('bar')}
+ return {question:'Welche Prozessmerkmale erklären die OTIF-Lücke und die modellierten Vertragsstrafen?',widgets:[
+  {...freshWidget('kpi'),title:'OTIF',metric:'otifRate'}, {...freshWidget('kpi'),title:'Vertragsstrafe (Modell)',metric:'totalPenaltyEur'},
+  {...freshWidget('kpi'),title:'Aufträge',metric:'orders'}, {...freshWidget('kpi'),title:'On-Time Delivery',metric:'onTimeRate'},
+  {...freshWidget('line')},{...freshWidget('bar')}
  ]};
 }
 export function dashboardFor(store:Record<string,NodeDashboard>,nodeId:string):NodeDashboard{
@@ -91,21 +91,18 @@ export function validDocument(value:unknown):WorkspaceDocument|null{
  for(const [id,settings] of entries){if(id.length>180)return null;const v=normalizeDashboard(settings);if(!v)return null;clean[id]=v;}
  return {...d,dashboards:clean};
 }
-export function metricValue(metric:MetricKey, m:Metrics|null, r:Ribbon|null|undefined):number|null{
- if(metric==='orders')return m?.orders??null;
- if(metric==='onTimeRate')return m?.onTimeRate??null;
- if(metric==='volumeConformanceRate')return m?.volumeConformanceRate??null;
- if(metric==='lateOrders')return r?.lateOrders??null;
- if(metric==='avgDelayDays')return r?.avgDelayDays??null;
- if(metric==='affectedFactories')return r?.affectedFactories??null;
- return null;
+export function metricValue(metric:MetricKey,m:Metrics|null,r:Ribbon|null|undefined):number|null{
+ const source=r||m;
+ const val=source?(source as unknown as Record<string,unknown>)[metric]:null;
+ return typeof val==='number'&&Number.isFinite(val)?val:null;
 }
 export function metricFormat(metric:MetricKey,value:number|null):string{
  if(value==null||!Number.isFinite(value))return '–';
- const decimal=(value).toLocaleString('de-DE',{maximumFractionDigits:1});
- if(metric==='onTimeRate'||metric==='volumeConformanceRate')return decimal+' %';
- if(metric==='avgDelayDays')return decimal+' Tage';
- return value.toLocaleString('de-DE',{maximumFractionDigits:0});
+ const number=(n:number,digits:number)=>n.toLocaleString('de-DE',{minimumFractionDigits:digits,maximumFractionDigits:digits});
+ if(['onTimeRate','volumeConformanceRate','otifRate'].includes(metric))return number(value,1)+' %';
+ if(metric==='avgDelayDays')return number(value,1)+' Tage';
+ if(metric.endsWith('PenaltyEur'))return number(value,2)+' €';
+ return number(value,0);
 }
 export function makeDocument(graph:SavedDraft,globalFilters:Filter[],dashboards:Record<string,NodeDashboard>,metricNames:Partial<Record<MetricKey,string>>={}):WorkspaceDocument{
  const result={version:3 as const,graph,globalFilters,dashboards,metricNames};

@@ -1,18 +1,31 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {createInitialGraph,splitGraph,isValidReference,hasAnalyticCycle,referenceEdge,serializeDraft,restoreDraft} from './graph';
-test('system tree connects every factory with root',()=>{const g=createInitialGraph([{label:'Bonn',orders:10,on_time_rate:62,volume_rate:40},{label:'Essen',orders:8,on_time_rate:52,volume_rate:30}]);assert.equal(g.nodes.length,3);assert.equal(g.edges.length,2);assert.equal(g.edges.every(e=>e.data?.kind==='analytic'),true);});
-test('split creates semantic descendants and preserves parent',()=>{const g=createInitialGraph([{label:'Bonn',orders:10,on_time_rate:62,volume_rate:40}]);const next=splitGraph(g.nodes,g.edges,'factory:Bonn','product_type',[{label:'Crates',orders:7,on_time_rate:40,volume_rate:20}]);assert.equal(next.nodes.length,3);assert.equal(next.edges.length,2);assert.equal(hasAnalyticCycle(next.nodes),false);});
-test('no self, duplicate or cyclic connections',()=>{const g=createInitialGraph([{label:'Bonn',orders:10,on_time_rate:62,volume_rate:40}]);assert.equal(isValidReference('x','x',g.edges),false);assert.equal(isValidReference('root:otd','factory:Bonn',g.edges,g.nodes),false);assert.equal(isValidReference('factory:Bonn','root:otd',g.edges,g.nodes),false);assert.equal(isValidReference('unknown','root:otd',g.edges,g.nodes),false);});
-test('parallel filtered graph branches may be linked in DAG but not linked backwards',()=>{
- const g=createInitialGraph([{label:'Bonn',orders:10,on_time_rate:62,volume_rate:40},{label:'Essen',orders:8,on_time_rate:52,volume_rate:30}]);
- assert.equal(isValidReference('factory:Bonn','factory:Essen',g.edges,g.nodes),true);
- const edges=[...g.edges,referenceEdge('factory:Bonn','factory:Essen')];
- assert.equal(isValidReference('factory:Essen','factory:Bonn',edges,g.nodes),false);
+import {createInitialGraph,splitGraph,isValidReference,hasAnalyticCycle,referenceEdge,serializeDraft,restoreDraft,nodeFor,ROOT_ID} from './graph';
+test('new workspace starts with configurable OTIF root, without factory branches',()=>{
+ const g=createInitialGraph([{label:'Bonn',orders:10,on_time_rate:62,volume_rate:40}]);
+ assert.equal(g.nodes.length,1);assert.equal(g.edges.length,0);
+ assert.equal(g.nodes[0].data.analysis.kind,'root');assert.equal(g.nodes[0].data.analysis.metricId,'otifRate');
 });
-test('a chart node keeps its configuration in the saved tree',()=>{
- const g=createInitialGraph([{label:'Essen',orders:8,on_time_rate:75,volume_rate:70}]);
- const node=g.nodes[1];node.data.analysis.visualization='bar';node.data.analysis.chartDimension='cust_market';
- const restored=restoreDraft(serializeDraft(g.nodes,g.edges,{}, {x:0,y:0,zoom:1}));
+test('any root can be split to data-driven descendants',()=>{
+ const g=createInitialGraph([]);
+ const next=splitGraph(g.nodes,g.edges,ROOT_ID,'product_type',[{label:'Crates',orders:7,on_time_rate:40,volume_rate:20}]);
+ assert.equal(next.nodes.length,2);assert.equal(next.edges.length,1);
+ assert.equal(hasAnalyticCycle(next.nodes),false);
+});
+test('multiple independent origins and no cyclic connections',()=>{
+ const g=createInitialGraph([]);
+ const alt=nodeFor({id:'root:cost',parentId:null,label:'Contract Penalty',kind:'root',createdBy:'user',metricId:'totalPenaltyEur'},{x:700,y:80});
+ const root=g.nodes[0];const nodes=[root,alt];
+ assert.equal(isValidReference(ROOT_ID,'root:cost',[],nodes),true);
+ const edges=[referenceEdge(ROOT_ID,'root:cost')];
+ assert.equal(isValidReference('root:cost',ROOT_ID,edges,nodes),false);
+ assert.equal(isValidReference('root:cost','root:cost',[],nodes),false);
+});
+test('chart node metric and visualization persist through serialization',()=>{
+ const g=createInitialGraph([]);
+ const node=nodeFor({id:'custom',parentId:null,label:'Kosten',kind:'metric',createdBy:'user',metricId:'totalPenaltyEur',visualization:'bar',chartDimension:'factory'},{x:50,y:200});
+ const graph={nodes:[...g.nodes,node],edges:g.edges};
+ const restored=restoreDraft(serializeDraft(graph.nodes,graph.edges,{}, {x:0,y:0,zoom:1}));
+ assert.equal(restored.nodes[1].data.analysis.metricId,'totalPenaltyEur');
  assert.equal(restored.nodes[1].data.analysis.visualization,'bar');
- assert.equal(restored.nodes[1].data.analysis.chartDimension,'cust_market');
+ assert.equal(restored.nodes[1].data.analysis.chartDimension,'factory');
 });

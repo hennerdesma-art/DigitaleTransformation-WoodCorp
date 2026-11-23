@@ -4,7 +4,7 @@ import type {FieldKey} from '../config';
 export type NNode=Node<GraphNodeData,'analytics'>;
 export type NEdge=Edge<{kind:'analytic'|'reference'}>;
 export const ROOT_ID='root:otd';
-export function rootAnalysis():AnalysisNode{return {id:ROOT_ID,parentId:null,label:'On-Time Delivery',kind:'root',createdBy:'system',metricId:'otd'};}
+export function rootAnalysis():AnalysisNode{return {id:ROOT_ID,parentId:null,label:'OTIF · Ausgangsanalyse',kind:'root',createdBy:'system',metricId:'otifRate'};}
 export function nodeFor(analysis:AnalysisNode,position:XYPosition,metrics?:{orders?:number|null;onTimeRate?:number|null}):NNode{
  return {id:analysis.id,type:'analytics',position,data:{analysis,orders:metrics?.orders,onTimeRate:metrics?.onTimeRate},draggable:true};
 }
@@ -15,13 +15,8 @@ export function referenceEdge(parent:string,child:string):NEdge{
  return {id:'reference:'+crypto.randomUUID(),source:parent,target:child,type:'smoothstep',style:{stroke:'#008B92',strokeWidth:2},data:{kind:'reference'},label:'Filterfluss →'};
 }
 export function createInitialGraph(factories:BreakdownRow[],rootMetric?:{orders?:number;onTimeRate?:number|null}):{nodes:NNode[];edges:NEdge[]}{
- const rows=factories.filter(r=>r.label!==null);
- const root=nodeFor(rootAnalysis(),{x:550,y:30},rootMetric);
- const nodes=[root,...rows.map((r,i)=>nodeFor({
-  id:'factory:'+r.label,parentId:ROOT_ID,label:String(r.label),kind:'segment',createdBy:'system',
-  predicate:{id:'p:factory:'+r.label,field:'factory',op:'eq',value:String(r.label),scope:'local'}
- },{x:45+i*225,y:245},{orders:Number(r.orders),onTimeRate:r.on_time_rate===null?null:Number(r.on_time_rate)}))];
- return {nodes,edges:nodes.slice(1).map(n=>semanticEdge(ROOT_ID,n.id))};
+ const root=nodeFor(rootAnalysis(),{x:500,y:70},rootMetric);
+ return {nodes:[root],edges:[]};
 }
 export function splitGraph(nodes:NNode[],edges:NEdge[],parentId:string,field:FieldKey,rows:BreakdownRow[]):{nodes:NNode[];edges:NEdge[]}{
  const parent=nodes.find(n=>n.id===parentId);if(!parent)throw Error('Elternknoten fehlt');
