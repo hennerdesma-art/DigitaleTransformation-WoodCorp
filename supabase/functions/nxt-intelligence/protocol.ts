@@ -1,10 +1,19 @@
 /** Shared, deliberately narrow NXT Intelligence contract. No executable SQL or arbitrary code. */
-export const ACTION_KINDS=['add_widget','rename_node','set_question','add_branch','add_container','add_filter','remove_widget','rename_widget','set_node_metric'] as const;
+export const ACTION_KINDS=['add_widget','rename_node','set_question','add_branch','add_container','add_filter','remove_widget','rename_widget','set_node_metric','move_node','set_container_style','resize_container','arrange_container','set_node_visualization'] as const;
 export type ActionKind=typeof ACTION_KINDS[number];
 export type AiAction={kind:ActionKind;target:string;label:string|null;ref:string|null;widgetType:string|null;metric:string|null;dimension:string|null;compareDimension:string|null;field:string|null;value:string|null;widgetId:string|null;targetValue:number|null};
 export type AiPlan={answer:string;operations:AiAction[]};
-export const KNOWLEDGE_VERSION='nxt-ai-v1.2.3';
-export const AI_GRAPH_FORMAT=2 as const;
+export const KNOWLEDGE_VERSION='nxt-ai-v1.3.0';
+export const AI_GRAPH_FORMAT=3 as const;
+export const AI_CONTAINER_TONES=['teal','slate','sand'] as const;
+export const AI_LAYOUT_ACTIONS=['move_node','set_container_style','resize_container','arrange_container','set_node_visualization'] as const;
+export const AI_BRANCH_PLACEMENTS=['direct','member','standalone'] as const;
+export function coordinatePair(value:unknown,minX:number,maxX:number,minY:number,maxY:number):{x:number;y:number}|null{
+ if(typeof value!=='string'||!/^\s*-?\d{1,6}\s*,\s*-?\d{1,6}\s*$/.test(value))return null;
+ const [x,y]=value.split(',').map(Number);
+ return x>=minX&&x<=maxX&&y>=minY&&y<=maxY?{x,y}:null;
+}
+export function requiresGraph3(op:AiAction){return (AI_LAYOUT_ACTIONS as readonly string[]).includes(op.kind)||(op.kind==='add_branch'&&op.field!==null)}
 export const AI_PROMPT_LIMIT=6000;
 export const AI_HISTORY_LIMIT=6000;
 export function assistantPromptProblem(prompt:unknown):string|null{
@@ -17,13 +26,15 @@ export function boundedAssistantHistory(text:string,operationsSummary=''):string
  const marker='\n[Älterer Chatkontext gekürzt]';
  return joined.length<=AI_HISTORY_LIMIT?joined:joined.slice(0,AI_HISTORY_LIMIT-marker.length)+marker;
 }
-export type AiRequestIntent='auto'|'build_path'|'build_dashboard';
+export type AiRequestIntent='auto'|'build_path'|'build_dashboard'|'edit_layout';
 // Explicit UI actions and unambiguous creation commands are not advisory requests.
 // Ambiguous conversational prompts are left to the model, rather than forced into mutation mode.
 export function resolveAssistantIntent(prompt:string,explicit:unknown=null):AiRequestIntent{
- if(explicit==='build_path'||explicit==='build_dashboard')return explicit;
+ if(explicit==='build_path'||explicit==='build_dashboard'||explicit==='edit_layout')return explicit;
  const p=prompt.trim().toLocaleLowerCase('de-DE');
  if(/^(wie|warum|was|welche[rsn]?|wieso|erkläre|beschreibe|bewerte|prüfe|analysiere|how|why|what|explain|describe|review)\b/.test(p)||/^(bitte\s+)?(nicht|keine)\b/.test(p))return 'auto';
+ const layout=/^(?:(?:bitte|kannst du|könntest du|würdest du|please|can you|could you)\s+)*(?:verschieb\w*|sortier\w*|ordn\w*|rück\w*|vergrößer\w*|verkleiner\w*|färb\w*|gestalt\w*|arrangier\w*|move|arrange|resize|recolor|style|align)\b/.test(p)||(/^(?:ändere|passe|mach|setze|wechsle|change|set|kannst du|könntest du|bitte)\b/.test(p)&&/\b(?:farbe|farben|farbton|layout|position|größe|diagrammtyp|visualisierung|verschieben|anordnen|containergröße|color|size|position|chart type)\b/.test(p)&&!/\b(?:nicht|keine)\b/.test(p));
+ if(layout&&!/\b(?:erstell\w*|generier\w*|create|generate)\b/.test(p))return 'edit_layout';
  const command=/^(?:(?:bitte|kannst du|könntest du|würdest du|please|can you|could you)\s+)*(?:erstell(?:e|en)?|generier(?:e|en)?|bau(?:e|en)?|entwirf|entwickle|ergänz(?:e|en)?|füge|create|generate|build|design|add)\b/.test(p);
  const desire=/^(?:ich möchte|ich will|wir möchten|wir wollen|i want)\b/.test(p)&&/\b(?:erstell\w*|generier\w*|aufbauen|build|create)\b/.test(p);
  const extend=/^(?:bitte|kannst du|könntest du|würdest du|ich möchte|ich will|can you|could you|please|erweitere|baue|entwickle)\b/.test(p)&&/\b(?:weiter\s+ausbauen|ausbauen|erweiter\w*|weiterentwickel\w*|fortsetzen|extend|expand)\b/.test(p)&&!/\b(?:nicht|keine)\b/.test(p);
@@ -40,6 +51,7 @@ export function buildRequestBlocker(intent:AiRequestIntent,canEdit:boolean,graph
 }
 export function buildPlanProblem(intent:AiRequestIntent,plan:AiPlan):string|null{
  if(intent==='build_path'&&!plan.operations.some(o=>o.kind==='add_branch'))return 'Die KI hat keinen ausführbaren neuen Analysezweig geliefert. Bitte erneut versuchen oder den gewünschten neuen Analysefokus angeben. Vorhandene Inhalte bleiben unverändert.';
+ if(intent==='edit_layout'&&!plan.operations.some(o=>requiresGraph3(o)))return 'Die KI hat keine ausführbare Layout- oder Gestaltungsänderung geliefert. Bitte erneut versuchen; der Workspace bleibt unverändert.';
  if(intent==='build_dashboard'&&!plan.operations.some(o=>o.kind==='add_widget'))return 'Die KI hat keine neuen Dashboard-Elemente geliefert. Bitte erneut versuchen oder einen konkreten Ergänzungswunsch angeben. Vorhandene Inhalte bleiben unverändert.';
  return null;
 }
@@ -59,6 +71,24 @@ export function action(kind:ActionKind,target:string,patch:Partial<AiAction>={})
 }
 const str=(v:unknown,max:number)=>typeof v==='string'&&v.trim().length>0&&v.length<=max;
 const isOne=(a:readonly string[],v:unknown)=>typeof v==='string'&&a.includes(v);
+function validateCanvasVisual(op:AiAction,allowed:Set<string>){
+    const viz=op.widgetType||'kpi';
+    if(!isOne(AI_CANVAS_TYPES,viz))throw Error('Diagrammtyp im Thinking Path nicht unterstützt.');
+    if(CANVAS_GROUPED.includes(viz)&&!op.dimension)throw Error('Canvas-Diagramm benötigt eine freigegebene Dimension.');
+    if(op.dimension&&!CANVAS_GROUPED.includes(viz))throw Error('Canvas-Diagramm unterstützt keine Segmentdimension.');
+    if(viz==='heatmap'){
+     if(!['factory','product_type'].includes(op.dimension||''))throw Error('Canvas-Heatmap nutzt Werk und Produkttyp.');
+     const other=op.dimension==='factory'?'product_type':'factory';
+     if(!allowed.has(other)||(op.compareDimension!==null&&op.compareDimension!==other))throw Error('Canvas-Heatmap benötigt Werk und Produkttyp.');
+    }else if(op.compareDimension)throw Error('Zweite Canvas-Dimension nur für Heatmap.');
+    if(['bar','line'].includes(viz)&&op.metric&&op.metric!=='onTimeRate')throw Error('Canvas-Balken und Zeitreihe zeigen On-Time Delivery.');
+    if(viz==='donut'&&op.metric&&!['otifRate','onTimeRate'].includes(op.metric))throw Error('Canvas-Donut zeigt OTIF oder On-Time Delivery.');
+    if(COST_VISUALS.includes(viz)&&op.metric&&op.metric!=='totalPenaltyEur')throw Error('Canvas-Kostendiagramm zeigt modellierte Gesamtkosten.');
+    if(['stacked','stacked100','heatmap','scatter','funnel'].includes(viz)&&op.metric&&op.metric!=='otifRate')throw Error('Canvas-Diagramm verwendet die fest definierte OTIF-Auswertung.');
+    if(viz==='process_interval'&&!isOne(AI_INTERVAL_KEYS,op.value))throw Error('Gültiges Prozessintervall erforderlich.');
+    if(viz==='histogram'&&op.value&&op.value!=='quantity_change_count')throw Error('Canvas-Histogramm zeigt Mengenänderungen; andere Verteilungen im Dashboard.');
+    if(viz!=='process_interval'&&viz!=='histogram'&&op.value)throw Error('Nicht unterstützter Canvas-Parameter.');
+}
 export function validatePlan(input:unknown,existingIds:string[],allowedFields:string[],canEdit=true):AiPlan{
  if(!input||typeof input!=='object')throw Error('KI-Antwort ungültig.');
  const p=input as AiPlan;
@@ -76,27 +106,23 @@ export function validatePlan(input:unknown,existingIds:string[],allowedFields:st
   if(op.kind==='add_branch'||op.kind==='add_container'){
    if(!str(op.label,100)||!op.ref||!/^new:[a-zA-Z0-9_-]{1,40}$/.test(op.ref)||known.has(op.ref))throw Error('Neue Knoten brauchen einen eindeutigen Verweis und Titel.');
    if(op.kind==='add_container'){
+    if(op.field!==null)throw Error('Container-Platzierung wird über value festgelegt.');
     if(op.value!==null&&op.value!=='standalone')throw Error('Container: nur standalone oder null als Verbindungsmodus.');
     if(op.widgetType||op.metric||op.dimension||op.compareDimension)throw Error('Container sind Gruppen und keine Diagramme.');
    }else{
-    const viz=op.widgetType||'kpi';
-    if(!isOne(AI_CANVAS_TYPES,viz))throw Error('Diagrammtyp im Thinking Path nicht unterstützt.');
-    if(CANVAS_GROUPED.includes(viz)&&!op.dimension)throw Error('Canvas-Diagramm benötigt eine freigegebene Dimension.');
-    if(op.dimension&&!CANVAS_GROUPED.includes(viz))throw Error('Canvas-Diagramm unterstützt keine Segmentdimension.');
-    if(viz==='heatmap'){
-     if(!['factory','product_type'].includes(op.dimension||''))throw Error('Canvas-Heatmap nutzt Werk und Produkttyp.');
-     const other=op.dimension==='factory'?'product_type':'factory';
-     if(!allowed.has(other)||(op.compareDimension!==null&&op.compareDimension!==other))throw Error('Canvas-Heatmap benötigt Werk und Produkttyp.');
-    }else if(op.compareDimension)throw Error('Zweite Canvas-Dimension nur für Heatmap.');
-    if(['bar','line'].includes(viz)&&op.metric&&op.metric!=='onTimeRate')throw Error('Canvas-Balken und Zeitreihe zeigen On-Time Delivery.');
-    if(viz==='donut'&&op.metric&&!['otifRate','onTimeRate'].includes(op.metric))throw Error('Canvas-Donut zeigt OTIF oder On-Time Delivery.');
-    if(COST_VISUALS.includes(viz)&&op.metric&&op.metric!=='totalPenaltyEur')throw Error('Canvas-Kostendiagramm zeigt modellierte Gesamtkosten.');
-    if(['stacked','stacked100','heatmap','scatter','funnel'].includes(viz)&&op.metric&&op.metric!=='otifRate')throw Error('Canvas-Diagramm verwendet die fest definierte OTIF-Auswertung.');
-    if(viz==='process_interval'&&!isOne(AI_INTERVAL_KEYS,op.value))throw Error('Gültiges Prozessintervall erforderlich.');
-    if(viz==='histogram'&&op.value&&op.value!=='quantity_change_count')throw Error('Canvas-Histogramm zeigt Mengenänderungen; andere Verteilungen im Dashboard.');
-    if(viz!=='process_interval'&&viz!=='histogram'&&op.value)throw Error('Nicht unterstützter Canvas-Parameter.');
+    if(op.field!==null&&!isOne(AI_BRANCH_PLACEMENTS,op.field))throw Error('Platzierungsmodus ungültig.');
+    validateCanvasVisual(op,allowed);
    }
    known.add(op.ref);
+  }else if(op.kind==='move_node'||op.kind==='resize_container'||op.kind==='arrange_container'||op.kind==='set_container_style'){
+   if(op.label||op.ref||op.widgetType||op.metric||op.dimension||op.compareDimension||op.field||op.widgetId||op.targetValue!==null)throw Error('Ungültige Parameter für Layout-Aktion.');
+   if(op.kind==='move_node'&&!coordinatePair(op.value,-100000,100000,-100000,100000))throw Error('Position ungültig. Erwartet: x,y als ganze Zahlen.');
+   if(op.kind==='resize_container'&&!coordinatePair(op.value,320,4000,160,4000))throw Error('Containergröße ungültig. Erwartet: Breite,Höhe innerhalb 320–4000 × 160–4000.');
+   if(op.kind==='arrange_container'&&!['1','2','3'].includes(op.value||''))throw Error('Container-Anordnung benötigt 1, 2 oder 3 Spalten.');
+   if(op.kind==='set_container_style'&&!isOne(AI_CONTAINER_TONES,op.value))throw Error('Containerfarbe ungültig.');
+  }else if(op.kind==='set_node_visualization'){
+   if(!op.widgetType||op.label||op.ref||op.field||op.widgetId||op.targetValue!==null)throw Error('Ungültige Parameter für Visualisierung.');
+   validateCanvasVisual(op,allowed);
   }else if(op.kind==='rename_node'||op.kind==='rename_widget'){
    if(!str(op.label,100))throw Error('Titel fehlt oder ist zu lang.');
   }else if(op.kind==='set_question'){

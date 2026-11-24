@@ -1,13 +1,13 @@
-import {action,validatePlan,AI_GRAPH_FORMAT,type AiPlan,type AiAction} from './assistantProtocol';
+import {action,validatePlan,AI_GRAPH_FORMAT,coordinatePair,type AiPlan,type AiAction} from './assistantProtocol';
 import {freshWidget,normalizeDashboard,standardDashboard,makeDocument,METRICS,WIDGET_LABELS,METRIC_LABELS,type NodeDashboard,type MetricKey,type WidgetType} from './dashboard';
 import {nodeFor,referenceEdge,isValidReference,moveIntoContainer,worldPosition,containerSize,changeContainerSettings,serializeDraft,type NNode,type NEdge} from './graph';
 import {effectiveFilters,validateFilters,conflictingFields,formatFilter} from './filters';
-import type {AnalysisNode,Filter,Metrics,GraphViz} from './types';
+import type {AnalysisNode,Filter,Metrics,GraphViz,ContainerTone} from './types';
 import type {FieldKey} from '../config';
 import {KPI_DEFINITIONS} from './kpiDefinitions';
 import type {E02IntervalKey} from './processIntervals';
 export type AssistantState={nodes:NNode[];edges:NEdge[];globals:Filter[];locals:Record<string,Filter[]>;dashboards:Record<string,NodeDashboard>;selectedId:string;allowedFields:FieldKey[]};
-export type AssistantContext={graphFormat:typeof AI_GRAPH_FORMAT;workspaceId:string|null;revision:number|null;workspaceTitle:string;selectedId:string;nodes:{id:string;label:string;kind:string;metric:string|null;visualization:string|null;chartDimension:string|null;intervalKey:string|null;containerId:string|null;containerCollapsed:boolean;description:string|null;question:string|null;localFilters:{field:string;op:string;value:string|string[]}[];widgets:{id:string;type:string;title:string;metric:string|null;dimension:string|null;compareDimension:string|null;width:string;target:number|null;intervalKey:string|null;distributionMeasure:string|null}[]}[];edges:{source:string;target:string}[];filters:{field:string;op:string;value:string|string[]}[];globalFilters:{field:string;op:string;value:string|string[]}[];allowedFields:string[];canEdit:boolean};
+export type AssistantContext={graphFormat:typeof AI_GRAPH_FORMAT;workspaceId:string|null;revision:number|null;workspaceTitle:string;selectedId:string;nodes:{id:string;label:string;kind:string;metric:string|null;visualization:string|null;chartDimension:string|null;intervalKey:string|null;containerId:string|null;containerCollapsed:boolean;containerTone:string|null;position:{x:number;y:number};world:{x:number;y:number};size:{width:number;height:number};description:string|null;question:string|null;localFilters:{field:string;op:string;value:string|string[]}[];widgets:{id:string;type:string;title:string;metric:string|null;dimension:string|null;compareDimension:string|null;width:string;target:number|null;intervalKey:string|null;distributionMeasure:string|null}[]}[];edges:{source:string;target:string}[];filters:{field:string;op:string;value:string|string[]}[];globalFilters:{field:string;op:string;value:string|string[]}[];allowedFields:string[];canEdit:boolean};
 export function resolveAssistantNodeId(nodes:NNode[],selectedId:string):string{
  return nodes.some(n=>n.id===selectedId)?selectedId:nodes.find(n=>n.data.analysis.kind==='root')?.id||nodes[0]?.id||'';
 }
@@ -19,7 +19,7 @@ export function contextForAssistant(s:AssistantState,workspace:{id:string;title:
  const strip=({field,op,value}:Filter)=>({field,op,value});
  const filters=effectiveFilters(s.globals,s.nodes.map(n=>n.data.analysis),s.locals,s.selectedId,s.edges).map(strip);
  return {graphFormat:AI_GRAPH_FORMAT,workspaceId:workspace?.id||null,revision:workspace?.revision??null,workspaceTitle:workspace?.title||'Lokaler Entwurf',selectedId:s.selectedId,canEdit,allowedFields:s.allowedFields,
- nodes:s.nodes.map(n=>{const a=n.data.analysis,d=s.dashboards[n.id];return {id:n.id,label:a.label,kind:a.kind,metric:a.metricId||null,visualization:a.visualization||null,chartDimension:a.chartDimension||null,intervalKey:a.intervalKey||null,containerId:a.containerId||null,containerCollapsed:!!a.containerCollapsed,description:a.description||null,question:d?.question||null,localFilters:[...(a.predicate?[a.predicate]:[]),...(s.locals[n.id]||[])].map(strip),widgets:(d?.widgets||[]).map(w=>({id:w.id,type:w.type,title:w.title,metric:w.metric||null,dimension:w.dimension||null,compareDimension:w.compareDimension||null,width:w.width,target:w.target??null,intervalKey:w.intervalKey||null,distributionMeasure:w.distributionMeasure||null}))}}),
+ nodes:s.nodes.map(n=>{const a=n.data.analysis,d=s.dashboards[n.id];return {id:n.id,label:a.label,kind:a.kind,metric:a.metricId||null,visualization:a.visualization||null,chartDimension:a.chartDimension||null,intervalKey:a.intervalKey||null,containerId:a.containerId||null,containerCollapsed:!!a.containerCollapsed,containerTone:a.kind==='container'?(a.containerTone||'teal'):null,position:{x:Math.round(n.position.x),y:Math.round(n.position.y)},world:worldPosition(n,s.nodes),size:assistantBlockSize(n),description:a.description||null,question:d?.question||null,localFilters:[...(a.predicate?[a.predicate]:[]),...(s.locals[n.id]||[])].map(strip),widgets:(d?.widgets||[]).map(w=>({id:w.id,type:w.type,title:w.title,metric:w.metric||null,dimension:w.dimension||null,compareDimension:w.compareDimension||null,width:w.width,target:w.target??null,intervalKey:w.intervalKey||null,distributionMeasure:w.distributionMeasure||null}))}}),
  edges:s.edges.map(e=>({source:e.source,target:e.target})),filters,globalFilters:s.globals.map(strip)};
 }
 function baseDashboard(n:NNode):NodeDashboard{
@@ -36,30 +36,61 @@ function nextPosition(nodes:NNode[],parent:NNode){
 }
 // AI layout: new groups use up to two columns; existing manual positions are never moved.
 export function assistantBlockSize(n:NNode){const a=n.data.analysis;return a.kind==='container'?containerSize(a):{width:n.measured?.width??(a.visualization&&a.visualization!=='kpi'?460:260),height:n.measured?.height??(a.visualization&&a.visualization!=='kpi'?440:190)}}
+/** Pack group members only. Never change membership, filters, or analytic edges. */
+function arrangeGroup(nodes:NNode[],id:string,columns:number):NNode[]{
+ const group=nodes.find(n=>n.id===id);
+ if(!group||group.data.analysis.kind!=='container')throw Error('Anordnung nur für Container verfügbar.');
+ if(group.data.analysis.containerCollapsed)throw Error('Container zuerst öffnen.');
+ const members=nodes.filter(n=>n.data.analysis.containerId===id);
+ if(!members.length)return nodes;
+ const widths=Array.from({length:columns},(_,i)=>Math.max(0,...members.filter((_,j)=>j%columns===i).map(n=>assistantBlockSize(n).width)));
+ const positions=new Map<string,{x:number;y:number}>();let y=86;
+ for(let i=0;i<members.length;i+=columns){const row=members.slice(i,i+columns);let x=18;
+  row.forEach((n,j)=>{positions.set(n.id,{x,y});x+=widths[j]+24});
+  y+=Math.max(...row.map(n=>assistantBlockSize(n).height))+24;
+ }
+ return changeContainerSettings(nodes.map(n=>positions.has(n.id)?{...n,position:positions.get(n.id)!}:n),id,{containerWidth:320,containerHeight:160});
+}
 function layoutNewBlocks(nodes:NNode[],created:Map<string,string>):NNode[]{
  let out=[...nodes];
  for(const group of out.filter(n=>created.has(n.id)&&n.data.analysis.kind==='container')){
-  const members=out.filter(n=>n.data.analysis.containerId===group.id);
-  if(!members.length)continue;
-  const width=Math.max(...members.map(n=>assistantBlockSize(n).width));let y=86;
-  for(let i=0;i<members.length;i+=2){const row=members.slice(i,i+2);row.forEach((n,j)=>{out=out.map(x=>x.id===n.id?{...x,position:{x:18+j*(width+24),y}}:x)});y+=Math.max(...row.map(n=>assistantBlockSize(n).height))+24;}
-  out=changeContainerSettings(out,group.id,{containerWidth:720,containerHeight:440});
+  out=arrangeGroup(out,group.id,2);
  }
  const occupied=out.filter(n=>!created.has(n.id)&&!n.data.analysis.containerId).map(n=>({...n.position,...assistantBlockSize(n)}));
  for(const [id,parentId] of created){const n=out.find(x=>x.id===id),parent=out.find(x=>x.id===parentId);if(!n||!parent||n.data.analysis.containerId)continue;
-  const p=worldPosition(parent,out),ps=assistantBlockSize(parent),s=assistantBlockSize(n);let x=p.x,y=p.y+ps.height+110;
+  const anchor=parent.data.analysis.containerId?out.find(x=>x.id===parent.data.analysis.containerId)||parent:parent;
+  const p=worldPosition(anchor,out),ps=assistantBlockSize(anchor),s=assistantBlockSize(n);let x=p.x,y=p.y+ps.height+110;
   // Search a free rectangle, respecting existing and already placed generated blocks.
   for(let attempt=0;attempt<=occupied.length;attempt++){const hit=occupied.find(r=>x<r.x+r.width+70&&x+s.width+70>r.x&&y<r.y+r.height+70&&y+s.height+70>r.y);if(!hit)break;x=hit.x+hit.width+70;}
   out=out.map(v=>v.id===id?{...v,position:{x,y}}:v);occupied.push({x,y,...s});
  }
  return out;
 }
+function visualPatch(op:AiAction):Partial<AnalysisNode>{
+ const viz=(op.widgetType||'kpi') as GraphViz;
+ const metric=op.metric||(['bar','line'].includes(viz)?'onTimeRate':['pareto','treemap','waterfall'].includes(viz)?'totalPenaltyEur':'otifRate');
+ return {metricId:metric,visualization:viz,chartDimension:op.dimension?op.dimension as FieldKey:undefined,intervalKey:viz==='process_interval'?op.value as E02IntervalKey:undefined,calculationTemplate:undefined,rateEurPerKg:undefined};
+}
+function intersects(a:{x:number;y:number;width:number;height:number},b:{x:number;y:number;width:number;height:number}){
+ return a.x<b.x+b.width&&a.x+a.width>b.x&&a.y<b.y+b.height&&a.y+a.height>b.y;
+}
+function validateLayout(before:NNode[],after:NNode[]){
+ const rect=(n:NNode)=>({...n.position,...assistantBlockSize(n)});
+ const prior=new Map(before.map(n=>[n.id,n]));
+ for(let i=0;i<after.length;i++)for(let j=i+1;j<after.length;j++){
+  const a=after[i],b=after[j];if(a.data.analysis.containerId!==b.data.analysis.containerId)continue;
+  if(!intersects(rect(a),rect(b)))continue;
+  const x=prior.get(a.id),y=prior.get(b.id);
+  if(x&&y&&x.data.analysis.containerId===y.data.analysis.containerId&&intersects(rect(x),rect(y)))continue;
+  throw Error('Layout würde „'+a.data.analysis.label+'“ und „'+b.data.analysis.label+'“ überlappen. Bitte andere Position wählen.');
+ }
+}
 const dimensionTypes=['bar','table','bar_horizontal','bar_vertical','stacked','stacked100','heatmap','pareto','scatter','treemap'];
 const selectableMetricTypes=['kpi','bar_horizontal','bar_vertical','bullet'];
 export function applyAssistantPlan(state:AssistantState,raw:AiPlan):AssistantState{
  const plan=validatePlan(raw,state.nodes.map(n=>n.id),state.allowedFields);
  let nodes=[...state.nodes],edges=[...state.edges],locals={...state.locals},dashboards={...state.dashboards};
- const refs=new Map(nodes.map(n=>[n.id,n.id]));const changed=new Set<string>();const created=new Map<string,string>();
+ const refs=new Map(nodes.map(n=>[n.id,n.id]));const changed=new Set<string>();const created=new Map<string,string>();const layoutOps:AiAction[]=[];
  const get=(target:string)=>{const id=refs.get(target);const n=nodes.find(n=>n.id===id);if(!n)throw Error('Zielknoten nicht vorhanden.');return n};
  const patchNode=(id:string,patch:Partial<AnalysisNode>)=>{nodes=nodes.map(n=>n.id===id?{...n,data:{...n.data,analysis:{...n.data.analysis,...patch}}}:n);changed.add(id)};
  const updateDashboard=(n:NNode,fn:(d:NodeDashboard)=>NodeDashboard)=>{
@@ -70,6 +101,12 @@ export function applyAssistantPlan(state:AssistantState,raw:AiPlan):AssistantSta
  for(const op of plan.operations){
   const n=get(op.target),id=n.id,a=n.data.analysis;
   switch(op.kind){
+   case 'move_node':case 'set_container_style':case 'resize_container':case 'arrange_container':layoutOps.push(op);break;
+   case 'set_node_visualization':{
+    if(a.kind==='container'||a.kind==='note')throw Error('Container oder Textblöcke können nicht in Diagramme umgewandelt werden.');
+    patchNode(id,visualPatch(op));nodes=nodes.map(x=>x.id===id?{...x,measured:undefined,width:undefined,height:undefined}:x);
+    if(a.containerId)nodes=changeContainerSettings(nodes,a.containerId,{});break;
+   }
    case 'rename_node':patchNode(id,{label:op.label!});break;
    case 'set_node_metric':
     if(a.kind==='note'||a.kind==='container')throw Error('Container und Textbausteine sind keine KPI-Karten.');
@@ -101,18 +138,18 @@ export function applyAssistantPlan(state:AssistantState,raw:AiPlan):AssistantSta
    }
    case 'add_branch':
    case 'add_container':{
-    const isGroup=op.kind==='add_container',standalone=isGroup&&op.value==='standalone';
+    const isGroup=op.kind==='add_container',standalone=isGroup?op.value==='standalone':op.field==='standalone';
+    const member=!isGroup&&(op.field==='member'||(op.field===null&&a.kind==='container'));
+    if(member&&a.kind!=='container')throw Error('Mitglied-Platzierung benötigt einen Container als Ziel.');
     // Groups are always top-level layout objects. A group-to-group arrow is an
     // analytical dependency, not containment. Never discard the parent's filters.
-    if(!isGroup&&a.containerCollapsed)throw Error('Container zuerst öffnen.');
+    if(member&&a.containerCollapsed)throw Error('Container zuerst öffnen.');
     if(nodes.length>=300)throw Error('Maximal 300 Knoten.');
-    const viz=(op.widgetType||'kpi') as GraphViz;
-    const metric=op.metric||(['bar','line'].includes(viz)?'onTimeRate':['pareto','treemap','waterfall'].includes(viz)?'totalPenaltyEur':'otifRate');
-    const newId='ai:'+crypto.randomUUID(),analysis:AnalysisNode={id:newId,parentId:null,label:op.label!,kind:isGroup?'container':'metric',createdBy:'user',...(isGroup?{containerTone:'teal' as const}:{metricId:metric,visualization:viz,...(op.dimension?{chartDimension:op.dimension as FieldKey}:{}),...(viz==='process_interval'?{intervalKey:op.value as E02IntervalKey}:{})})};
+    const newId='ai:'+crypto.randomUUID(),analysis:AnalysisNode={id:newId,parentId:null,label:op.label!,kind:isGroup?'container':'metric',createdBy:'user',...(isGroup?{containerTone:'teal' as const}:visualPatch(op))};
     nodes.push(nodeFor(analysis,nextPosition(nodes,n)));refs.set(op.ref!,newId);created.set(newId,id);
     dashboards[newId]={question:'',widgets:[]};
     if(standalone){/* Independent group: only workspace global filters apply. */}
-    else if(a.kind==='container'&&!isGroup)nodes=moveIntoContainer(nodes,edges,newId,id);
+    else if(member)nodes=moveIntoContainer(nodes,edges,newId,id);
     else{if(edges.length>=400||!isValidReference(id,newId,edges,nodes))throw Error('Ungültige Verbindung oder Kantenlimit.');edges.push(referenceEdge(id,newId));}
     changed.add(newId);break;
    }
@@ -120,6 +157,25 @@ export function applyAssistantPlan(state:AssistantState,raw:AiPlan):AssistantSta
  }
  // Check the full downstream impact; reject invalid or contradictory conditions rather than silently overriding.
  if(created.size)nodes=layoutNewBlocks(nodes,created);
+ for(const op of layoutOps){
+  const n=get(op.target),a=n.data.analysis;
+  if(op.kind==='move_node'){
+   const pos=coordinatePair(op.value,-100000,100000,-100000,100000)!;
+   if(a.containerId&&(pos.x<18||pos.y<86))throw Error('Position innerhalb eines Containers benötigt x≥18, y≥86.');
+   nodes=nodes.map(x=>x.id===n.id?{...x,position:pos}:x);
+   if(a.containerId)nodes=changeContainerSettings(nodes,a.containerId,{});
+  }else{
+   if(a.kind!=='container')throw Error('Diese Gestaltung ist nur für Container verfügbar.');
+   if(op.kind==='set_container_style')nodes=changeContainerSettings(nodes,n.id,{containerTone:op.value as ContainerTone});
+   if(op.kind==='resize_container'){
+    const size=coordinatePair(op.value,320,4000,160,4000)!;
+    if(a.containerCollapsed)throw Error('Container zuerst öffnen.');
+    nodes=changeContainerSettings(nodes,n.id,{containerWidth:size.x,containerHeight:size.y});
+   }
+   if(op.kind==='arrange_container')nodes=arrangeGroup(nodes,n.id,Number(op.value));
+  }
+ }
+ if(layoutOps.some(o=>o.kind!=='set_container_style')||plan.operations.some(o=>o.kind==='set_node_visualization'))validateLayout(state.nodes,nodes);
  const topology=nodes.map(n=>n.data.analysis);
  if(plan.operations.some(o=>o.kind==='add_filter'||o.kind==='add_branch'||o.kind==='add_container')){
   for(const n of nodes){
@@ -136,7 +192,7 @@ export function applyAssistantPlan(state:AssistantState,raw:AiPlan):AssistantSta
 export function actionLabel(op:AiAction,labels:Record<string,string>){
  const t=labels[op.target]||op.target;
  switch(op.kind){
-  case 'add_branch':return (op.widgetType&&op.widgetType!=='kpi'?'Visualisierung '+op.widgetType:'Analysezweig')+' „'+op.label+'“ unter '+t;
+  case 'add_branch':return (op.widgetType&&op.widgetType!=='kpi'?'Visualisierung '+op.widgetType:'Analysezweig')+' „'+op.label+'“'+(op.field==='standalone'?' frei auf der Fläche':op.field==='direct'?' außerhalb von Gruppen, verbunden mit '+t:op.field==='member'?' im Container '+t:' unter '+t);
   case 'add_container':return 'Eigenständiger Container „'+op.label+'“'+(op.value==='standalone'?' ohne eingehenden Filterpfeil':' mit Filterverbindung von '+t);
   case 'add_widget':return 'Block „'+op.label+'“ in '+t+' hinzufügen';
   case 'rename_node':return t+' → „'+op.label+'“';
@@ -144,6 +200,11 @@ export function actionLabel(op:AiAction,labels:Record<string,string>){
   case 'add_filter':return 'Filter '+op.field+' = '+op.value+' auf '+t;
   case 'remove_widget':return 'Widget '+(labels[op.widgetId||'']||op.widgetId)+' aus '+t+' entfernen';
   case 'rename_widget':return 'Widget in '+t+' umbenennen: '+op.label;
+  case 'move_node':return t+' verschieben · Position '+op.value;
+  case 'resize_container':return t+' vergrößern/verkleinern · '+op.value+' px (mind. Platz für Mitglieder)';
+  case 'set_container_style':return t+' · Farbe '+({teal:'NXT Türkis',slate:'Schiefergrau',sand:'Sand'}[op.value as ContainerTone]||op.value);
+  case 'arrange_container':return t+' · '+op.value+' Spalten';
+  case 'set_node_visualization':return t+' · Visualisierung '+op.widgetType;
   case 'set_node_metric':return 'Kennzahl in '+t+': '+(METRIC_LABELS[op.metric as MetricKey]||op.metric);
  }
 }
