@@ -102,7 +102,8 @@ export function applyAssistantPlan(state:AssistantState,raw:AiPlan):AssistantSta
    case 'add_branch':
    case 'add_container':{
     const isGroup=op.kind==='add_container',standalone=isGroup&&op.value==='standalone';
-    if(isGroup&&a.kind==='container'&&!standalone)throw Error('Container können nicht verschachtelt werden.');
+    // Groups are always top-level layout objects. A group-to-group arrow is an
+    // analytical dependency, not containment. Never discard the parent's filters.
     if(!isGroup&&a.containerCollapsed)throw Error('Container zuerst öffnen.');
     if(nodes.length>=300)throw Error('Maximal 300 Knoten.');
     const viz=(op.widgetType||'kpi') as GraphViz;
@@ -111,7 +112,7 @@ export function applyAssistantPlan(state:AssistantState,raw:AiPlan):AssistantSta
     nodes.push(nodeFor(analysis,nextPosition(nodes,n)));refs.set(op.ref!,newId);created.set(newId,id);
     dashboards[newId]={question:'',widgets:[]};
     if(standalone){/* Independent group: only workspace global filters apply. */}
-    else if(a.kind==='container')nodes=moveIntoContainer(nodes,edges,newId,id);
+    else if(a.kind==='container'&&!isGroup)nodes=moveIntoContainer(nodes,edges,newId,id);
     else{if(edges.length>=400||!isValidReference(id,newId,edges,nodes))throw Error('Ungültige Verbindung oder Kantenlimit.');edges.push(referenceEdge(id,newId));}
     changed.add(newId);break;
    }
@@ -136,7 +137,7 @@ export function actionLabel(op:AiAction,labels:Record<string,string>){
  const t=labels[op.target]||op.target;
  switch(op.kind){
   case 'add_branch':return (op.widgetType&&op.widgetType!=='kpi'?'Visualisierung '+op.widgetType:'Analysezweig')+' „'+op.label+'“ unter '+t;
-  case 'add_container':return 'Container „'+op.label+'“'+(op.value==='standalone'?' ohne eingehenden Filterpfeil':' unter '+t);
+  case 'add_container':return 'Eigenständiger Container „'+op.label+'“'+(op.value==='standalone'?' ohne eingehenden Filterpfeil':' mit Filterverbindung von '+t);
   case 'add_widget':return 'Block „'+op.label+'“ in '+t+' hinzufügen';
   case 'rename_node':return t+' → „'+op.label+'“';
   case 'set_question':return 'Forschungsfrage in '+t+': '+op.label;

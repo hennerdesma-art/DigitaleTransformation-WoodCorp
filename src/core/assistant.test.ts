@@ -40,7 +40,7 @@ import {KNOWLEDGE_VERSION} from './assistantProtocol';
 test('live prompt examples execute as one connected group and separate canvas charts',()=>{
  const s=state();const plan={...PLAYBOOK_EXAMPLES.grouped,operations:PLAYBOOK_EXAMPLES.grouped.operations.map(o=>({...o,target:o.target==='example:root'?'root':o.target}))};
  const next=applyAssistantPlan(s,validatePlan(plan,['root'],s.allowedFields));const group=next.nodes.find(n=>n.data.analysis.kind==='container')!;const members=next.nodes.filter(n=>n.data.analysis.containerId===group.id);
- assert.equal(next.edges.length,1);assert.equal(next.edges[0].target,group.id);assert.deepEqual(members.map(n=>n.data.analysis.visualization),['line','heatmap']);assert.notEqual(members[0].position.x,members[1].position.x);assert.equal(members[0].position.y,members[1].position.y);assert.equal(s.nodes.length,1);assert.equal(KNOWLEDGE_VERSION,'nxt-ai-v1.2.1');assert.match(MASTER_PLAYBOOK,/STANDARD WORKFLOW/);
+ assert.equal(next.edges.length,1);assert.equal(next.edges[0].target,group.id);assert.deepEqual(members.map(n=>n.data.analysis.visualization),['line','heatmap']);assert.notEqual(members[0].position.x,members[1].position.x);assert.equal(members[0].position.y,members[1].position.y);assert.equal(s.nodes.length,1);assert.equal(KNOWLEDGE_VERSION,'nxt-ai-v1.2.2');assert.match(MASTER_PLAYBOOK,/STANDARD WORKFLOW/);
 });
 test('standalone container inherits global, not anchor local filters; no visible links',()=>{
  const s=state();s.globals=[{id:'g',field:'delivery_year',op:'eq',value:'2018'}];s.locals.root=[{id:'f',field:'factory',op:'eq',value:'Essen'}];
@@ -86,3 +86,24 @@ test('reported empty plan cannot be a successful build response even for populat
  assert.ok(buildPlanProblem(resolveAssistantIntent(reportedRequest),noOp));
  assert.equal(buildPlanProblem('build_path',{answer:'x',operations:[action('set_question','root',{label:'Neue Frage'})]})!==null,true);
 });
+
+test('a second container is a top-level downstream group, not a nested layout child',()=>{
+ const s=state();s.globals=[{id:'g',field:'delivery_year',op:'eq',value:'2018'}];
+ const initial=applyAssistantPlan(s,{answer:'Initial',operations:[action('add_container','root',{ref:'new:g',label:'Gruppe A'}),action('add_filter','new:g',{field:'product_type',value:'Crates'}),action('add_branch','new:g',{ref:'new:old',label:'Werk A'}),action('add_filter','new:old',{field:'factory',value:'Essen'})]});
+ const group=initial.nodes.find(n=>n.data.analysis.label==='Gruppe A')!,old=initial.nodes.find(n=>n.data.analysis.label==='Werk A')!;
+ const plan={answer:'Weiterführend',operations:[action('add_container',group.id,{ref:'new:cost',label:'Kostentreiber'}),action('add_branch','new:cost',{ref:'new:carrier',label:'Kosten nach Lieferunternehmen',widgetType:'pareto',metric:'totalPenaltyEur',dimension:'delivery_company'}),action('add_container','new:cost',{ref:'new:deeper',label:'Vertiefung'}),action('add_branch','new:deeper',{ref:'new:product',label:'Kosten nach Produkt',metric:'totalPenaltyEur'})]};
+ const next=applyAssistantPlan(initial,plan);
+ const cost=next.nodes.find(n=>n.data.analysis.label==='Kostentreiber')!,deeper=next.nodes.find(n=>n.data.analysis.label==='Vertiefung')!,child=next.nodes.find(n=>n.data.analysis.label==='Kosten nach Produkt')!;
+ for(const g of [cost,deeper]){assert.equal(g.data.analysis.containerId,undefined);assert.equal(g.parentId,undefined);}
+ assert.ok(next.edges.some(e=>e.source===group.id&&e.target===cost.id));assert.ok(next.edges.some(e=>e.source===cost.id&&e.target===deeper.id));
+ assert.deepEqual(effectiveFilters(next.globals,next.nodes.map(n=>n.data.analysis),next.locals,child.id,next.edges).map(f=>f.value),['2018','Crates']);
+ assert.deepEqual(effectiveFilters(next.globals,next.nodes.map(n=>n.data.analysis),next.locals,old.id,next.edges).map(f=>f.value),['2018','Crates','Essen']);
+ assert.equal(initial.nodes.length,3);
+});
+test('downstream group from member retains private member filters',()=>{
+ const s=state();const next=applyAssistantPlan(s,{answer:'x',operations:[action('add_container','root',{ref:'new:g',label:'A'}),action('add_branch','new:g',{ref:'new:member',label:'Member'}),action('add_filter','new:member',{field:'factory',value:'Essen'}),action('add_container','new:member',{ref:'new:cost',label:'B'}),action('add_branch','new:cost',{ref:'new:b',label:'B member'})]});
+ const member=next.nodes.find(n=>n.data.analysis.label==='Member')!,group=next.nodes.find(n=>n.data.analysis.label==='B')!,b=next.nodes.find(n=>n.data.analysis.label==='B member')!;
+ assert.equal(group.data.analysis.containerId,undefined);assert.ok(next.edges.some(e=>e.source===member.id&&e.target===group.id));
+ assert.deepEqual(effectiveFilters([],next.nodes.map(n=>n.data.analysis),next.locals,b.id,next.edges).map(f=>f.value),['Essen']);
+});
+test('reported extension request is an explicit build_path intent',()=>{assert.equal(resolveAssistantIntent('kannst du eine weitere analyse tätigen und den thinking path weiter ausbauen. ich möchte wissen was der größte treiber der unkosten der vertragsstrafen sind.'),'build_path');assert.equal(resolveAssistantIntent('Wie kann ich den Thinking Path weiter ausbauen?'),'auto');});
