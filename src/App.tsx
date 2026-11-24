@@ -27,6 +27,10 @@ import './styles/v9.css';
 import './styles/v10.css';
 import {ContainerSettings} from './components/ContainerSettings';
 import {AiDashboardPrep} from './components/AiDashboardPrep';
+import {IntelligencePanel} from './components/IntelligencePanel';
+import {assistantFingerprint,applyAssistantPlan,type AssistantState} from './core/assistant';
+import type {AiPlan} from './core/assistantProtocol';
+import './styles/intelligence.css';
 import {NodeSettings} from './components/NodeSettings';
 import {conflictingFields,filterSignature} from './core/filters';
 import {WorkspaceOverview} from './components/WorkspaceOverview';
@@ -297,12 +301,12 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
  const [dimensions,setDimensions]=useState<Record<string,string[]>>({});const [ribbon,setRibbon]=useState<Ribbon|null>(null);const [rootMetrics,setRootMetrics]=useState<Metrics|null>(null);const [ribbonTrend,setRibbonTrend]=useState<TrendRow[]>([]);
  const [selectedId,setSelectedId]=useState(ROOT_ID);const [selectedTab,setSelectedTab]=useState('Übersicht');const [logicContext,setLogicContext]=useState<{metric:MetricKey;nodeId:string|null}|null>(null);const [detail,setDetail]=useState<DashboardData>(emptyDetail);
  const [nodes,setNodes,onNodesChange]=useNodesState<NNode>([nodeFor(rootAnalysis(),{x:500,y:70})]);
- const [dashboards,setDashboards]=useState<Record<string,NodeDashboard>>({});const [metricNames,setMetricNames]=useState<MetricNames>({});const [fullDashboard,setFullDashboard]=useState(false);const [aiPrep,setAiPrep]=useState(false);const [nameDialog,setNameDialog]=useState<'node'|'metrics'|null>(null);const defaultDashboardRef=useRef<Record<string,NodeDashboard>>({});
+ const [dashboards,setDashboards]=useState<Record<string,NodeDashboard>>({});const [metricNames,setMetricNames]=useState<MetricNames>({});const [fullDashboard,setFullDashboard]=useState(false);const [aiPrep,setAiPrep]=useState(false);const [intelligenceOpen,setIntelligenceOpen]=useState(false);const [nameDialog,setNameDialog]=useState<'node'|'metrics'|null>(null);const defaultDashboardRef=useRef<Record<string,NodeDashboard>>({});
  const [workspaces,setWorkspaces]=useState<WorkspaceRecord[]>([]);const [activeWorkspace,setActiveWorkspace]=useState<WorkspaceRecord|null>(null);
  const [catalog,setCatalog]=useState<FilterCatalogRow[]>([]);const [candidates,setCandidates]=useState<FilterCandidate[]>([]);const [saving,setSaving]=useState(false);const [catalogBusy,setCatalogBusy]=useState(false);
  const [edges,setEdges,onEdgesChange]=useEdgesState<NEdge>([]);const [editMode,setEditMode]=useState(false);const [rightVisible,setRightVisible]=useState(true);const [fullscreen,setFullscreen]=useState(false);const [busy,setBusy]=useState(true);const [warning,setWarning]=useState('');const [toast,setToast]=useState('');
  const [dialog,setDialog]=useState<{kind:'global'|'node'|'split';id?:string}|null>(null);const [configureNodeId,setConfigureNodeId]=useState<string|null>(null);const [help,setHelp]=useState(false);const [search,setSearch]=useState('');const [dirty,setDirty]=useState(false);const [loaded,setLoaded]=useState(false);const [reloadKey,setReloadKey]=useState(0);
- const viewportRef=useRef<Viewport>({x:0,y:0,zoom:1});const requestRef=useRef(0);const detailRequest=useRef(0);const graphRequest=useRef(0);const undoRef=useRef<Array<{nodes:NNode[];edges:NEdge[]}>>([]);const redoRef=useRef<Array<{nodes:NNode[];edges:NEdge[]}>>([]);const initializedRef=useRef(false);
+ const viewportRef=useRef<Viewport>({x:0,y:0,zoom:1});const requestRef=useRef(0);const detailRequest=useRef(0);const graphRequest=useRef(0);const undoRef=useRef<Array<{nodes:NNode[];edges:NEdge[];locals:Record<string,Filter[]>;dashboards:Record<string,NodeDashboard>}>>([]);const redoRef=useRef<Array<{nodes:NNode[];edges:NEdge[];locals:Record<string,Filter[]>;dashboards:Record<string,NodeDashboard>}>>([]);const initializedRef=useRef(false);
  const localKey='nxt-v2-layout:'+userId;
  const say=useCallback((s:string)=>{setToast(s);},[]);
  const canModify=isEditing(role)&&(!activeWorkspace||activeWorkspace.owner_id===userId||role==='admin');
@@ -328,14 +332,15 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
  const analysisNodes=topology.nodes;
  const selectedNode=nodes.find(n=>n.id===selectedId);
  const effective=useCallback((id=selectedId)=>effectiveFilters(globals,analysisNodes,locals,id,topology.edges),[globals,analysisNodes,locals,selectedId,topology.edges]);
- const snapshot=useCallback(()=>({nodes:structuredClone(nodes),edges:structuredClone(edges)}),[nodes,edges]);
+ const snapshot=useCallback(()=>({nodes:structuredClone(nodes),edges:structuredClone(edges),locals:structuredClone(locals),dashboards:structuredClone(dashboards)}),[nodes,edges,locals,dashboards]);
  const remember=useCallback(()=>{undoRef.current=[...undoRef.current.slice(-29),snapshot()];redoRef.current=[];setDirty(true)},[snapshot]);
- const undo=useCallback(()=>{const prev=undoRef.current.pop();if(!prev)return;redoRef.current.push(snapshot());setNodes(prev.nodes);setEdges(prev.edges);setDirty(true)},[setNodes,setEdges,snapshot]);
- const redo=useCallback(()=>{const prev=redoRef.current.pop();if(!prev)return;undoRef.current.push(snapshot());setNodes(prev.nodes);setEdges(prev.edges);setDirty(true)},[setNodes,setEdges,snapshot]);
+ const undo=useCallback(()=>{const prev=undoRef.current.pop();if(!prev)return;redoRef.current.push(snapshot());setNodes(prev.nodes);setEdges(prev.edges);setLocals(prev.locals);setDashboards(prev.dashboards);setSelectedId(id=>prev.nodes.some(n=>n.id===id)?id:prev.nodes[0]?.id||ROOT_ID);setDirty(true)},[setNodes,setEdges,snapshot]);
+ const redo=useCallback(()=>{const prev=redoRef.current.pop();if(!prev)return;undoRef.current.push(snapshot());setNodes(prev.nodes);setEdges(prev.edges);setLocals(prev.locals);setDashboards(prev.dashboards);setSelectedId(id=>prev.nodes.some(n=>n.id===id)?id:prev.nodes[0]?.id||ROOT_ID);setDirty(true)},[setNodes,setEdges,snapshot]);
  const onNodeChanges=useCallback((changes:NodeChange<NNode>[])=>{if(editMode&&!canModify)return;onNodesChange(changes);if(editMode&&canModify&&changes.some(c=>c.type==='position'))setDirty(true)},[onNodesChange,editMode,canModify]);
  const onEdgeChanges=useCallback((changes:EdgeChange<NEdge>[])=>{if(!editMode||!canModify)return;onEdgesChange(changes);setDirty(true)},[onEdgesChange,editMode,canModify]);
  const connect=useCallback((c:Connection)=>{if(!editMode||!canModify||!c.source||!c.target)return;if(!isValidReference(c.source,c.target,edges,nodes)){say('Verbindung ungültig, bereits vorhanden oder führt zu einem Filterkreis.');return;}
   remember();setEdges(e=>[...e,referenceEdge(c.source!,c.target!)]);say('Filterfluss verbunden: Alle Filter des Ursprungsknotens gelten nun auch im Ziel und dessen Nachfolgern.');},[edges,nodes,editMode,canModify,remember,setEdges,say]);
+ useEffect(()=>{undoRef.current=[];redoRef.current=[]},[activeWorkspace?.id]);
  const buildDocument=()=>makeDocument(serializeDraft(nodes,edges,locals,viewportRef.current),globals,dashboards,metricNames);
  const createWorkspace=async(title:string):Promise<boolean>=>{
   if(!isEditing(role))return false;
@@ -635,6 +640,14 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
  const split=async(id:string,field:FieldKey)=>{const f=effective(id);const rows=await analysisApi.breakdown(field,f);if(!rows.length)throw Error('Keine Teilgruppen für diese Filter verfügbar');
   remember();const next=splitGraph(nodes,edges,id,field,rows);setNodes(next.nodes);setEdges(next.edges);say(rows.length+' Teilgruppen geladen');};
  const pageSearch=(term:string)=>{setSearch(term);if(term.trim().length<2)return;const item=nodes.find(n=>n.data.analysis.label.toLowerCase().includes(term.toLowerCase()));if(item){setSelectedId(item.id);setView('analytics');void flow.fitView({nodes:[{id:item.id}],duration:250,padding:.6});}};
+ const assistantDashboards=useMemo(()=>({...dashboards,...(selectedNode?{[selectedId]:currentDashboard}:{})}),[dashboards,selectedId,currentDashboard,selectedNode?.id]);
+ const assistantState:AssistantState={nodes,edges,globals,locals,dashboards:assistantDashboards,selectedId,allowedFields};
+ const assistantStamp=assistantFingerprint(assistantState,activeWorkspace?.id||null,activeWorkspace?.revision??null);
+ const applyAi=(plan:AiPlan,stamp:string)=>{
+  if(!canModify||saving||!loaded)throw Error('Keine Schreibberechtigung oder Workspace wird gerade gespeichert.');
+  if(stamp!==assistantStamp)throw Error('Workspace wurde verändert. Bitte Vorschlag neu erstellen.');
+  const next=applyAssistantPlan(assistantState,plan);remember();setNodes(next.nodes);setEdges(next.edges);setLocals(next.locals);setDashboards(next.dashboards);setDirty(true);setRightVisible(true);setView('analytics');say('KI-Vorschlag übernommen. Im Workspace speichern, um Änderungen dauerhaft zu sichern.');
+ };
  const modeActions={nodes,edges,onNodesChange:onNodeChanges,onEdgesChange:onEdgeChanges,onConnect:connect,onSelect:setSelectedId,onSelectionClear:()=>{},selectedId,editMode,onEditToggle:()=>{if(canModify)setEditMode(v=>!v)},onFilter:(id:string)=>setDialog({kind:'node',id}),onSplit:(id:string)=>setDialog({kind:'split',id}),onRemove:removeNode,onConfigure:(id:string)=>{setSelectedId(id);setConfigureNodeId(id)},onExplain:(id:string)=>{setSelectedId(id);setRightVisible(true);setSelectedTab('Berechnungslogik')},onAdd:addNode,onSave:saveDraft,onReset:resetDraft,onGraphMove:finishDrag,onGraphStart:remember,onToggleContainer:toggleContainer,onUndo:undo,onRedo:redo,fieldNames,onViewportChange:(v:Viewport)=>{viewportRef.current=v;},fullscreen,setFullscreen,canEdit:canModify,dirty,onHelp:()=>handleSetView('builder')};
  return <div className={'app-shell '+(collapsed?'sidebar-collapsed':'')}><Header userEmail={email} onSignOut={onSignOut} onProfile={()=>handleSetView('profile')} onSearch={pageSearch} onHelp={()=>setHelp(true)}/>
   <Sidebar view={view} onNavigate={handleSetView} collapsed={collapsed} setCollapsed={setCollapsed} role={role}/>
@@ -662,6 +675,7 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
   {configureNodeId&&nodes.find(n=>n.id===configureNodeId)&&(nodes.find(n=>n.id===configureNodeId)!.data.analysis.kind==='container'?<ContainerSettings node={nodes.find(n=>n.id===configureNodeId)!.data.analysis} fieldNames={fieldNames} filters={locals[configureNodeId]||[]} onRemoveFilter={fid=>{if(!canModify)return;setLocals(old=>({...old,[configureNodeId]:(old[configureNodeId]||[]).filter(f=>f.id!==fid)}));setDirty(true)}} onSave={patch=>saveNodeSettings(configureNodeId,patch)} onClose={()=>setConfigureNodeId(null)}/>:<NodeSettings node={nodes.find(n=>n.id===configureNodeId)!.data.analysis} fieldNames={fieldNames} filters={locals[configureNodeId]||[]} onRemoveFilter={fid=>{if(!canModify)return;setLocals(old=>({...old,[configureNodeId]:(old[configureNodeId]||[]).filter(f=>f.id!==fid)}));setDirty(true)}} onSave={patch=>saveNodeSettings(configureNodeId,patch)} onClose={()=>setConfigureNodeId(null)} allowedFields={allowedFields} containers={nodes.filter(n=>n.data.analysis.kind==='container').map(n=>n.data.analysis)}/>)}
   {aiPrep&&canModify&&<AiDashboardPrep nodeLabel={selectedNode?.data.analysis.label||'Knoten'} existingCount={currentDashboard.widgets.length} allowedFields={allowedFields} onApply={draft=>{updateDashboard(draft);setAiPrep(false);handleSetView('builder');say('Dashboard-Vorlage übernommen. Bitte prüfen und Workspace speichern.')}} onClose={()=>setAiPrep(false)}/>}
   {help&&<Modal title="NXT Analytics – Bedienung" onClose={()=>setHelp(false)}><div className="help-copy"><p><b>Analysieren:</b> Knoten auswählen, global filtern und im rechten Dashboard die Detaildaten ansehen.</p><p><b>Bearbeiten:</b> Im Bearbeitungsmodus Knoten frei verschieben, Notizen aus der Palette ziehen und Verbindungspunkte mit der Maus verbinden. Jede neu gezeichnete Linie überträgt Filter in Pfeilrichtung; Rückverbindungen, die einen Zyklus bilden würden, werden verhindert.</p><p><b>Split:</b> Über die Knoten-Aktion eine Dimension auswählen. Die Filter jedes Vorgängers werden entlang aller eingehenden Pfeile vererbt (UND). Im Canvas lassen sich außerdem Balken-, Donut- und Zeitreihendiagramme sowie sichere SQL-Kennzahlen hinzufügen.</p><p><b>Container:</b> Container aus der Palette hinzufügen, Blöcke hinein- oder herausziehen oder die Gruppierung im Zahnrad wählen. Ein Pfeil zum Container überträgt den gemeinsamen Filterkontext auf alle Mitglieder. Beim Auflösen bleiben die Blöcke erhalten.</p><p><b>Speichern:</b> Änderungen lassen sich in privaten Supabase-Workspaces speichern und später für alle Projektmitglieder veröffentlichen. Dashboard-Widgets werden pro Knoten gesichert.</p></div></Modal>}
+  {loaded&&<IntelligencePanel state={assistantState} workspace={activeWorkspace} fingerprint={assistantStamp} canEdit={canModify} busy={saving} onApply={applyAi} onUndo={undo} open={intelligenceOpen} onOpen={setIntelligenceOpen}/>}
   {!!toast&&<div className="nxt-toast" role="status">{toast}<button aria-label="Meldung schließen" onClick={()=>setToast('')}>×</button></div>}
  </div>;
 }
