@@ -1,4 +1,5 @@
 import React from 'react';
+import {DashboardWidgetView} from './DashboardBuilder';
 import {InteractiveTrend} from './InteractiveCharts';
 import type {MetricKey} from '../core/dashboard';
 import type {GraphNodeData} from '../core/types';
@@ -13,6 +14,7 @@ export function GraphNodeVisual({data}:{data:GraphNodeData}){
  const kind=analysis.visualization||'kpi';
  if(busy)return <div className="node-viz-loading" role="status"><span className="nxt-spinner"/> Werte werden aktualisiert …</div>;
  if(error)return <p className="node-viz-error" role="status">{error}</p>;
+ if(analysis.canvasWidgetId){const widget=data.canvasWidget;if(!widget)return <p className="node-viz-error">Element fehlt. Über das Zahnrad erneut konfigurieren.</p>;const m=data.fullMetrics||null;const detail:DashboardData={metrics:m,ribbon:m?{...m,deliveryDateCount:m.dateCoverage} as DashboardData['ribbon']:null,trend:trendRows||[],breakdown:chartRows||[],pending:!m,error:null};if(!m&&widget.type!=='text')return <div className="node-viz-loading" role="status"><span className="nxt-spinner"/> Daten werden geladen …</div>;return <DashboardWidgetView widget={widget} detail={detail} filters={data.appliedFilters||[]}/>;}
  if(['bar','stacked','stacked100','heatmap','pareto','scatter','waterfall','histogram','treemap','funnel'].includes(kind)){
   const widget:DashboardWidget={
    id:'graph-chart:'+analysis.id,type:kind as WidgetType,title:analysis.label,width:'full',
@@ -45,6 +47,6 @@ export function GraphNodeVisual({data}:{data:GraphNodeData}){
   const label=(analysis.metricId||'otifRate')==='onTimeRate'?'On-Time':'OTIF';
   return <div className="node-viz-donut"><div className="node-viz-ring" role="img" aria-label={rate===null?'Keine Werte':percent(rate)+' '+label} style={{background:rate===null?'#d8e7e8':`conic-gradient(#008b92 ${rate}%, #dce8e9 0)`}}><div><b>{percent(rate)}</b><small>{label}</small></div></div><span>{number(orders)} Aufträge im Filterkontext</span><details className="nxt-chart-data-table"><summary>Werte anzeigen</summary><p>{label}: {percent(rate)}</p></details></div>;
  }
- if(kind==='line')return <InteractiveTrend values={trendRows||[]} initialMetric={(analysis.chartMetric||'onTimeRate') as MetricKey}/>;
+ if(kind==='line')return <InteractiveTrend values={trendRows||[]} initialMetric={(analysis.chartMetric||'onTimeRate') as MetricKey} filters={data.appliedFilters||[]}/>;
  return null;
 }

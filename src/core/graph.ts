@@ -114,6 +114,11 @@ export function containerAt(nodes:NNode[],point:XYPosition,exclude?:string):NNod
   return point.x>=n.position.x&&point.x<n.position.x+s.width&&point.y>=n.position.y&&point.y<n.position.y+s.height;
  });
 }
+export function freeCanvasPosition(nodes:NNode[],position:XYPosition,size:CardSize):XYPosition{
+ const occupied=nodes.filter(n=>!n.data.analysis.containerId).map(n=>({...n.position,...nodeLayoutSize(n)}));
+ for(let i=0;i<160;i++){const p={x:position.x+(i%4)*(size.width+36),y:position.y+Math.floor(i/4)*(size.height+48)};if(!occupied.some(n=>p.x<n.x+n.width+18&&p.x+size.width+18>n.x&&p.y<n.y+n.height+18&&p.y+size.height+18>n.y))return p;}
+ return {x:position.x,y:Math.max(position.y,...occupied.map(n=>n.y+n.height+48))};
+}
 export function nodeLayoutSize(n:NNode):CardSize{return n.data.analysis.kind==='container'?containerSize(n.data.analysis):cardDimensions(n.data.analysis);}
 const childSize=nodeLayoutSize;
 export function minimumContainerSize(nodes:NNode[],id:string){

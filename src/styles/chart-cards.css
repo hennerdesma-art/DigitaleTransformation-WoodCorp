@@ -129,3 +129,12 @@
 .nxt-status-row{display:grid;grid-template-columns:9px minmax(0,1fr) 59px 51px;align-items:center;gap:6px;font-size:11px}
 .nxt-status-row i{width:9px;height:9px;border-radius:2px}.nxt-status-row b,.nxt-status-row small{text-align:right;font-variant-numeric:tabular-nums}
 .nxt-scenario-result{display:grid;gap:5px;border-top:1px solid #c6dddd;padding:8px 0;color:#00666b}.nxt-scenario-result strong{font-size:20px;overflow-wrap:anywhere}.nxt-scenario-result small{color:#486066}
+
+.nxt-palette-groups{overflow:auto;min-height:0;scrollbar-width:thin;padding:4px 0}
+.nxt-palette-groups details{margin:4px 0 9px}.nxt-palette-groups summary{font-size:11px;cursor:pointer;font-weight:700;color:#00666b;padding:7px 9px;background:#edf6f6;border-radius:5px}
+.nxt-palette-groups .palette-tiles{padding:5px 0;overflow:visible}
+.canvas-widget-inspector{width:100%!important;max-width:100%;border:0!important;padding:0!important;background:transparent!important;box-shadow:none!important}
+.nxt-semantic-summary{display:flex;flex-direction:column;height:100%;min-height:0;justify-content:center;align-items:center;text-align:center;gap:10px;color:#00666b}
+.nxt-semantic-summary small{color:#56757a;max-width:100%;overflow-wrap:anywhere}
+.nxt-presentation-nav{position:absolute;z-index:8;top:12px;left:50%;transform:translateX(-50%);display:flex;gap:10px;align-items:center;max-width:calc(100% - 24px);padding:8px 10px;background:#fff;border:1px solid #bedadb;border-radius:10px;box-shadow:0 4px 16px #173c4020;font-size:12px}
+.nxt-presentation-nav span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}.nxt-presentation-nav button{white-space:nowrap;background:#edf6f6;color:#00666b;border:1px solid #bfd8d9;padding:7px;border-radius:6px}
