@@ -5,7 +5,7 @@ const safeLabel=(v:unknown):v is string=>typeof v==='string'&&v.trim().length>0&
 const finite=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v);
 export const isCostDrilldown=(prompt:string)=>/vertragsstraf|strafkost|kosten|penalt|cost driver|loss driver/i.test(prompt);
 export async function costDriverCombinations(products:unknown,filters:Predicate[],totalOrders:number,query:(scoped:Predicate[])=>Promise<unknown>){
- const unavailable=(reason:string)=>({scope:'selected node effective filters',available:false,reason});
+ const unavailable=(reason:string)=>({scope:'selected node effective filters',available:false as const,reason});
  if(!Array.isArray(products)||!finite(totalOrders)||totalOrders<5)return unavailable('Product aggregates unavailable.');
  // Existing equality must be preserved; skip a duplicate predicate when possible.
  const fixed=filters.filter(f=>f.field==='product_type'&&f.op==='eq');
@@ -28,5 +28,5 @@ export async function costDriverCombinations(products:unknown,filters:Predicate[
  }
  cells.sort((a,b)=>b.total_penalty_eur-a.total_penalty_eur);
  if(!cells.length)return unavailable('No eligible joint cells.');
- return {scope:'selected node effective filters',available:true,allEligibleGroupsCovered:complete,eligibleCombinationCount:cells.length,displayedCombinationCount:Math.min(12,cells.length),policy:'Ranked by modeled total penalty among returned joint cells. At most four product queries; each RPC may return up to 150 cells by order count; cells with fewer than five orders or unknown labels omitted. The listed maximum is exhaustive only if allEligibleGroupsCovered is true.',combinations:cells.slice(0,12)};
+ return {scope:'selected node effective filters',available:true as const,allEligibleGroupsCovered:complete,eligibleCombinationCount:cells.length,displayedCombinationCount:Math.min(12,cells.length),policy:'Ranked by modeled total penalty among returned joint cells. At most four product queries; each RPC may return up to 150 cells by order count; cells with fewer than five orders or unknown labels omitted. The listed maximum is exhaustive only if allEligibleGroupsCovered is true.',combinations:cells.slice(0,12)};
 }
