@@ -1,6 +1,13 @@
 import {FIELDS,FIELD_LABELS,FILTER_KIND,OTIF_STATUS_LABELS,type FieldKey} from '../config';
 import type {AnalysisNode,Filter} from './types';
 export type DirectedLink={source:string;target:string};
+/** Containment is a hidden one-way filter link, not a merger of child filters. */
+export function filterLinks(nodes:AnalysisNode[],links?:DirectedLink[]):DirectedLink[]{
+ const known=new Set(nodes.map(n=>n.id));
+ const explicit=links??nodes.flatMap(n=>n.parentId?[{source:n.parentId,target:n.id}]:[]);
+ const membership=nodes.flatMap(n=>n.containerId&&known.has(n.containerId)?[{source:n.containerId,target:n.id}]:[]);
+ return [...explicit,...membership];
+}
 export type FilterTrace={nodeId:string|null;sourceLabel:string;filter:Filter;scope:'global'|'inherited'|'local'};
 const DATE=/^\d{4}-\d{2}-\d{2}$/;
 const NUMBER=/^-?\d{1,12}(?:\.\d{1,6})?$/;
@@ -37,14 +44,14 @@ export function validateFilters(value:unknown):Filter[]{
 }
 export function traceFilters(globals:Filter[],nodes:AnalysisNode[],locals:Record<string,Filter[]>,id:string,links?:DirectedLink[]):FilterTrace[]{
  const byId=new Map(nodes.map(n=>[n.id,n])),parents=new Map<string,Set<string>>();
- if(links)for(const e of links){if(byId.has(e.source)&&byId.has(e.target)){const set=parents.get(e.target)||new Set<string>();set.add(e.source);parents.set(e.target,set);}}
+ for(const e of filterLinks(nodes,links)){if(byId.has(e.source)&&byId.has(e.target)){const set=parents.get(e.target)||new Set<string>();set.add(e.source);parents.set(e.target,set);}}
  const trail:AnalysisNode[]=[],visited=new Set<string>(),active=new Set<string>();
  function visit(key:string){
   const n=byId.get(key);if(!n)return;
   if(active.has(key))throw Error('Filterkreis erkannt – Verbindung bitte entfernen.');
   if(visited.has(key))return;
   active.add(key);
-  for(const prior of links===undefined?(n.parentId?[n.parentId]:[]):[...(parents.get(key)||[])])visit(prior);
+  for(const prior of [...(parents.get(key)||[])])visit(prior);
   active.delete(key);visited.add(key);trail.push(n);
  }
  visit(id);
