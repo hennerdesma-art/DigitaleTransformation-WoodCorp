@@ -64,6 +64,11 @@ export function validatePlan(input:unknown,existingIds:string[],allowedFields:st
   }else if(op.kind==='add_widget'){
    if(!isOne(AI_WIDGET_TYPES,op.widgetType)||!str(op.label,100))throw Error('Widgettyp oder Titel ungültig.');
    if(op.widgetType==='bullet'&&op.targetValue==null)throw Error('Zielwert ausdrücklich angeben.');
+   if(op.widgetType==='bullet'&&op.metric&&!['otifRate','onTimeRate','volumeConformanceRate'].includes(op.metric))throw Error('Bullet benötigt eine Prozent-Kennzahl.');
+   if(['bar_horizontal','bar_vertical'].includes(op.widgetType||'')&&op.metric&&!['orders','otifCases','lateOrders','otifRate','onTimeRate','volumeConformanceRate','totalPenaltyEur','latePenaltyEur','shortfallPenaltyEur'].includes(op.metric))throw Error('Kennzahl für Segmentvergleich nicht unterstützt.');
+   if(['line','bar','donut'].includes(op.widgetType||'')&&op.metric&&op.metric!=='onTimeRate')throw Error('Dieses Dashboard-Diagramm zeigt On-Time Delivery.');
+   if(COST_VISUALS.includes(op.widgetType||'')&&op.metric&&op.metric!=='totalPenaltyEur')throw Error('Dieses Dashboard-Diagramm zeigt modellierte Gesamtkosten.');
+   if(['heatmap','scatter','stacked','stacked100'].includes(op.widgetType||'')&&op.metric&&op.metric!=='otifRate')throw Error('Dieses Dashboard-Diagramm nutzt die fest definierte OTIF-Auswertung.');
    if(op.widgetType==='e02_distribution'&&op.value&&!isOne(AI_INTERVAL_KEYS,op.value))throw Error('Prozessintervall ungültig.');
    if(op.widgetType==='histogram'&&op.value&&!['quantity_change_count','lateness_days'].includes(op.value))throw Error('Verteilung ungültig.');
   }else if(op.kind==='add_filter'){

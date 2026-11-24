@@ -35,19 +35,19 @@ function nextPosition(nodes:NNode[],parent:NNode){
  return {x,y:p.y+220};
 }
 // AI layout: new groups use up to two columns; existing manual positions are never moved.
-function blockSize(n:NNode){const a=n.data.analysis;return a.kind==='container'?containerSize(a):{width:n.measured?.width??(a.visualization&&a.visualization!=='kpi'?460:260),height:n.measured?.height??(a.visualization&&a.visualization!=='kpi'?440:190)}}
+export function assistantBlockSize(n:NNode){const a=n.data.analysis;return a.kind==='container'?containerSize(a):{width:n.measured?.width??(a.visualization&&a.visualization!=='kpi'?460:260),height:n.measured?.height??(a.visualization&&a.visualization!=='kpi'?440:190)}}
 function layoutNewBlocks(nodes:NNode[],created:Map<string,string>):NNode[]{
  let out=[...nodes];
  for(const group of out.filter(n=>created.has(n.id)&&n.data.analysis.kind==='container')){
   const members=out.filter(n=>n.data.analysis.containerId===group.id);
   if(!members.length)continue;
-  const width=Math.max(...members.map(n=>blockSize(n).width));let y=86;
-  for(let i=0;i<members.length;i+=2){const row=members.slice(i,i+2);row.forEach((n,j)=>{out=out.map(x=>x.id===n.id?{...x,position:{x:18+j*(width+24),y}}:x)});y+=Math.max(...row.map(n=>blockSize(n).height))+24;}
-  out=changeContainerSettings(out,group.id,{});
+  const width=Math.max(...members.map(n=>assistantBlockSize(n).width));let y=86;
+  for(let i=0;i<members.length;i+=2){const row=members.slice(i,i+2);row.forEach((n,j)=>{out=out.map(x=>x.id===n.id?{...x,position:{x:18+j*(width+24),y}}:x)});y+=Math.max(...row.map(n=>assistantBlockSize(n).height))+24;}
+  out=changeContainerSettings(out,group.id,{containerWidth:720,containerHeight:440});
  }
- const occupied=out.filter(n=>!created.has(n.id)&&!n.data.analysis.containerId).map(n=>({...n.position,...blockSize(n)}));
+ const occupied=out.filter(n=>!created.has(n.id)&&!n.data.analysis.containerId).map(n=>({...n.position,...assistantBlockSize(n)}));
  for(const [id,parentId] of created){const n=out.find(x=>x.id===id),parent=out.find(x=>x.id===parentId);if(!n||!parent||n.data.analysis.containerId)continue;
-  const p=worldPosition(parent,out),ps=blockSize(parent),s=blockSize(n);let x=p.x,y=p.y+ps.height+110;
+  const p=worldPosition(parent,out),ps=assistantBlockSize(parent),s=assistantBlockSize(n);let x=p.x,y=p.y+ps.height+110;
   // Search a free rectangle, respecting existing and already placed generated blocks.
   for(let attempt=0;attempt<=occupied.length;attempt++){const hit=occupied.find(r=>x<r.x+r.width+70&&x+s.width+70>r.x&&y<r.y+r.height+70&&y+s.height+70>r.y);if(!hit)break;x=hit.x+hit.width+70;}
   out=out.map(v=>v.id===id?{...v,position:{x,y}}:v);occupied.push({x,y,...s});

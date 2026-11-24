@@ -4,12 +4,12 @@ import Icon from './Icon';
 import {DashboardRenderer} from './DashboardBuilder';
 import {analysisApi} from '../lib/supabase';
 import {effectiveFilters,filterSignature,formatFilter,conflictingFields} from '../core/filters';
-import {applyAssistantPlan,type AssistantState} from '../core/assistant';
+import {applyAssistantPlan,assistantBlockSize,type AssistantState} from '../core/assistant';
 import type {AiPlan} from '../core/assistantProtocol';
 import type {DashboardData,Ribbon} from '../core/types';
-import {worldPosition,containerSize} from '../core/graph';
+import {worldPosition} from '../core/graph';
 function Structure({state,onSelect,selected}:{state:AssistantState;onSelect:(id:string)=>void;selected:string}){
- const list=state.nodes.filter(n=>!n.data.analysis.containerId||!state.nodes.find(g=>g.id===n.data.analysis.containerId)?.data.analysis.containerCollapsed).map(n=>{const p=worldPosition(n,state.nodes),a=n.data.analysis,group=a.kind==='container',size=group?containerSize(a):{width:n.measured?.width??250,height:n.measured?.height??150};return {n,p,group,size}});
+ const list=state.nodes.filter(n=>!n.data.analysis.containerId||!state.nodes.find(g=>g.id===n.data.analysis.containerId)?.data.analysis.containerCollapsed).map(n=>{const p=worldPosition(n,state.nodes),a=n.data.analysis,group=a.kind==='container',size=assistantBlockSize(n);return {n,p,group,size}});
  const minX=Math.min(0,...list.map(x=>x.p.x))-45,minY=Math.min(0,...list.map(x=>x.p.y))-45,maxX=Math.max(400,...list.map(x=>x.p.x+x.size.width))+45,maxY=Math.max(260,...list.map(x=>x.p.y+x.size.height))+45;
  const byId=new Map(list.map(x=>[x.n.id,x]));
  return <div className="nxt-ai-structure-scroll"><svg role="img" aria-label="Vorschau des Analysepfads mit Containern und Verbindungen" viewBox={minX+' '+minY+' '+(maxX-minX)+' '+(maxY-minY)} style={{minWidth:Math.min(2400,Math.max(650,(maxX-minX)*.72)),width:'100%',display:'block'}}><defs><marker id="ai-preview-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0 0L7 3.5L0 7Z" fill="#008b92"/></marker></defs>
