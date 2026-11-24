@@ -59,10 +59,7 @@ export function DashboardWidgetView({widget,detail,filters}:DataProps){
  if(loading)return <Spinner text="Vergleichsdaten werden geladen …"/>;
  if(error)return <Notice kind="error">{error}</Notice>;
  if(widget.type==='table')return <TableWidget rows={rows}/>;
- if(widget.type==='bar'){
-  if(!rows.length)return <p className="widget-empty">Keine Vergleichsgruppen verfügbar</p>;
-  return <div className="nxt-widget-bars">{rows.filter(r=>r.label!=null).slice(0,9).map((r,i)=><div className="nxt-widget-bar-row" key={i}><span title={r.label??''}>{r.label}</span><div><i style={{width:Math.max(0,Math.min(100,r.on_time_rate??0))+'%'}}/></div><b>{percent(r.on_time_rate)}</b></div>)}</div>;
- }
+
  return null;
 }
 export function DashboardRenderer({dashboard,detail:baseDetail,filters:baseFilters,compact=false,onExplain}:{dashboard:NodeDashboard;detail:DashboardData;filters:Filter[];compact?:boolean;onExplain?:(metric:MetricKey)=>void}){

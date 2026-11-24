@@ -126,3 +126,10 @@
 .nxt-vertical-scroll{overflow-x:auto}.nxt-vertical-item.nxt-segment-button{min-width:65px;text-align:center}
 .nxt-chart-selection{margin-bottom:8px;display:grid;gap:4px}
 .graph-node .nxt-chart-scroll{max-height:145px}.graph-node .nxt-chart-control-grid{grid-template-columns:1fr}.graph-node .nxt-interactive-chart{max-width:100%}
+
+.nxt-connection-mode{display:flex;align-items:center;gap:5px;font-size:11px;color:#476468}
+.nxt-connection-mode select{max-width:160px;border:1px solid #bdd5d6;border-radius:6px;background:white;color:#17494c;font:inherit;padding:5px}
+.graph-node.note-node{width:300px;max-width:320px}
+.nxt-finding-text{white-space:pre-wrap;overflow-wrap:anywhere;max-height:190px;overflow:auto;display:block;line-height:1.4!important}
+.nxt-finding-status{display:block;font-size:10px;border-radius:5px;padding:4px 6px;background:#e5eeee;color:#335b60;white-space:normal}
+.nxt-finding-status.stale{background:#fff0db;color:#80470a}.nxt-finding-status.current{background:#dcf0ed;color:#17665e}

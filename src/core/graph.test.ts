@@ -29,3 +29,9 @@ test('chart node metric and visualization persist through serialization',()=>{
  assert.equal(restored.nodes[1].data.analysis.visualization,'bar');
  assert.equal(restored.nodes[1].data.analysis.chartDimension,'factory');
 });
+
+import {annotationEdge} from './graph';
+import {effectiveFilters,makeFilter} from './filters';
+import {findingStamp,findingStatus} from './findings';
+test('annotation edges survive persistence without inheriting sibling filters',()=>{const g=createInitialGraph([]);const child=nodeFor({id:'doc',label:'Finding',kind:'note',parentId:null,createdBy:'user'},{x:600,y:400});const nodes=[...g.nodes,child];const edges=[annotationEdge(ROOT_ID,'doc')];const locals={[ROOT_ID]:[makeFilter('factory','Essen','local')]};assert.equal(effectiveFilters([],nodes.map(n=>n.data.analysis),locals,'doc',edges).length,0);const restored=restoreDraft(serializeDraft(nodes,edges,locals,{x:0,y:0,zoom:1}));assert.equal(restored.edges[0].data?.kind,'annotation');assert.equal(effectiveFilters([],restored.nodes.map(n=>n.data.analysis),locals,'doc',restored.edges).length,0);});
+test('finding detects changed source filter and missing source; without live aggregate it is unverified',()=>{const g=createInitialGraph([]),source=ROOT_ID;const stamp=findingStamp(source,g.nodes,[],[],{});const finding={id:'doc',label:'Finding',kind:'note' as const,parentId:null,createdBy:'user' as const,finding:stamp};assert.equal(findingStatus(finding,g.nodes,[],[],{}).state,'unverified');assert.equal(findingStatus(finding,g.nodes,[],[makeFilter('factory','Essen')],{}).state,'stale');assert.equal(findingStatus(finding,[],[],[],{}).state,'stale')});

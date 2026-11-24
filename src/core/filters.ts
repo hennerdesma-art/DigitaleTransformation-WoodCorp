@@ -1,12 +1,12 @@
 import {FIELDS,FIELD_LABELS,FILTER_KIND,OTIF_STATUS_LABELS,type FieldKey} from '../config';
 import type {AnalysisNode,Filter} from './types';
-export type DirectedLink={source:string;target:string};
+export type DirectedLink={source:string;target:string;kind?:string;data?:{kind?:string}};
 /** Containment is a hidden one-way filter link, not a merger of child filters. */
 export function filterLinks(nodes:AnalysisNode[],links?:DirectedLink[]):DirectedLink[]{
  const known=new Set(nodes.map(n=>n.id));
  const explicit=links??nodes.flatMap(n=>n.parentId?[{source:n.parentId,target:n.id}]:[]);
  const membership=nodes.flatMap(n=>n.containerId&&known.has(n.containerId)?[{source:n.containerId,target:n.id}]:[]);
- return [...explicit,...membership];
+ return [...explicit.filter((e:DirectedLink)=>(e.data?.kind||e.kind)!=='annotation'),...membership];
 }
 export type FilterTrace={nodeId:string|null;sourceLabel:string;filter:Filter;scope:'global'|'inherited'|'local'};
 const DATE=/^\d{4}-\d{2}-\d{2}$/;

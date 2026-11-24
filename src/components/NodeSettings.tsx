@@ -23,10 +23,11 @@ const TYPES:{value:GraphViz;label:string}[]=[
  {value:'funnel',label:'OTIF-Funnel'},
  {value:'process_interval',label:'E02 · Prozessintervall (Median/P90)'}
 ];
-export function NodeSettings({node,allowedFields,fieldNames,filters,containers=[],onRemoveFilter,onSave,onClose}:{
- node:AnalysisNode;containers?:AnalysisNode[];allowedFields:FieldKey[];fieldNames:Record<FieldKey,string>;filters:Filter[];onRemoveFilter:(id:string)=>void;
- onSave:(patch:Partial<AnalysisNode>)=>void;onClose:()=>void;
+export function NodeSettings({node,allowedFields,fieldNames,filters,containers=[],sources=[],onRemoveFilter,onSave,onClose}:{
+ node:AnalysisNode;containers?:AnalysisNode[];sources?:AnalysisNode[];allowedFields:FieldKey[];fieldNames:Record<FieldKey,string>;filters:Filter[];onRemoveFilter:(id:string)=>void;
+ onSave:(patch:Partial<AnalysisNode>,sourceId?:string)=>void;onClose:()=>void;
 }){
+ const [description,setDescription]=useState(node.description||'');const [sourceId,setSourceId]=useState(node.finding?.sourceId||'');
  const [containerId,setContainerId]=useState(node.containerId||'');
  const [name,setName]=useState(node.label),[viz,setViz]=useState<GraphViz>(node.visualization||'kpi');
  const [selectedMetric,setSelectedMetric]=useState<MetricKey>((node.metricId==='otd'?'onTimeRate':node.metricId&&METRICS.includes(node.metricId as MetricKey)?node.metricId:'otifRate') as MetricKey);
@@ -43,6 +44,7 @@ export function NodeSettings({node,allowedFields,fieldNames,filters,containers=[
  const changeTemplate=(next:CalculationTemplate)=>{if(isSuggested(name))setName(CALCULATION_TEMPLATES[next].label);setTemplate(next);setError('')};
  const submit=(e:React.FormEvent)=>{e.preventDefault();try{
   if(!name.trim()||name.length>100)throw Error('Bitte einen Namen mit maximal 100 Zeichen eingeben.');
+  if(node.kind==='note'){onSave({label:name.trim(),description:description.trim(),containerId:containerId||undefined},sourceId);onClose();return;}
   const parsed=viz==='calculation'?validateRate(template,rate):null;
   onSave({label:name.trim(),containerId:containerId||undefined,visualization:viz,metricId:selectedMetric,chartDimension:field,chartMetric,calculationTemplate:template,rateEurPerKg:parsed??undefined,intervalKey:interval});
   onClose();
@@ -51,7 +53,7 @@ export function NodeSettings({node,allowedFields,fieldNames,filters,containers=[
   <form className="node-settings" onSubmit={submit}>
    <label className="field">Knotenname<input autoFocus maxLength={100} minLength={2} required value={name} onChange={e=>setName(e.target.value)}/></label>
    {!!containers.length&&<label className="field">Container / Gruppierung<select value={containerId} onChange={e=>setContainerId(e.target.value)}><option value="">Kein Container</option>{containers.map(c=><option key={c.id} value={c.id} disabled={!!c.containerCollapsed&&c.id!==node.containerId}>{c.label}{c.containerCollapsed?' (eingeklappt)':''}</option>)}</select><small className="muted">Die Gruppe vererbt ihren Filterkontext. Bestehende Pfeile bleiben erhalten.</small></label>}
-   <label className="field">Anzeigeart<select value={viz} onChange={e=>changeVisual(e.target.value as GraphViz)}>{TYPES.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}</select></label>
+   {node.kind==='note'?<><label className="field">Erkenntnis / Beleg / Hypothese<textarea rows={9} maxLength={1800} value={description} onChange={e=>setDescription(e.target.value)}/></label><label className="field">Datenquelle / Analyseblock<select value={sourceId} onChange={e=>setSourceId(e.target.value)}><option value="">Freie Anmerkung</option>{sources.map(s=><option key={s.id} value={s.id}>{s.label}</option>)}</select></label><p className="muted">Beim Übernehmen wird der aktuelle Filter- und KPI-Stand der Quelle dokumentiert, sofern geladen. Der Inhalt muss fachlich geprüft werden.</p></>:<><label className="field">Anzeigeart<select value={viz} onChange={e=>changeVisual(e.target.value as GraphViz)}>{TYPES.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}</select></label>
    {viz==='kpi'&&<label className="field">Kennzahl<select value={selectedMetric} onChange={e=>setSelectedMetric(e.target.value as MetricKey)}>{METRICS.map(m=><option key={m} value={m}>{METRIC_LABELS[m]}</option>)}</select></label>}
    {['bar','line'].includes(viz)&&<label className="field">Diagrammkennzahl<select value={chartMetric} onChange={e=>setChartMetric(e.target.value as MetricKey)}><SegmentMetricOptions/></select></label>}
    {(['bar','stacked','stacked100','heatmap','pareto','scatter','treemap'].includes(viz))&&<label className="field">Gruppierung<select value={field} onChange={e=>setField(e.target.value as FieldKey)}>{[...new Set([...allowedFields.filter(f=>viz==='heatmap'?['factory','product_type'].includes(f):CHART_SEGMENT_FIELDS.includes(f)),field])].map(key=><option key={key} value={key}>{fieldNames[key]||FIELD_LABELS[key]}</option>)}</select></label>}
@@ -62,8 +64,9 @@ export function NodeSettings({node,allowedFields,fieldNames,filters,containers=[
     {calc.requiresRate&&<label className="field">Bestätigter Kostensatz (€/kg)<input type="number" required step="0.0001" min="0.0001" max="10000" value={rate} onChange={e=>setRate(e.target.value)} placeholder="€/kg selbst eingeben"/></label>}
     <div className="node-sql-preview"><strong>SQL-Vorlage (nur Vorschau)</strong><code>{calc.sql}</code><small>Die Web-App sendet nur die Vorlagen-ID, validierte Filter und ggf. den Kostensatz an eine eingeschränkte Supabase-RPC. Kein frei eingegebenes SQL wird ausgeführt.</small></div>
    </>}
+   </>}
    {!!filters.length&&<fieldset className="node-local-filters"><legend>Eigene Filter dieses Knotens</legend>{filters.map(f=><div key={f.id}><span><b>{formatFilter(f,fieldNames)}</b></span><button className="nxt-button secondary" type="button" onClick={()=>onRemoveFilter(f.id)} aria-label={'Filter '+f.value+' entfernen'}>Entfernen</button></div>)}</fieldset>}
-   <p className="muted">Alle Kennzahlen dieser Kachel erben die Filter sämtlicher eingehender Verbindungen. Eigene Filter verengen die Auswahl zusätzlich.</p>
+   <p className="muted">Alle Kennzahlen dieser Kachel erben die Filter eingehender Filterpfeile. Gestrichelte Referenzen sind rein dokumentarisch. Eigene Filter verengen die Auswahl zusätzlich.</p>
    {error&&<Notice kind="error">{error}</Notice>}
    <div className="modal-actions"><Button onClick={onClose}>Abbrechen</Button><Button type="submit" kind="primary" icon="check">Übernehmen</Button></div>
   </form>

@@ -1,9 +1,9 @@
 import type {Node,Edge,XYPosition} from '@xyflow/react';
-import type {AnalysisNode,GraphNodeData,BreakdownRow,SavedDraft,Filter} from './types';
+import type {AnalysisNode,GraphNodeData,BreakdownRow,SavedDraft,Filter,EdgeKind} from './types';
 import type {FieldKey} from '../config';
 import {filterLinks} from './filters';
 export type NNode=Node<GraphNodeData,'analytics'>;
-export type NEdge=Edge<{kind:'analytic'|'reference'}>;
+export type NEdge=Edge<{kind:EdgeKind}>;
 export const ROOT_ID='root:otd';
 export function rootAnalysis():AnalysisNode{return {id:ROOT_ID,parentId:null,label:'OTIF · Ausgangsanalyse',kind:'root',createdBy:'system',metricId:'otifRate'};}
 export function nodeFor(analysis:AnalysisNode,position:XYPosition,metrics?:{orders?:number|null;onTimeRate?:number|null}):NNode{
@@ -15,6 +15,9 @@ export function semanticEdge(parent:string,child:string):NEdge{
 export function referenceEdge(parent:string,child:string):NEdge{
  return {id:'reference:'+crypto.randomUUID(),source:parent,target:child,type:'smoothstep',style:{stroke:'#008B92',strokeWidth:2},data:{kind:'reference'},label:'Filterfluss →'};
 }
+/** Purely documentary links do not participate in inheritance; existing reference edges remain filter links. */
+export function annotationEdge(source:string,target:string):NEdge{return {id:'annotation:'+crypto.randomUUID(),source,target,type:'smoothstep',style:{stroke:'#707173',strokeWidth:1.8,strokeDasharray:'6 5'},data:{kind:'annotation'},label:'Referenz · ohne Filter'};}
+export function isValidAnnotation(source:string,target:string,edges:NEdge[],nodes:NNode[]):boolean{return !!source&&!!target&&source!==target&&nodes.some(n=>n.id===source)&&nodes.some(n=>n.id===target)&&!edges.some(e=>e.source===source&&e.target===target&&e.data?.kind==='annotation');}
 /** Fresh workspaces must NOT inherit a former workspace's graph or any factory branches. */
 export function createBlankWorkspaceGraph():{nodes:NNode[];edges:NEdge[]}{
  const analysis:AnalysisNode={id:'root:workspace:'+crypto.randomUUID(),parentId:null,
@@ -59,7 +62,7 @@ export function serializeDraft(nodes:NNode[],edges:NEdge[],locals:Record<string,
  return {version:2,nodes:nodes.map(n=>({id:n.id,position:{x:n.position.x,y:n.position.y},analysis:n.data.analysis})),edges:edges.map(e=>({id:e.id,source:e.source,target:e.target,kind:e.data?.kind||'reference'})),localFilters:locals,viewport,timestamp:new Date().toISOString()};
 }
 export function restoreDraft(d:SavedDraft):{nodes:NNode[];edges:NEdge[]}{
- return {nodes:d.nodes.map(n=>nodeFor(n.analysis,n.position)),edges:d.edges.map(e=>e.kind==='analytic'?{...semanticEdge(e.source,e.target),id:e.id}:{...referenceEdge(e.source,e.target),id:e.id})};
+ return {nodes:d.nodes.map(n=>nodeFor(n.analysis,n.position)),edges:d.edges.map(e=>({... (e.kind==='analytic'?semanticEdge(e.source,e.target):e.kind==='annotation'?annotationEdge(e.source,e.target):referenceEdge(e.source,e.target)),id:e.id}))};
 }
 /**
  * Every arrow is a directed filter dependency. Do not introduce a cycle,
@@ -68,7 +71,7 @@ export function restoreDraft(d:SavedDraft):{nodes:NNode[];edges:NEdge[]}{
 export function isValidReference(source:string,target:string,edges:NEdge[],nodes:NNode[]=[]):boolean{
  if(!source||!target||source===target)return false;
  if(nodes.length&&(!nodes.some(n=>n.id===source)||!nodes.some(n=>n.id===target)))return false;
- if(edges.some(e=>e.source===source&&e.target===target))return false;
+ if(edges.some(e=>e.source===source&&e.target===target&&e.data?.kind!=='annotation'))return false;
  const next=new Map<string,Set<string>>();
  for(const edge of filterLinks(nodes.map(n=>n.data.analysis),edges)){const set=next.get(edge.source)||new Set<string>();set.add(edge.target);next.set(edge.source,set);}
  const pending=[target],visited=new Set<string>();
@@ -109,6 +112,7 @@ export function containerAt(nodes:NNode[],point:XYPosition,exclude?:string):NNod
 }
 function childSize(n:NNode){
  const viz=n.data.analysis.visualization;
+ if(n.data.analysis.kind==='note')return {width:n.measured?.width??320,height:n.measured?.height??280};
  return {width:n.measured?.width??(viz&&viz!=='kpi'?460:260),height:n.measured?.height??(viz&&viz!=='kpi'?440:190)};
 }
 export function minimumContainerSize(nodes:NNode[],id:string){
