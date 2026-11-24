@@ -2,7 +2,7 @@ import {supabase} from './supabase';
 import {PROJECT} from '../config';
 import type {AssistantContext} from '../core/assistant';
 import type {AiPlan} from '../core/assistantProtocol';
-export type AiStatus={enabled:boolean;knowledgeVersion:string};
+export type AiStatus={enabled:boolean;configured?:boolean;provider?:string;model?:string;region?:string;knowledgeVersion:string};
 export type AiMessage={role:'user'|'assistant';text:string};
 async function request(payload:unknown,signal?:AbortSignal){
  const {data,error}=await supabase.auth.getSession();

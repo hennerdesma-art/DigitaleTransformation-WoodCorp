@@ -1,13 +1,15 @@
 import {createClient} from "npm:@supabase/supabase-js@2.119.0";
 import {PLAN_SCHEMA,validatePlan,KNOWLEDGE_VERSION,AI_DIMENSIONS} from "./protocol.ts";
 import {MASTER_PLAYBOOK} from "./knowledge.ts";
+import {bedrockConfig,requestBedrock,BedrockError,BEDROCK_MODEL,BEDROCK_REGION} from "./bedrock.ts";
 const url=Deno.env.get("SUPABASE_URL")!;
 const service=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const anon=Deno.env.get("SUPABASE_ANON_KEY")!;
 const admin=createClient(url,service,{auth:{persistSession:false,autoRefreshToken:false}});
 const origins=new Set(["https://hennerdesma-art.github.io","http://localhost:5173","http://127.0.0.1:5173"]);
 const response=(body:unknown,code:number,origin:string)=>new Response(code===204?null:JSON.stringify(body),{status:code,headers:{"content-type":"application/json; charset=utf-8","access-control-allow-origin":origins.has(origin)?origin:"https://hennerdesma-art.github.io","access-control-allow-headers":"authorization, apikey, content-type, x-client-info","access-control-allow-methods":"POST, OPTIONS","cache-control":"no-store","vary":"Origin"}});
-const enabled=()=>Deno.env.get("NXT_AI_ENABLED")==="true"&&!!Deno.env.get("OPENAI_API_KEY")&&!!Deno.env.get("NXT_AI_MODEL");
+const config=()=>bedrockConfig(name=>Deno.env.get(name));
+const enabled=()=>Deno.env.get("NXT_AI_ENABLED")==="true"&&!!config();
 const isString=(x:unknown,max:number)=>typeof x==="string"&&x.length<=max&&x.trim().length>0;
 const safeNumber=(x:unknown)=>typeof x==="number"&&Number.isFinite(x)?x:null;
 const safeFields=new Set([...AI_DIMENSIONS,"delivered_date","promised_date","ordered_quantity","delivered_quantity","order_value","days_to_del_deadline","quantity_change_count","delivery_date_change_count","production_start_change_count","price_change_count","anomalous_event_count"]);
@@ -27,9 +29,10 @@ Deno.serve(async(req)=>{
   if(Number(req.headers.get("content-length")||0)>200000)return response({error:"Anfrage zu groß."},413,origin);
   const raw=await req.text();if(new TextEncoder().encode(raw).length>200000)return response({error:"Anfrage zu groß."},413,origin);
   let body:any;try{body=JSON.parse(raw)}catch{return response({error:"Ungültiges JSON."},400,origin)}
-  if(body?.action==="status")return response({enabled:enabled(),knowledgeVersion:KNOWLEDGE_VERSION},200,origin);
+  if(body?.action==="status")return response({enabled:enabled(),configured:!!config(),provider:"Amazon Bedrock",model:BEDROCK_MODEL,region:BEDROCK_REGION,knowledgeVersion:KNOWLEDGE_VERSION},200,origin);
   if(body?.action!=="ask"||body.consent!==true||!isString(body.prompt,1600))return response({error:"Ungültige Anfrage oder fehlende Freigabe."},400,origin);
-  if(!enabled())return response({error:"KI-Modell noch nicht aktiviert. Lokale Vorlagen sind verfügbar."},503,origin);
+  const provider=config();
+  if(!enabled()||!provider)return response({error:"Amazon Bedrock noch nicht aktiviert oder unvollständig konfiguriert. Lokale Vorlagen sind verfügbar."},503,origin);
   const context=body.context;
   if(!context||!isString(context.selectedId,180)||!Array.isArray(context.nodes)||context.nodes.length>300||!Array.isArray(context.edges)||context.edges.length>400||!Array.isArray(context.filters)||context.filters.length>12||!Array.isArray(context.allowedFields))return response({error:"Workspace-Kontext ungültig."},400,origin);
   const client=createClient(url,anon,{global:{headers:{Authorization:"Bearer "+bearer}},auth:{persistSession:false,autoRefreshToken:false}});
@@ -80,14 +83,8 @@ Deno.serve(async(req)=>{
   }
   const history=Array.isArray(body.history)?body.history.slice(-8).filter((x:any)=>["user","assistant"].includes(x?.role)&&isString(x.text,1600)).map((x:any)=>({role:x.role,text:x.text})):[];
   const modelContext={workspaceTitle,selectedId:context.selectedId,nodes,edges,canEdit,allowedFields:fields,filters:filters.map((f:any)=>safeFields.has(f.field)?f:{field:f.field,op:f.op,value:"[nicht übertragen]"}),evidence,history,question:body.prompt};
-  const result=await fetch("https://api.openai.com/v1/responses",{method:"POST",headers:{"content-type":"application/json",Authorization:"Bearer "+Deno.env.get("OPENAI_API_KEY")},body:JSON.stringify({model:Deno.env.get("NXT_AI_MODEL"),store:false,instructions:MASTER_PLAYBOOK,input:JSON.stringify(modelContext),max_output_tokens:3600,text:{format:{type:"json_schema",name:"nxt_analysis_plan",strict:true,schema:PLAN_SCHEMA}}}),signal:AbortSignal.timeout(65000)});
-  if(!result.ok)return response({error:"KI-Dienst hat die Anfrage nicht verarbeitet. Modellkonfiguration und Kontingent prüfen."},502,origin);
-  const output=await result.json();
-  if(output.status!=="completed")return response({error:"KI-Antwort unvollständig. Bitte Anfrage eingrenzen."},502,origin);
-  const texts=(output.output||[]).flatMap((x:any)=>x.type==="message"?(x.content||[]).filter((c:any)=>c.type==="output_text").map((c:any)=>c.text):[]);
-  if(!texts.length)return response({error:"Keine verwertbare KI-Antwort."},502,origin);
-  const parsed=JSON.parse(texts.join(""));
+  const {plan:parsed}=await requestBedrock(provider,MASTER_PLAYBOOK,modelContext,PLAN_SCHEMA);
   const plan=validatePlan(parsed,ids,fields,canEdit);
   return response(plan,200,origin);
- }catch(e){return response({error:e instanceof Error&&/Ungültig|Unbekannt|Dimension|Zielwert|Filter|Widget|Knoten|lesbar|Kennzahl/.test(e.message)?e.message:"Die Anfrage konnte nicht sicher verarbeitet werden."},400,origin)}
+ }catch(e){if(e instanceof BedrockError)return response({error:e.message},e.status,origin);return response({error:e instanceof Error&&/Ungültig|Unbekannt|Dimension|Zielwert|Filter|Widget|Knoten|lesbar|Kennzahl/.test(e.message)?e.message:"Die Anfrage konnte nicht sicher verarbeitet werden."},400,origin)}
 });
