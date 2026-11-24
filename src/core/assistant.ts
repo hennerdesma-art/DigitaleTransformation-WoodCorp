@@ -7,6 +7,9 @@ import type {FieldKey} from '../config';
 import {KPI_DEFINITIONS} from './kpiDefinitions';
 export type AssistantState={nodes:NNode[];edges:NEdge[];globals:Filter[];locals:Record<string,Filter[]>;dashboards:Record<string,NodeDashboard>;selectedId:string;allowedFields:FieldKey[]};
 export type AssistantContext={workspaceId:string|null;revision:number|null;workspaceTitle:string;selectedId:string;nodes:{id:string;label:string;kind:string;metric:string|null;visualization:string|null;containerId:string|null;description:string|null;question:string|null;widgets:{id:string;type:string;title:string;metric:string|null;dimension:string|null;compareDimension:string|null}[]}[];edges:{source:string;target:string}[];filters:{field:string;op:string;value:string|string[]}[];allowedFields:string[];canEdit:boolean};
+export function resolveAssistantNodeId(nodes:NNode[],selectedId:string):string{
+ return nodes.some(n=>n.id===selectedId)?selectedId:nodes.find(n=>n.data.analysis.kind==='root')?.id||nodes[0]?.id||'';
+}
 export function assistantFingerprint(s:AssistantState,workspaceId:string|null,revision:number|null){
  return JSON.stringify({workspaceId,revision,selectedId:s.selectedId,nodes:s.nodes.map(n=>[n.id,n.position,n.data.analysis]),edges:s.edges.map(e=>[e.id,e.source,e.target]),globals:s.globals,locals:s.locals,dashboards:s.dashboards,allowed:s.allowedFields});
 }
@@ -117,7 +120,7 @@ export function actionLabel(op:AiAction,labels:Record<string,string>){
   case 'set_node_metric':return 'Kennzahl in '+t+': '+(METRIC_LABELS[op.metric as MetricKey]||op.metric);
  }
 }
-export function localAssistantPlan(prompt:string,s:AssistantState,metrics:Metrics|null,canEdit:boolean,template?:'dashboard'|'path'):AiPlan{
+export function localAssistantPlan(prompt:string,s:AssistantState,metrics:Metrics|null,canEdit:boolean,template?:'dashboard'|'path'|'new_dashboard'):AiPlan{
  const n=s.nodes.find(x=>x.id===s.selectedId);if(!n)throw Error('Knoten fehlt.');
  const id=n.id,allowed=new Set(s.allowedFields);
  const q=prompt.toLowerCase();
@@ -130,20 +133,34 @@ export function localAssistantPlan(prompt:string,s:AssistantState,metrics:Metric
   actions.push(action('add_branch',container,{ref:'new:delivery',label:'Lieferqualität',metric:'onTimeRate'}));
   actions.push(action('set_question','new:delivery',{label:'Wie unterscheiden sich pünktliche und verspätete Lieferungen?'}));
   add('new:delivery','kpi','On-Time Delivery',{metric:'onTimeRate'});add('new:delivery','line','On-Time im Zeitverlauf');
+  if(allowed.has('factory'))add('new:delivery','bar_vertical','On-Time je Werk',{metric:'onTimeRate',dimension:'factory'});
   actions.push(action('add_branch',container,{ref:'new:volume',label:'Mengenkonformität',metric:'volumeConformanceRate'}));
+  actions.push(action('set_question','new:volume',{label:'Welche Segmente tragen zu Mengenabweichungen bei?'}));
   add('new:volume','kpi','Mengenkonformität',{metric:'volumeConformanceRate'});
   if(allowed.has('factory'))add('new:volume','bar_vertical','Mengenkonformität je Werk',{metric:'volumeConformanceRate',dimension:'factory'});
   actions.push(action('add_branch',container,{ref:'new:intervals',label:'Prozessintervalle',metric:'otifRate'}));
+  actions.push(action('set_question','new:intervals',{label:'Welche Prozessintervalle unterscheiden OTIF- von Nicht-OTIF-Aufträgen?'}));
   add('new:intervals','e02_compare','OTIF vs. Nicht-OTIF');add('new:intervals','e02_quality','Datenqualität');
   return {answer:'Lokale, fachlich definierte Analysevorlage. Sie ergänzt Lieferqualität, Mengenabweichungen und Prozessintervalle. Die KPIs werden nach Übernahme mit den vererbten Filtern live berechnet; dies ist noch keine KI-basierte Ursachenfeststellung.',operations:actions};
  }
- if(canEdit&&(template==='dashboard'||/dashboard.*(erstell|ergänz|generier|vorbereit)|erstelle.*dashboard/.test(q))){
+ if(canEdit&&(template==='dashboard'||template==='new_dashboard'||/dashboard.*(erstell|ergänz|generier|vorbereit)|erstelle.*dashboard/.test(q))){
+  if(n.data.analysis.kind==='note')throw Error('Bitte einen Analyse- oder Containerknoten auswählen.');
+  if(n.data.analysis.kind==='root'&&!n.data.analysis.metricId)actions.push(action('set_node_metric',id,{metric:'otifRate'}));
   actions.push(action('set_question',id,{label:'Welche Segmente und Prozessmerkmale erklären die beobachtete OTIF-Lücke?'}));
   const existing=s.dashboards[id]||baseDashboard(n);
-  for(const metric of ['otifRate','onTimeRate','volumeConformanceRate','totalPenaltyEur'] as const)if(!existing.widgets.some(w=>w.type==='kpi'&&w.metric===metric))add(id,'kpi',METRIC_LABELS[metric],{metric});
-  if(allowed.has('factory')&&!existing.widgets.some(w=>w.type==='bar_vertical'&&w.dimension==='factory'))add(id,'bar_vertical','OTIF je Werk',{metric:'otifRate',dimension:'factory'});
-  if(!existing.widgets.some(w=>w.type==='e02_quality'))add(id,'e02_quality','Abdeckung der Prozessintervalle');
-  return {answer:'Lokale Dashboard-Vorlage: vorhandene Blöcke bleiben erhalten; fehlende Kennzahlen und ein Datenqualitätsblock werden ergänzt.',operations:actions};
+  const reset=template==='new_dashboard';
+  if(reset)for(const w of existing.widgets)actions.push(action('remove_widget',id,{widgetId:w.id}));
+  const retained=reset?[]:existing.widgets;
+  for(const metric of ['otifRate','onTimeRate','volumeConformanceRate','totalPenaltyEur','orders'] as const)if(!retained.some(w=>w.type==='kpi'&&w.metric===metric))add(id,'kpi',METRIC_LABELS[metric],{metric});
+  if(allowed.has('factory')&&!retained.some(w=>w.type==='bar_vertical'&&w.dimension==='factory'))add(id,'bar_vertical','OTIF je Werk',{metric:'otifRate',dimension:'factory'});
+  if(!retained.some(w=>w.type==='e02_quality'))add(id,'e02_quality','Abdeckung der Prozessintervalle');
+  if(!retained.some(w=>w.type==='line'))add(id,'line','On-Time Delivery im Zeitverlauf');
+  if(allowed.has('factory')&&allowed.has('product_type')&&!retained.some(w=>w.type==='heatmap'))add(id,'heatmap','OTIF je Werk × Produkttyp',{dimension:'factory',compareDimension:'product_type'});
+  if(!retained.some(w=>w.type==='e02_compare'))add(id,'e02_compare','Prozessintervalle: OTIF vs. Nicht-OTIF');
+  if(!retained.some(w=>w.type==='waterfall'))add(id,'waterfall','Modellierte Vertragsstrafe nach Ursache');
+  // At most 30 actions and 24 dashboard widgets. Existing dashboard is never silently truncated.
+  if(actions.length>30)throw Error('Zu viele Blöcke für einen Vorschlag. Bitte kleinere Änderungen anfragen.');
+  return {answer:reset?'Lokale Dashboard-Neugestaltung: bestehende Widgets dieses Knotens werden erst bei Übernahme ersetzt.':'Lokale Dashboard-Vorlage: vorhandene Blöcke bleiben erhalten. Fehlende Kennzahlen, Segmentvergleiche und Datenqualität werden ergänzt.',operations:actions};
  }
  const k=n.data.analysis.metricId==='otd'?'onTimeRate':n.data.analysis.metricId;
  const def=k&&METRICS.includes(k as MetricKey)?KPI_DEFINITIONS[k as MetricKey]:null;
