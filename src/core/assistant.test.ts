@@ -40,7 +40,7 @@ import {KNOWLEDGE_VERSION} from './assistantProtocol';
 test('live prompt examples execute as one connected group and separate canvas charts',()=>{
  const s=state();const plan={...PLAYBOOK_EXAMPLES.grouped,operations:PLAYBOOK_EXAMPLES.grouped.operations.map(o=>({...o,target:o.target==='example:root'?'root':o.target}))};
  const next=applyAssistantPlan(s,validatePlan(plan,['root'],s.allowedFields));const group=next.nodes.find(n=>n.data.analysis.kind==='container')!;const members=next.nodes.filter(n=>n.data.analysis.containerId===group.id);
- assert.equal(next.edges.length,1);assert.equal(next.edges[0].target,group.id);assert.deepEqual(members.map(n=>n.data.analysis.visualization),['line','heatmap']);assert.notEqual(members[0].position.x,members[1].position.x);assert.equal(members[0].position.y,members[1].position.y);assert.equal(s.nodes.length,1);assert.equal(KNOWLEDGE_VERSION,'nxt-ai-v1.2');assert.match(MASTER_PLAYBOOK,/STANDARD WORKFLOW/);
+ assert.equal(next.edges.length,1);assert.equal(next.edges[0].target,group.id);assert.deepEqual(members.map(n=>n.data.analysis.visualization),['line','heatmap']);assert.notEqual(members[0].position.x,members[1].position.x);assert.equal(members[0].position.y,members[1].position.y);assert.equal(s.nodes.length,1);assert.equal(KNOWLEDGE_VERSION,'nxt-ai-v1.2.1');assert.match(MASTER_PLAYBOOK,/STANDARD WORKFLOW/);
 });
 test('standalone container inherits global, not anchor local filters; no visible links',()=>{
  const s=state();s.globals=[{id:'g',field:'delivery_year',op:'eq',value:'2018'}];s.locals.root=[{id:'f',field:'factory',op:'eq',value:'Essen'}];
@@ -53,3 +53,36 @@ test('canvas validator refuses unsupported or misleading chart encodings',()=>{
 });
 
 test('dashboard validator rejects false metric labels for fixed renderers',()=>{const s=state();for(const patch of [{widgetType:'line',metric:'otifRate'},{widgetType:'donut',metric:'otifRate'},{widgetType:'pareto',metric:'orders'},{widgetType:'heatmap',metric:'onTimeRate'},{widgetType:'bar_vertical',metric:'avgDelayDays'}])assert.throws(()=>validatePlan({answer:'x',operations:[action('add_widget','root',{label:'Chart',...patch})]},['root'],s.allowedFields));});
+
+import {resolveAssistantIntent,buildRequestBlocker,buildPlanProblem,AI_GRAPH_FORMAT} from './assistantProtocol';
+const reportedRequest='Erstelle einen vollständigen Thinking Path zur Identifikation möglicher Ursachen unserer OTIF-Performance. Beginne mit einer Executive-Übersicht, bündele zusammengehörige Visualisierungen in Containern und erstelle für jeden relevanten Analysezweig ein eigenes Dashboard mit Forschungsfrage, passenden Kennzahlen, Datenqualitätsprüfung und weiterführender Hypothese. Nutze ausschließlich verfügbare Daten und unterstützte Diagrammtypen.';
+test('reported explicit Thinking Path request must be build, not orientation',()=>{
+ assert.equal(resolveAssistantIntent(reportedRequest),'build_path');
+ assert.equal(resolveAssistantIntent('Erstelle ein vollständiges Dashboard'),'build_dashboard');
+ assert.equal(resolveAssistantIntent('Wie erstelle ich einen Thinking Path?'),'auto');
+ assert.equal(resolveAssistantIntent('Erkläre den vorhandenen Thinking Path'),'auto');
+ assert.equal(resolveAssistantIntent('Create a new dashboard'),'build_dashboard');
+ assert.equal(resolveAssistantIntent('Bitte erstelle einen Analysepfad'),'build_path');
+ assert.equal(resolveAssistantIntent('Ich möchte einen Thinking Path erstellen'),'build_path');
+ assert.equal(resolveAssistantIntent('Vorschlag','build_path'),'build_path');
+ assert.equal(contextForAssistant(state(),null,true).graphFormat,AI_GRAPH_FORMAT);
+});
+test('explicit build preflight rejects readonly or outdated graph before provider reservation',()=>{
+ assert.equal(buildRequestBlocker('build_path',false,2)?.status,403);
+ assert.equal(buildRequestBlocker('build_path',true,1)?.status,409);
+ assert.equal(buildRequestBlocker('build_dashboard',true,undefined)?.status,409);
+ assert.equal(buildRequestBlocker('build_path',true,2),null);
+ assert.equal(buildRequestBlocker('auto',false,1),null);
+});
+test('reported empty plan cannot be a successful build response even for populated graph',()=>{
+ const noOp={answer:'Der vorhandene Graph ist vollständig. Keine Operationen erforderlich.',operations:[]};
+ assert.ok(buildPlanProblem('build_path',noOp));
+ assert.ok(buildPlanProblem('build_dashboard',noOp));
+ assert.equal(buildPlanProblem('auto',noOp),null);
+ const path={answer:'Vorschlag',operations:[action('add_container','root',{label:'Neue Hypothesen',ref:'new:g'}),action('add_branch','new:g',{label:'Alternativer Test',ref:'new:b'}),action('add_widget','new:b',{label:'Auftragsanzahl',widgetType:'kpi',metric:'orders'})]};
+ assert.equal(buildPlanProblem('build_path',path),null);
+ const existing=applyAssistantPlan(state(),localAssistantPlan('Analysepfad',state(),null,true,'path'));
+ assert.ok(existing.nodes.length>3);
+ assert.ok(buildPlanProblem(resolveAssistantIntent(reportedRequest),noOp));
+ assert.equal(buildPlanProblem('build_path',{answer:'x',operations:[action('set_question','root',{label:'Neue Frage'})]})!==null,true);
+});

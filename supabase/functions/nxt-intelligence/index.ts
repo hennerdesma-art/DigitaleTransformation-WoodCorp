@@ -1,5 +1,5 @@
 import {createClient} from "npm:@supabase/supabase-js@2.119.0";
-import {PLAN_SCHEMA,validatePlan,KNOWLEDGE_VERSION,AI_DIMENSIONS,AI_METRICS,AI_WIDGET_TYPES,AI_CANVAS_TYPES,AI_INTERVAL_KEYS} from "./protocol.ts";
+import {PLAN_SCHEMA,validatePlan,KNOWLEDGE_VERSION,AI_DIMENSIONS,AI_METRICS,AI_WIDGET_TYPES,AI_CANVAS_TYPES,AI_INTERVAL_KEYS,AI_GRAPH_FORMAT,resolveAssistantIntent,buildRequestBlocker,buildPlanProblem} from "./protocol.ts";
 import {MASTER_PLAYBOOK} from "./knowledge.ts";
 import {bedrockConfig,requestBedrock,BedrockError,BEDROCK_MODEL,BEDROCK_REGION,BEDROCK_MODELS,MODEL_LABELS,validModel} from "./bedrock.ts";
 const url=Deno.env.get("SUPABASE_URL")!;
@@ -36,7 +36,7 @@ Deno.serve(async(req)=>{
   if(body?.action==="status"){
    const p=await policy(auth.user.id,"status");
    if(!p.allowed)return response({error:policyError(p.reason)},403,origin);
-   return response({...p,enabled:p.projectEnabled&&p.userEnabled&&!forceDisabled()&&!!config(p.model),configured:!!config(p.model),forcedDisabled:forceDisabled(),provider:"Amazon Bedrock",modelLabel:MODEL_LABELS[p.model],region:BEDROCK_REGION,knowledgeVersion:KNOWLEDGE_VERSION},200,origin);
+   return response({...p,enabled:p.projectEnabled&&p.userEnabled&&!forceDisabled()&&!!config(p.model),configured:!!config(p.model),forcedDisabled:forceDisabled(),provider:"Amazon Bedrock",modelLabel:MODEL_LABELS[p.model],region:BEDROCK_REGION,knowledgeVersion:KNOWLEDGE_VERSION,graphFormat:AI_GRAPH_FORMAT},200,origin);
   }
   if(["admin_list","update_project","update_user","test_model"].includes(body?.action)){
    if(member.role!=="admin")return response({error:"Nur Administratoren."},403,origin);
@@ -80,6 +80,10 @@ Deno.serve(async(req)=>{
    if(ws.revision!==context.revision)return response({error:"Workspace wurde zwischenzeitlich gespeichert. Bitte neu laden."},409,origin);
    workspaceTitle=ws.title;canEdit=canEdit&&(member.role==="admin"||ws.owner_id===auth.user.id);
   }
+  const intent=resolveAssistantIntent(body.prompt,body.intent);
+  // Permission and protocol checks run before reserving quota or transmitting any data.
+  const blocker=buildRequestBlocker(intent,canEdit,context.graphFormat);
+  if(blocker)return response({error:blocker.message},blocker.status,origin);
   const {data:catalog,error:catalogError}=await client.from("nxt_filter_catalog").select("field_key").eq("enabled",true);
   if(catalogError||!catalog)return response({error:"Filterkatalog nicht verfügbar."},503,origin);
   const fields=catalog.map(x=>x.field_key).filter(x=>safeFields.has(x)&&context.allowedFields.includes(x));
@@ -121,9 +125,11 @@ Deno.serve(async(req)=>{
   }
   const history=Array.isArray(body.history)?body.history.slice(-8).filter((x:any)=>["user","assistant"].includes(x?.role)&&isString(x.text,1600)).map((x:any)=>({role:x.role,text:x.text})):[];
   const graphFormat=context.graphFormat===2?2:1;
-  const modelContext={workspaceTitle,selectedId:context.selectedId,nodes,edges,canEdit,allowedFields:fields,capabilities:{graphFormat,metrics:AI_METRICS,dashboardWidgets:AI_WIDGET_TYPES,canvasVisuals:graphFormat===2?AI_CANVAS_TYPES:['kpi'],intervalKeys:AI_INTERVAL_KEYS,maxActions:30,maxWidgetsPerNode:24,maxNodes:300,maxEdges:400},globalFilters:modelFilters(context.globalFilters),filters:modelFilters(filters),redactedEffectiveFilterCount:filters.length-modelFilters(filters).length,evidence,history,question:body.prompt};
+  const modelContext={requestIntent:intent,workspaceTitle,selectedId:context.selectedId,nodes,edges,canEdit,allowedFields:fields,capabilities:{graphFormat,metrics:AI_METRICS,dashboardWidgets:AI_WIDGET_TYPES,canvasVisuals:graphFormat===2?AI_CANVAS_TYPES:['kpi'],intervalKeys:AI_INTERVAL_KEYS,maxActions:30,maxWidgetsPerNode:24,maxNodes:300,maxEdges:400},globalFilters:modelFilters(context.globalFilters),filters:modelFilters(filters),redactedEffectiveFilterCount:filters.length-modelFilters(filters).length,evidence,history,question:body.prompt};
   const {plan:parsed}=await requestBedrock(provider,MASTER_PLAYBOOK,modelContext,PLAN_SCHEMA);
   const plan=validatePlan(parsed,ids,fields,canEdit);
+  const problem=buildPlanProblem(intent,plan);
+  if(problem)return response({error:problem},422,origin);
   if(graphFormat!==2&&plan.operations.some(o=>(o.kind==='add_branch'&&o.widgetType&&o.widgetType!=='kpi')||(o.kind==='add_container'&&o.value==='standalone')))return response({error:'Bitte die Website neu laden, um neue Canvas-Visualisierungen zu verwenden.'},409,origin);
   return response(plan,200,origin);
  }catch(e){if(e instanceof BedrockError)return response({error:e.message},e.status,origin);if(e instanceof Error&&e.message==="KI-Verwaltung nicht verfügbar.")return response({error:e.message},503,origin);return response({error:e instanceof Error&&/Ungültig|Unbekannt|Dimension|Zielwert|Filter|Widget|Knoten|lesbar|Kennzahl/.test(e.message)?e.message:"Die Anfrage konnte nicht sicher verarbeitet werden."},400,origin)}

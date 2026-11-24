@@ -3,7 +3,34 @@ export const ACTION_KINDS=['add_widget','rename_node','set_question','add_branch
 export type ActionKind=typeof ACTION_KINDS[number];
 export type AiAction={kind:ActionKind;target:string;label:string|null;ref:string|null;widgetType:string|null;metric:string|null;dimension:string|null;compareDimension:string|null;field:string|null;value:string|null;widgetId:string|null;targetValue:number|null};
 export type AiPlan={answer:string;operations:AiAction[]};
-export const KNOWLEDGE_VERSION='nxt-ai-v1.2';
+export const KNOWLEDGE_VERSION='nxt-ai-v1.2.1';
+export const AI_GRAPH_FORMAT=2 as const;
+export type AiRequestIntent='auto'|'build_path'|'build_dashboard';
+// Explicit UI actions and unambiguous creation commands are not advisory requests.
+// Ambiguous conversational prompts are left to the model, rather than forced into mutation mode.
+export function resolveAssistantIntent(prompt:string,explicit:unknown=null):AiRequestIntent{
+ if(explicit==='build_path'||explicit==='build_dashboard')return explicit;
+ const p=prompt.trim().toLocaleLowerCase('de-DE');
+ if(/^(wie|warum|was|welche[rsn]?|wieso|erkläre|beschreibe|bewerte|prüfe|analysiere|how|why|what|explain|describe|review)\b/.test(p)||/^(bitte\s+)?(nicht|keine)\b/.test(p))return 'auto';
+ const command=/^(?:(?:bitte|kannst du|könntest du|würdest du|please|can you|could you)\s+)*(?:erstell(?:e|en)?|generier(?:e|en)?|bau(?:e|en)?|entwirf|entwickle|ergänz(?:e|en)?|füge|create|generate|build|design|add)\b/.test(p);
+ const desire=/^(?:ich möchte|ich will|wir möchten|wir wollen|i want)\b/.test(p)&&/\b(?:erstell\w*|generier\w*|aufbauen|build|create)\b/.test(p);
+ if(!command&&!desire)return 'auto';
+ if(/thinking[\s-]*path|analysepfad|analysebaum|decision[\s-]*tree|analysegraph|ursachenbaum/.test(p))return 'build_path';
+ if(/dashboard/.test(p))return 'build_dashboard';
+ return 'auto';
+}
+export function buildRequestBlocker(intent:AiRequestIntent,canEdit:boolean,graphFormat:unknown):{status:number;message:string}|null{
+ if(intent==='auto')return null;
+ if(!canEdit)return {status:403,message:'Dieser Workspace ist nur lesbar. Öffne einen eigenen bearbeitbaren Workspace oder bitte einen Administrator um Freigabe. Es wurde keine KI-Anfrage berechnet.'};
+ if(graphFormat!==AI_GRAPH_FORMAT)return {status:409,message:'Dein Browser verwendet einen älteren KI-Graph-Stand. Bitte speichere offene Änderungen und lade NXT Analytics mit Strg+F5 neu. Es wurde keine KI-Anfrage berechnet.'};
+ return null;
+}
+export function buildPlanProblem(intent:AiRequestIntent,plan:AiPlan):string|null{
+ if(intent==='build_path'&&!plan.operations.some(o=>o.kind==='add_branch'))return 'Die KI hat keinen ausführbaren neuen Analysezweig geliefert. Bitte erneut versuchen oder den gewünschten neuen Analysefokus angeben. Vorhandene Inhalte bleiben unverändert.';
+ if(intent==='build_dashboard'&&!plan.operations.some(o=>o.kind==='add_widget'))return 'Die KI hat keine neuen Dashboard-Elemente geliefert. Bitte erneut versuchen oder einen konkreten Ergänzungswunsch angeben. Vorhandene Inhalte bleiben unverändert.';
+ return null;
+}
+
 export const AI_WIDGET_TYPES=['kpi','line','bar','table','donut','text','bar_horizontal','bar_vertical','stacked','stacked100','heatmap','pareto','scatter','waterfall','bullet','histogram','treemap','funnel','e02_overview','e02_compare','e02_quality','e02_distribution'] as const;
 export const AI_METRICS=['orders','otifRate','onTimeRate','volumeConformanceRate','otifCases','lateOrders','avgDelayDays','affectedFactories','totalPenaltyEur','latePenaltyEur','shortfallPenaltyEur'] as const;
 export const AI_DIMENSIONS=['factory','product_type','delivery_company','warehouse_type','cust_country','delivery_year','cust_market','delivered_quantity_unit','order_tolerance_met','otif_status'] as const;

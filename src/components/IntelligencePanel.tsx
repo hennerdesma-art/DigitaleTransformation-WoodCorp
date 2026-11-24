@@ -5,7 +5,7 @@ import {Button,Notice,IconButton} from './Ui';
 import {analysisApi} from '../lib/supabase';
 import {intelligenceApi,type AiMessage,type AiStatus} from '../lib/intelligence';
 import {actionLabel,applyAssistantPlan,contextForAssistant,localAssistantPlan,type AssistantState} from '../core/assistant';
-import {validatePlan,type AiPlan} from '../core/assistantProtocol';
+import {validatePlan,resolveAssistantIntent,buildRequestBlocker,buildPlanProblem,AI_GRAPH_FORMAT,KNOWLEDGE_VERSION,type AiPlan} from '../core/assistantProtocol';
 import {effectiveFilters} from '../core/filters';
 import {IntelligencePreview} from './IntelligencePreview';
 const AI_LOGO=import.meta.env.BASE_URL+'nxt-intelligence.webp';
@@ -30,6 +30,10 @@ export function IntelligencePanel({state,workspace,fingerprint,canEdit,busy,onAp
  const send=async(template?:Template)=>{
   const text=template==='dashboard'?'Ergänze das aktuelle Dashboard sinnvoll mit fehlenden relevanten KPIs, Segmentvergleichen und Datenqualität; vorhandene Widgets beibehalten.':template==='new_dashboard'?'Erstelle ein vollständiges neues Dashboard auf diesem Knoten. Bestehende Widgets dieses Knotens dürfen explizit ersetzt werden. Nutze die Aufbauanweisungen und passende Kennzahlen.':template==='path'?'Erstelle einen vollständigen nachvollziehbaren Thinking Path als Analysezweige mit Containern, Forschungsfragen und Dashboards. Bestehende Knoten beibehalten.':draft.trim();
   if(!text||pending||!selected)return;
+  const intent=resolveAssistantIntent(text,template==='path'?'build_path':template?'build_dashboard':null);
+  const blocker=buildRequestBlocker(intent,canEdit,AI_GRAPH_FORMAT);
+  if(blocker){setError(blocker.message);return}
+  if(status?.enabled&&consent&&status.graphFormat!==undefined&&status.graphFormat!==AI_GRAPH_FORMAT){setError('KI- und Browser-Version stimmen nicht überein. Bitte offene Änderungen speichern und mit Strg+F5 neu laden.');return}
   if(status?.enabled&&consent&&status.remaining===0){setError('Dein KI-Tageskontingent oder das Projektlimit ist erreicht. Bitte Team & Zugänge prüfen oder die KI-Freigabe für lokale Vorlagen abwählen.');return}
   const at=scope,stamp=fingerprint,c=new AbortController();abortRef.current?.abort();abortRef.current=c;
   setPending(true);setError('');setDraft('');
@@ -37,7 +41,7 @@ export function IntelligencePanel({state,workspace,fingerprint,canEdit,busy,onAp
   try{
    let result:AiPlan;let source:'local'|'model'='local';
    if(status?.enabled&&consent){
-    source='model';result=await intelligenceApi.ask(text,contextForAssistant(state,workspace,canEdit),entries.slice(-8).map(e=>({role:e.role,text:(e.text+(e.plan?.operations.length?'\n'+(e.applied?'Applied':'Proposed')+': '+JSON.stringify(e.plan.operations.map(o=>({kind:o.kind,target:o.target,label:o.label,ref:o.ref,widgetType:o.widgetType,metric:o.metric,field:o.field,value:o.value}))):'')).slice(0,1600)})),c.signal);
+    source='model';result=await intelligenceApi.ask(text,contextForAssistant(state,workspace,canEdit),entries.slice(-8).map(e=>({role:e.role,text:(e.text+(e.plan?.operations.length?'\n'+(e.applied?'Applied':'Proposed')+': '+JSON.stringify(e.plan.operations.map(o=>({kind:o.kind,target:o.target,label:o.label,ref:o.ref,widgetType:o.widgetType,metric:o.metric,field:o.field,value:o.value}))):'')).slice(0,1600)})),c.signal,intent);
     void intelligenceApi.status(c.signal).then(setStatus).catch(()=>{});
    }else{
     let metrics=null;
@@ -46,6 +50,7 @@ export function IntelligencePanel({state,workspace,fingerprint,canEdit,busy,onAp
    }
    if(c.signal.aborted||scopeRef.current!==at)return;
    const plan=validatePlan(result,state.nodes.map(n=>n.id),state.allowedFields,canEdit);
+   if(source==='model'){const problem=buildPlanProblem(intent,plan);if(problem)throw Error(problem)}
    if(plan.operations.length)applyAssistantPlan(state,plan);
    const entry:Entry={id:crypto.randomUUID(),role:'assistant',text:plan.answer,plan,fingerprint:stamp,source};append(at,entry);
    if(plan.operations.length)setPreview({entry,state});
@@ -61,7 +66,7 @@ export function IntelligencePanel({state,workspace,fingerprint,canEdit,busy,onAp
  return createPortal(<div className="nxt-intelligence-shell">
   {open&&<aside className="nxt-intelligence-panel" role="region" aria-label="NXT Intelligence Assistent">
    <header className="nxt-intelligence-head"><div className="nxt-intelligence-emblem"><img src={AI_LOGO} alt="NXT Intelligence"/></div><div><strong>NXT Intelligence</strong><small>Workspace Copilot</small></div><IconButton name="x" title="Assistent schließen" onClick={close}/></header>
-   <div className="nxt-intelligence-context"><span><Icon name="layout-dashboard" size={16}/> Workspace <b title={workspace?.title}>{workspace?.title||'Lokaler Entwurf'}</b></span><span><Icon name="network" size={16}/> Knoten <select aria-label="Analyseblock auswählen" value={selected?.id||''} onChange={e=>onSelectNode(e.target.value)} disabled={pending||!state.nodes.length}>{!state.nodes.length&&<option value="">Kein Knoten verfügbar</option>}{state.nodes.map(n=><option value={n.id} key={n.id}>{n.data.analysis.label}</option>)}</select></span><div className="nxt-intelligence-mode"><i/>{status?.enabled&&consent?'Amazon Bedrock · '+(status.modelLabel||'KI')+' aktiv':status?.enabled?'Amazon Bedrock verfügbar · Freigabe erforderlich':statusError?'Lokaler Modus · Serverstatus nicht erreichbar':status?.configured?'KI-Zugang deaktiviert · Team & Zugänge prüfen':'Lokaler Wissens- & Vorlagenmodus'}{!canEdit?' · Nur lesen':''}</div>{status?.enabled&&<small className="nxt-intelligence-quota">{status.used??0} / {status.limit??0} Anfragen heute · {status.remaining??0} verfügbar · UTC</small>}</div>
+   <div className="nxt-intelligence-context"><span><Icon name="layout-dashboard" size={16}/> Workspace <b title={workspace?.title}>{workspace?.title||'Lokaler Entwurf'}</b></span><span><Icon name="network" size={16}/> Knoten <select aria-label="Analyseblock auswählen" value={selected?.id||''} onChange={e=>onSelectNode(e.target.value)} disabled={pending||!state.nodes.length}>{!state.nodes.length&&<option value="">Kein Knoten verfügbar</option>}{state.nodes.map(n=><option value={n.id} key={n.id}>{n.data.analysis.label}</option>)}</select></span><div className="nxt-intelligence-mode"><i/>{status?.enabled&&consent?'Amazon Bedrock · '+(status.modelLabel||'KI')+' aktiv':status?.enabled?'Amazon Bedrock verfügbar · Freigabe erforderlich':statusError?'Lokaler Modus · Serverstatus nicht erreichbar':status?.configured?'KI-Zugang deaktiviert · Team & Zugänge prüfen':'Lokaler Wissens- & Vorlagenmodus'}{!canEdit?' · Nur lesen':''}</div><small className="nxt-intelligence-quota">{canEdit?'Workspace bearbeitbar':'Workspace nur lesbar'} · Graph {AI_GRAPH_FORMAT} · Playbook {status?.knowledgeVersion?.replace('nxt-ai-v','')||KNOWLEDGE_VERSION.replace('nxt-ai-v','')}{status?.graphFormat!==undefined&&status.graphFormat!==AI_GRAPH_FORMAT?' · Versionskonflikt':''}</small>{!canEdit&&<small className="nxt-intelligence-quota">Für Erstellung und Übernahme einen eigenen oder administrativ freigegebenen Workspace öffnen.</small>}{status?.enabled&&<small className="nxt-intelligence-quota">{status.used??0} / {status.limit??0} Anfragen heute · {status.remaining??0} verfügbar · UTC</small>}</div>
    <div className="nxt-intelligence-chat" role="log" aria-live="polite" aria-label="Gespräch">
     {!entries.length&&<div className="nxt-intelligence-welcome"><img className="nxt-intelligence-welcome-logo" src={AI_LOGO} alt=""/><strong>Wie kann ich deine Analyse weiterentwickeln?</strong><p>Ich arbeite mit dem ausgewählten Workspace und Knoten. Änderungen werden erst nach deiner Bestätigung übernommen.</p></div>}
     {canEdit&&<div className="nxt-intelligence-suggestions"><small>{status?.enabled&&consent?'Mit KI generieren':'Lokale Vorlagen · KI-Freigabe bei Verfügbarkeit'}</small><button disabled={pending||!selected} onClick={()=>void send('new_dashboard')}><Icon name="layout-dashboard" size={17}/> Dashboard neu aufbauen</button><button disabled={pending||!selected} onClick={()=>void send('dashboard')}><Icon name="plus" size={17}/> Dashboard ergänzen</button><button disabled={pending||!selected} onClick={()=>void send('path')}><Icon name="workflow" size={17}/> Analysepfad erstellen</button></div>}
