@@ -6,9 +6,10 @@ export const BEDROCK_MODEL='eu.anthropic.claude-sonnet-4-6';
 export type BedrockConfig={region:string;model:string;token:string};
 type Env=(name:string)=>string|undefined;
 export function bedrockConfig(env:Env):BedrockConfig|null{
- const region=env('AWS_REGION'),model=env('NXT_AI_MODEL'),token=env('AWS_BEARER_TOKEN_BEDROCK');
- if(env('NXT_AI_PROVIDER')!=='bedrock'||region!==BEDROCK_REGION||model!==BEDROCK_MODEL||!token?.trim())return null;
- return {region,model,token:token.trim()};
+ const token=env('AWS_BEARER_TOKEN_BEDROCK');
+ // Provider and model are fixed, reviewed deployment constants; legacy generic model/provider secrets are intentionally unused.
+ if(env('AWS_REGION')!==BEDROCK_REGION||!token?.trim())return null;
+ return {region:BEDROCK_REGION,model:BEDROCK_MODEL,token:token.trim()};
 }
 export class BedrockError extends Error{
  constructor(message:string,public readonly status:number,public readonly providerStatus:number|null=null){super(message);this.name='BedrockError'}

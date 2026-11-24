@@ -1,4 +1,4 @@
-name: NXT Bedrock synthetic live test (one-time)
+name: NXT Bedrock synthetic live test (fixed EU profile)
 on:
   push:
     branches: ['feat/nxt-intelligence-copilot']
@@ -27,6 +27,6 @@ jobs:
           console.log('Production endpoint denies anonymous requests.');
           const test=await fetch(base+'nxt-intelligence-smoke',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:'{}',signal:AbortSignal.timeout(135000)});
           const result=await test.json();
-          console.log(JSON.stringify({status:test.status,ok:result.ok===true,stage:result.stage,providerStatus:result.providerStatus,model:result.model,region:result.region,operations:result.operations,usage:result.usage}));
+          console.log(JSON.stringify({status:test.status,ok:result.ok===true,stage:result.stage,providerStatus:result.providerStatus,model:result.model,region:result.region,operations:result.operations,usage:result.usage,enabled:result.enabled}));
           if(!test.ok||!result.ok||result.operations!==1)throw Error('Bedrock synthetic structured plan test failed');
           NODE
