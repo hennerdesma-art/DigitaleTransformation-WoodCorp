@@ -1,0 +1,110 @@
+import React,{useContext,useEffect,useMemo,useState} from 'react';
+import {FIELDS,OTIF_STATUS_LABELS,type FieldKey} from '../config';
+import {dimensionLabel,dimensionOptions,groupFor,sortSegmentRows,targetSavings,type ChartDisplay,type SegmentDimension} from '../core/analyticsCanvas';
+import {METRIC_LABELS,metricFormat,type DashboardWidget,type MetricKey} from '../core/dashboard';
+import {SEGMENT_METRIC_KEYS,segmentMetric,scenarioSavings} from '../core/rootCauseMetrics';
+import {analysisApi,type SegmentStats} from '../lib/supabase';
+import type {DashboardData,Filter} from '../core/types';
+import {filterSignature} from '../core/filters';
+import {ChartAccess,SegmentMetricOptions} from './InteractiveCharts';
+import {Notice,Spinner} from './Ui';
+
+type DataProps={widget:DashboardWidget;filters:Filter[]};
+const fmt=(n:number)=>n.toLocaleString('de-DE',{maximumFractionDigits:0});
+function useSegments(dimension:SegmentDimension,filters:Filter[]){
+ const key=dimension+':'+filterSignature(filters),[retry,setRetry]=useState(0),[state,setState]=useState<{key:string;rows:SegmentStats[];error:string}>({key:'',rows:[],error:''});
+ useEffect(()=>{let active=true;analysisApi.segments(dimension,filters).then(rows=>{if(active)setState({key,rows,error:''})}).catch(e=>{if(active)setState({key,rows:[],error:e instanceof Error?e.message:'Daten konnten nicht geladen werden'})});return()=>{active=false}},[key,retry]);
+ return {rows:state.key===key?state.rows:[],pending:state.key!==key,error:state.key===key?state.error:'',retry:()=>{setState({key:'',rows:[],error:''});setRetry(n=>n+1)}};
+}
+const isCustomer=(d:SegmentDimension)=>['cust_id','cust_name','customer_product'].includes(d);
+function displayName(r:SegmentStats,d:SegmentDimension){return d==='cust_id'||d==='customer_product'?[r.customer_name,r.label].filter(Boolean).join(' · '):OTIF_STATUS_LABELS[r.label||'']||r.label||'Ohne Angabe';}
+function useSettings(widget:DashboardWidget){
+ const [display,setDisplay]=useState<ChartDisplay>(widget.display||{});
+ const signature=JSON.stringify(widget.display||{});
+ useEffect(()=>{setDisplay(widget.display||{})},[widget.id,signature]);
+ return [display,(patch:Partial<ChartDisplay>)=>setDisplay(old=>({...old,...patch}))] as const;
+}
+export function SaveDisplay({widget,display,patch={}}:{widget:DashboardWidget;display:ChartDisplay;patch?:Partial<DashboardWidget>}){
+ const access=useContext(ChartAccess);
+ return access.saveView?<button type="button" className="nxt-chart-reset" onClick={()=>access.saveView?.(widget.id,{...patch,display})}>Darstellung speichern</button>:<small className="muted">Anzeige temporär · zum Speichern Bearbeitungsmodus öffnen.</small>;
+}
+function GroupSelect({value,onChange}:{value:SegmentDimension;onChange:(v:SegmentDimension)=>void}){
+ const access=useContext(ChartAccess);
+ return <label className="field">Gruppierung<select value={value} onChange={e=>onChange(e.target.value as SegmentDimension)}>{dimensionOptions(access.fields,value).map(d=><option key={d} value={d}>{dimensionLabel(d)}</option>)}</select></label>;
+}
+function SegmentActions({widget,row,dimension,onClose}:{widget:DashboardWidget;row:SegmentStats;dimension:SegmentDimension;onClose:()=>void}){
+ const access=useContext(ChartAccess),field=dimension as FieldKey,allowed=FIELDS.includes(field)&&access.fields.includes(field)&&row.label!==null;
+ return <div className="nxt-chart-selection"><strong>{displayName(row,dimension)}</strong><small>{fmt(row.orders)} Aufträge · {metricFormat('totalPenaltyEur',row.total_penalty_eur)} Modellkosten</small>
+ <div className="nxt-chart-controls">{allowed&&access.crossFilter&&<button type="button" onClick={()=>access.crossFilter?.(field,row.label!)}>{access.scopeLabel||'Dashboard filtern'}</button>}{allowed&&access.createBranch&&<button type="button" onClick={()=>access.createBranch?.(field,row.label!)}>Neuen Analysezweig erstellen</button>}{allowed&&access.branchFilter&&access.nodeId&&<button type="button" onClick={()=>access.branchFilter?.(access.nodeId!,field,row.label!)}>Zweig dauerhaft filtern</button>}<button type="button" onClick={onClose}>Schließen</button></div></div>;
+}
+function Pending({state}:{state:ReturnType<typeof useSegments>}){return state.pending?<Spinner text="Daten werden geladen …"/>:state.error?<div><Notice kind="error">{state.error}</Notice><button className="nxt-chart-reset" type="button" onClick={state.retry}>Erneut laden</button></div>:null;}
+export function SegmentTable({widget,filters}:DataProps){
+ const [d,patch]=useSettings(widget),dimension=d.groupBy||groupFor(widget,widget.type==='customer_table'?'cust_id':'delivery_company'),state=useSegments(dimension,filters);
+ const [search,setSearch]=useState(''),[page,setPage]=useState(0),[active,setActive]=useState<string|null>(null);
+ const columns=d.columns||(['orders','otifRate','onTimeRate','volumeConformanceRate','totalPenaltyEur'] as MetricKey[]),sort=d.sortMetric||'totalPenaltyEur',pageSize=d.pageSize||10;
+ const rows=useMemo(()=>sortSegmentRows(state.rows.filter(r=>[displayName(r,dimension),r.customer_country||''].join(' ').toLowerCase().includes(search.toLowerCase())),sort,d.ascending),[state.rows,dimension,search,sort,d.ascending]);
+ const filtered=d.limit&&d.limit!=='all'?rows.slice(0,Number(d.limit)):rows,total=filtered.length,pages=Math.max(1,Math.ceil(total/pageSize)),at=Math.min(page,pages-1),shown=filtered.slice(at*pageSize,(at+1)*pageSize);
+ useEffect(()=>{setPage(0);setActive(null)},[dimension,filterSignature(filters),search,sort,d.ascending,pageSize,d.limit]);
+ const customer=isCustomer(dimension),scenario=customer&&d.targetOtd!==undefined;
+ const selected=filtered.find(r=>r.label!==null&&r.label===active);
+ const sortBy=(m:MetricKey)=>patch({sortMetric:m,ascending:sort===m?!d.ascending:false});
+ return <div className="nxt-interactive-chart nxt-data-widget nodrag nowheel" onClick={e=>e.stopPropagation()}>
+ <div className="nxt-chart-current"><strong>{dimensionLabel(dimension)}</strong><small>{total} von {state.rows.length} Gruppen · sortiert nach {METRIC_LABELS[sort]}</small></div>
+ <details className="nxt-chart-settings"><summary>Tabelle konfigurieren</summary><div className="nxt-chart-control-grid"><GroupSelect value={dimension} onChange={groupBy=>patch({groupBy})}/><label className="field">Sortieren nach<select value={sort} onChange={e=>patch({sortMetric:e.target.value as MetricKey})}><SegmentMetricOptions/></select></label><label className="field">Reihenfolge<select value={d.ascending?'asc':'desc'} onChange={e=>patch({ascending:e.target.value==='asc'})}><option value="desc">Absteigend</option><option value="asc">Aufsteigend</option></select></label><label className="field">Zeilen pro Seite<select value={pageSize} onChange={e=>patch({pageSize:Number(e.target.value) as 10|20|50})}>{[10,20,50].map(n=><option key={n} value={n}>{n}</option>)}</select></label><label className="field">Anzahl Gruppen<select value={d.limit||'all'} onChange={e=>patch({limit:e.target.value as ChartDisplay['limit']})}>{['10','20','50','100','all'].map(n=><option key={n} value={n}>{n==='all'?'Alle':'Top '+n}</option>)}</select></label></div>
+ <details><summary>Kennzahlspalten ({columns.length}/12)</summary><div className="nxt-chart-scroll">{SEGMENT_METRIC_KEYS.map(m=><label key={m}><input type="checkbox" checked={columns.includes(m)} disabled={columns.includes(m)?columns.length===1:columns.length>=12} onChange={e=>patch({columns:e.target.checked?[...columns,m]:columns.filter(x=>x!==m)})}/>{METRIC_LABELS[m]}</label>)}</div></details>
+ {customer&&<label className="field">OTD-Ziel für Einsparpotenzial<select value={d.targetOtd??'off'} onChange={e=>patch({targetOtd:e.target.value==='off'?undefined:Number(e.target.value)})}><option value="off">Nicht anzeigen</option>{[75,80,85,90,95,100].map(v=><option key={v} value={v}>{v} %</option>)}</select></label>}
+ <SaveDisplay widget={widget} display={d}/></details>
+ <input className="nxt-data-search nodrag nowheel" type="search" placeholder="Gruppen suchen …" aria-label="Tabellengruppen suchen" value={search} onChange={e=>setSearch(e.target.value)}/>
+ <Pending state={state}/>{!state.pending&&!state.error&&(!total?<p className="widget-empty">Keine passenden Gruppen.</p>:<>
+ <div className="nxt-data-table-scroll" tabIndex={0} aria-label="Datentabelle horizontal und vertikal scrollbar"><table className="nxt-live-table"><thead><tr><th scope="col">{dimensionLabel(dimension)}</th>{customer&&<th scope="col">Land</th>}{columns.map(m=><th key={m} scope="col" aria-sort={sort===m?(d.ascending?'ascending':'descending'):'none'}><button type="button" onClick={()=>sortBy(m)}>{METRIC_LABELS[m]} {sort===m?(d.ascending?'↑':'↓'):''}</button></th>)}{scenario&&<th scope="col">Potenzial bei {d.targetOtd} % OTD</th>}</tr></thead><tbody>{shown.map((r,i)=>{const saving=scenario?targetSavings(r.date_coverage??0,r.late_orders,r.late_penalty_eur,d.targetOtd!):null;return <tr key={r.label??'missing:'+i} className={r.label!==null&&active===r.label?'selected':''}><td><button type="button" title={displayName(r,dimension)} onClick={()=>setActive(r.label===active?null:r.label)}>{displayName(r,dimension)}</button>{(r.customer_id_count||0)>1&&<small>{r.customer_id_count} Kunden-IDs</small>}</td>{customer&&<td>{r.customer_country||'–'}</td>}{columns.map(m=><td key={m}>{metricFormat(m,segmentMetric(r,m))}</td>)}{scenario&&<td>{metricFormat('latePenaltyEur',saving?.savings??null)}</td>}</tr>})}</tbody></table></div>
+ <div className="nxt-data-pagination"><small>{at*pageSize+1}–{Math.min(total,(at+1)*pageSize)} von {total}</small><button type="button" disabled={at===0} onClick={()=>setPage(at-1)}>←</button><button type="button" disabled={at>=pages-1} onClick={()=>setPage(at+1)}>→</button></div></>)}
+ {scenario&&<small className="muted">Szenario je Gruppe: zusätzlich pünktliche Aufträge × mittlere modellierte Verspätungsstrafe je verspätetem Auftrag. Gleichverteilte Kostenannahme; keine Prognose. Unterlieferungsstrafen bleiben unverändert.</small>}
+ {selected&&<SegmentActions widget={widget} row={selected} dimension={dimension} onClose={()=>setActive(null)}/>}
+ </div>;
+}
+export function BubbleChart({widget,filters}:DataProps){
+ const [d,patch]=useSettings(widget),dimension=d.groupBy||groupFor(widget),state=useSegments(dimension,filters);
+ const xMetric=d.xMetric||'orders',yMetric=d.yMetric||'otifRate',sizeMetric=d.sizeMetric||'totalPenaltyEur',limit=d.limit||'50',sort=d.sortMetric||'totalPenaltyEur';
+ const [active,setActive]=useState<string|null>(null);
+ const candidates=state.rows.filter(r=>r.label!==null&&segmentMetric(r,xMetric)!==null&&segmentMetric(r,yMetric)!==null&&(segmentMetric(r,sizeMetric)??-1)>=0);
+ const valid=sortSegmentRows(candidates,sort,d.ascending),rows=limit==='all'?valid:valid.slice(0,Number(limit));
+ const xs=rows.map(r=>segmentMetric(r,xMetric)!),ys=rows.map(r=>segmentMetric(r,yMetric)!),sizes=rows.map(r=>segmentMetric(r,sizeMetric)!);
+ const xmin=Math.min(0,...xs),xmax=Math.max(xmin+1,...xs),ymin=Math.min(0,...ys),ymax=Math.max(ymin+1,...ys),maxSize=Math.max(1,...sizes),X=(v:number)=>92+452*(v-xmin)/(xmax-xmin),Y=(v:number)=>235-200*(v-ymin)/(ymax-ymin);
+ const selected=rows.find(r=>r.label===active&&active!==null);
+ const selector=(label:string,key:'xMetric'|'yMetric'|'sizeMetric',value:MetricKey)=><label className="field">{label}<select value={value} onChange={e=>patch({[key]:e.target.value as MetricKey})}><SegmentMetricOptions/></select></label>;
+ useEffect(()=>setActive(null),[dimension,filterSignature(filters)]);
+ return <div className="nxt-interactive-chart nodrag nowheel" onClick={e=>e.stopPropagation()}><div className="nxt-chart-current"><strong>{dimensionLabel(dimension)} · {METRIC_LABELS[xMetric]} × {METRIC_LABELS[yMetric]}</strong><small>{rows.length} von {valid.length} gültigen Gruppen · Kreisfläche: {METRIC_LABELS[sizeMetric]} · {state.rows.length-valid.length} Gruppen ohne gültige Werte</small></div>
+ <details className="nxt-chart-settings"><summary>Diagramm konfigurieren</summary><div className="nxt-chart-control-grid"><GroupSelect value={dimension} onChange={groupBy=>patch({groupBy})}/>{selector('X-Achse','xMetric',xMetric)}{selector('Y-Achse','yMetric',yMetric)}{selector('Kreisfläche','sizeMetric',sizeMetric)}<label className="field">Rangfolge<select value={sort} onChange={e=>patch({sortMetric:e.target.value as MetricKey})}><SegmentMetricOptions/></select></label><label className="field">Gruppen<select value={limit} onChange={e=>patch({limit:e.target.value as ChartDisplay['limit']})}>{['10','20','50','100','all'].map(v=><option key={v} value={v}>{v==='all'?'Alle':'Top '+v}</option>)}</select></label></div><SaveDisplay widget={widget} display={d}/></details>
+ <Pending state={state}/>{!state.pending&&!state.error&&(rows.length?<><svg viewBox="0 0 580 285" className="nxt-chart-svg" role="img" aria-label={'Bubble: '+METRIC_LABELS[xMetric]+' × '+METRIC_LABELS[yMetric]}>
+ {[0,.25,.5,.75,1].map(t=><g key={t}><line x1="92" x2="544" y1={Y(ymin+t*(ymax-ymin))} y2={Y(ymin+t*(ymax-ymin))} stroke="#dce8e9"/><text x="84" y={Y(ymin+t*(ymax-ymin))+3} textAnchor="end" fontSize="9" fill="#587277">{metricFormat(yMetric,ymin+t*(ymax-ymin))}</text><text x={X(xmin+t*(xmax-xmin))} y="253" fontSize="9" textAnchor="middle" fill="#587277">{metricFormat(xMetric,xmin+t*(xmax-xmin))}</text></g>)}
+ {rows.map((r,i)=><g key={r.label} tabIndex={0} role="button" aria-label={displayName(r,dimension)} onClick={()=>setActive(r.label)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setActive(r.label)}}}><circle cx={X(xs[i])} cy={Y(ys[i])} r={sizes[i]===0?3:Math.max(3,Math.sqrt(sizes[i]/maxSize)*17)} fill="#008b92" fillOpacity={active===r.label?.toString()?.trim()?0.9:.48} stroke={active===r.label?'#004c52':'#008b92'}><title>{displayName(r,dimension)} · {metricFormat(xMetric,xs[i])} · {metricFormat(yMetric,ys[i])} · {metricFormat(sizeMetric,sizes[i])}</title></circle></g>)}
+ <text x="318" y="277" fontSize="10" textAnchor="middle" fill="#48676b">{METRIC_LABELS[xMetric]}</text></svg>
+ <small className="muted">Punkte entsprechen aggregierten Gruppen, nicht einzelnen Aufträgen. Kein Kausalitätsnachweis.</small>
+ <details className="nxt-chart-data-table"><summary>Werte als Tabelle</summary><div className="nxt-data-table-scroll"><table className="nxt-live-table"><thead><tr><th>Gruppe</th><th>{METRIC_LABELS[xMetric]}</th><th>{METRIC_LABELS[yMetric]}</th><th>{METRIC_LABELS[sizeMetric]}</th></tr></thead><tbody>{rows.map((r,i)=><tr key={r.label}><td><button type="button" onClick={()=>setActive(r.label)}>{displayName(r,dimension)}</button></td><td>{metricFormat(xMetric,xs[i])}</td><td>{metricFormat(yMetric,ys[i])}</td><td>{metricFormat(sizeMetric,sizes[i])}</td></tr>)}</tbody></table></div></details></>:<p className="widget-empty">Keine gültigen Werte für diese Achsen.</p>)}{selected&&<SegmentActions widget={widget} row={selected} dimension={dimension} onClose={()=>setActive(null)}/>}</div>;
+}
+const series:Record<'rates'|'costs'|'mass',MetricKey[]>={rates:['otifRate','onTimeRate','volumeConformanceRate'],costs:['latePenaltyEur','shortfallPenaltyEur'],mass:['orderedKg','deliveredKg']};
+const colors=['#008B92','#84B9BC','#B98A4A'];
+export function MultiComparison({widget,filters}:DataProps){
+ const [d,patch]=useSettings(widget),dimension=d.groupBy||groupFor(widget,'cust_market'),state=useSegments(dimension,filters);
+ const mode=d.comparison||'rates',metrics=series[mode],limit=d.limit||'12',sort=d.sortMetric||metrics[0],valid=sortSegmentRows(state.rows,sort,d.ascending),rows=limit==='all'?valid:valid.slice(0,Number(limit));
+ const max=Math.max(1,...rows.map(r=>mode==='costs'?metrics.reduce((s,m)=>s+Math.max(0,segmentMetric(r,m)??0),0):Math.max(...metrics.map(m=>segmentMetric(r,m)??0))));
+ const [active,setActive]=useState<string|null>(null),selected=rows.find(r=>r.label!==null&&r.label===active);
+ useEffect(()=>setActive(null),[dimension,filterSignature(filters)]);
+ return <div className="nxt-interactive-chart nodrag nowheel" onClick={e=>e.stopPropagation()}><div className="nxt-chart-current"><strong>{dimensionLabel(dimension)}</strong><small>{rows.length} von {valid.length} Gruppen</small></div><details className="nxt-chart-settings"><summary>Diagramm konfigurieren</summary><div className="nxt-chart-control-grid"><GroupSelect value={dimension} onChange={groupBy=>patch({groupBy})}/><label className="field">Kennzahlen<select value={mode} onChange={e=>patch({comparison:e.target.value as ChartDisplay['comparison'],sortMetric:undefined})}><option value="rates">OTIF / OTD / Mengenkonformität</option><option value="costs">Strafkostenkomponenten (gestapelt)</option><option value="mass">Bestellte / gelieferte kg</option></select></label><label className="field">Gruppen<select value={limit} onChange={e=>patch({limit:e.target.value as ChartDisplay['limit']})}>{['5','10','12','20','50','100','all'].map(v=><option key={v} value={v}>{v==='all'?'Alle':'Top '+v}</option>)}</select></label></div><SaveDisplay widget={widget} display={d}/></details>
+ <div className="nxt-class-legend">{metrics.map((m,i)=><span key={m}><i style={{background:colors[i]}}/>{METRIC_LABELS[m]}</span>)}</div><Pending state={state}/>
+ {!state.pending&&!state.error&&(rows.length?<div className="nxt-multi-rows">{rows.map((r,i)=><div className="nxt-multi-row" key={r.label??i}><button type="button" onClick={()=>setActive(r.label)}>{displayName(r,dimension)} <small>· {fmt(r.orders)}</small></button>{mode==='costs'?<div className="nxt-multi-cost"><div className="nxt-multi-track">{metrics.map((m,j)=><i key={m} title={METRIC_LABELS[m]+': '+metricFormat(m,segmentMetric(r,m))} style={{width:Math.max(0,segmentMetric(r,m)??0)/max*100+'%',background:colors[j]}}/>)}</div><b>{metricFormat('totalPenaltyEur',r.total_penalty_eur)}</b></div>:metrics.map((m,j)=><div className="nxt-multi-cost" key={m}><div className="nxt-multi-track"><i style={{width:Math.max(0,segmentMetric(r,m)??0)/(mode==='rates'?100:max)*100+'%',background:colors[j]}}/></div><b>{metricFormat(m,segmentMetric(r,m))}</b></div>)}</div>)}</div>:<p className="widget-empty">Keine Gruppen verfügbar.</p>)}
+ <details className="nxt-chart-data-table"><summary>Werte als Tabelle</summary><div className="nxt-data-table-scroll"><table className="nxt-live-table"><thead><tr><th>Gruppe</th>{metrics.map(m=><th key={m}>{METRIC_LABELS[m]}</th>)}</tr></thead><tbody>{rows.map((r,i)=><tr key={r.label??i}><td>{displayName(r,dimension)}</td>{metrics.map(m=><td key={m}>{metricFormat(m,segmentMetric(r,m))}</td>)}</tr>)}</tbody></table></div></details>{selected&&<SegmentActions widget={widget} row={selected} dimension={dimension} onClose={()=>setActive(null)}/>}</div>;
+}
+export function StatusComposition({detail}:{detail:DashboardData}){
+ const m=detail.metrics;if(!m)return <p className="widget-empty">Keine Werte.</p>;
+ const rows=[['OTIF',m.otifCases??0,'#008b92'],['Pünktlich / Menge nicht konform',m.onTimeNotFullCases??0,'#84b9bc'],['Spät / vollständig',m.lateInFullCases??0,'#d7a45d'],['Spät / Menge nicht konform',m.lateNotFullCases??0,'#b85c61'],['Unbekannt',m.unclassifiedCases??0,'#aab8be']] as const;
+ if(!m.orders)return <p className="widget-empty">Keine Aufträge.</p>;
+ return <div className="nxt-interactive-chart"><div className="nxt-chart-current"><strong>OTIF-Klassen · {fmt(m.orders)} Aufträge</strong><small>100 % aller Fälle einschließlich unbekannter Klassifikation</small></div><div className="nxt-status-bar">{rows.map(([label,n,color])=><div key={label} style={{width:100*n/m.orders+'%',background:color}} title={label+' · '+fmt(n)}/>)}</div>{rows.map(([label,n,color])=><div key={label} className="nxt-status-row"><i style={{background:color}}/><span>{label}</span><b>{metricFormat('otifRate',100*n/m.orders)}</b><small>{fmt(n)}</small></div>)}</div>;
+}
+export function ScenarioWidget({widget,detail}:{widget:DashboardWidget;detail:DashboardData}){
+ const [d,patch]=useSettings(widget),m=detail.metrics;
+ if(!m||m.latePenaltyEur==null||m.shortfallPenaltyEur==null)return <p className="widget-empty">Keine modellierten Strafkosten verfügbar.</p>;
+ const target=d.targetOtd??80,late=d.lateReduction??10,short=d.shortfallReduction??10,cost=scenarioSavings(m.latePenaltyEur,m.shortfallPenaltyEur,late,short),odt=targetSavings(m.dateCoverage,detail.ribbon?.lateOrders??Math.max(0,m.dateCoverage-(m.onTimeCases??m.dateCoverage)),m.latePenaltyEur,target);
+ return <div className="nxt-interactive-chart nodrag nowheel" onClick={e=>e.stopPropagation()}><div className="nxt-chart-current"><strong>Kostenszenarien</strong><small>Modellrechnung · keine Prognose</small></div><label className="field">Verspätungsstrafen reduzieren: {late}%<input type="range" min="0" max="100" value={late} onChange={e=>patch({lateReduction:Number(e.target.value)})}/></label><label className="field">Unterlieferungsstrafen reduzieren: {short}%<input type="range" min="0" max="100" value={short} onChange={e=>patch({shortfallReduction:Number(e.target.value)})}/></label><div className="nxt-scenario-result"><small>Modelliertes Einsparpotenzial</small><strong>{metricFormat('totalPenaltyEur',cost.saved)}</strong><small>Restkosten {metricFormat('totalPenaltyEur',cost.remaining)}</small></div>
+ <details className="nxt-chart-settings" open><summary>Alternatives OTD-Zielszenario</summary><label className="field">Ziel-OTD: {target}%<input type="range" min="0" max="100" step="1" value={target} onChange={e=>patch({targetOtd:Number(e.target.value)})}/></label><div className="nxt-chart-controls">{[75,80,85].map(n=><button type="button" key={n} onClick={()=>patch({targetOtd:n})}>{n}%</button>)}</div>{odt?<><b>{fmt(odt.additional)} zusätzlich pünktliche Aufträge</b><div className="nxt-scenario-result"><strong>{metricFormat('latePenaltyEur',odt.savings)}</strong><small>Alternative Verspätungskostenreduktion bei gleichverteiltem Kostenrisiko</small></div></>:<p className="muted">Kein bewertbarer Terminbestand.</p>}<small>Dieses Szenario nicht zur obigen Einsparung addieren.</small></details><SaveDisplay widget={widget} display={d}/></div>;
+}

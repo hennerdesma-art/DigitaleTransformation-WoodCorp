@@ -1,4 +1,5 @@
 import React,{useEffect,useMemo,useRef,useState} from 'react';
+import {SegmentTable,MultiComparison,StatusComposition,ScenarioWidget} from './DataWidgets';
 import {ResizeGrip} from './ResizeGrip';
 import {widgetResizeLayout,clampWidgetHeight,type CardSize} from '../core/cardLayout';
 import {ChartAccess,InteractiveTrend,SegmentMetricOptions} from './InteractiveCharts';
@@ -19,51 +20,24 @@ type DataProps={widget:DashboardWidget;detail:DashboardData;filters:Filter[]};
 const isChartWidget=(w:DashboardWidget)=>!['kpi','text','bullet','donut'].includes(w.type);
 const tileClass=(w:DashboardWidget)=>(w.width==='full'?'full':'half')+(isChartWidget(w)?' chart-tile':' compact-tile');
 const tileStyle=(w:DashboardWidget):React.CSSProperties|undefined=>w.displayHeight===undefined?undefined:({height:w.displayHeight,'--nxt-plot-height':Math.max(120,w.displayHeight-175)+'px'} as React.CSSProperties);
-const fallbackRows:BreakdownRow[]=[];
-function useBreakdown(widget:DashboardWidget,detail:DashboardData,filters:Filter[]){
- const [extra,setExtra]=useState<{key:string;rows:BreakdownRow[];loading:boolean;error:string}>({key:'',rows:[],loading:false,error:''});
- const field=widget.dimension||'delivery_company';
- const key=JSON.stringify(filters.map(f=>[f.field,f.op,f.value]).sort())+':'+field;
- useEffect(()=>{
-  if(widget.type!=='table')return;
-  if(field==='delivery_company')return;
-  let active=true; Promise.resolve().then(()=>{if(active)setExtra({key,rows:[],loading:true,error:''})});
-  analysisApi.breakdown(field,filters).then(rows=>{if(active)setExtra({key,rows,loading:false,error:''})}).catch(e=>{if(active)setExtra({key,rows:[],loading:false,error:e instanceof Error?e.message:'Abfrage fehlgeschlagen'})});
-  return()=>{active=false};
- },[key,field,widget.type]);
- if(field==='delivery_company')return {rows:detail.breakdown||fallbackRows,loading:detail.pending,error:detail.error||''};
- return {rows:extra.key===key?extra.rows:[],loading:extra.loading,error:extra.error};
-}
-function LineWidget({values}:{values:TrendRow[]}){
- const rows=values.filter(x=>x.on_time_rate!=null);
- if(!rows.length)return <p className="widget-empty">Keine Zeitreihe für diese Filter</p>;
- const pts=rows.map((r,i)=>{const x=32+i*448/Math.max(rows.length-1,1);return `${x},${12+(100-Number(r.on_time_rate))*1.30}`}).join(' ');
- return <div className="nxt-widget-chart"><svg viewBox="0 0 510 179" role="img" aria-label="Monatliche pünktliche Lieferquote">
-  {[0,25,50,75,100].map(y=><g key={y}><line x1="32" x2="480" y1={12+(100-y)*1.30} y2={12+(100-y)*1.30} stroke="#E1EDEE"/><text x="0" y={17+(100-y)*1.30} fontSize="10" fill="#6C8488">{y}%</text></g>)}
-  <polyline points={pts} stroke="#008B92" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none"/><text x="32" y="165" fill="#6C8488" fontSize="10">{rows[0].month}</text><text x="480" y="165" textAnchor="end" fill="#6C8488" fontSize="10">{rows[rows.length-1].month}</text>
- </svg><details><summary>Werte als Tabelle</summary><table><thead><tr><th>Monat</th><th>Aufträge</th><th>On-Time</th></tr></thead><tbody>{rows.map(r=><tr key={r.month}><td>{r.month}</td><td>{number(r.orders)}</td><td>{percent(r.on_time_rate)}</td></tr>)}</tbody></table></details></div>;
-}
-function TableWidget({rows}:{rows:BreakdownRow[]}){
- if(!rows.length)return <p className="widget-empty">Keine Vergleichsgruppen verfügbar</p>;
- return <div className="widget-table-wrap"><table><thead><tr><th>Segment</th><th>Aufträge</th><th>On-Time</th><th>Volumen</th></tr></thead><tbody>{rows.slice(0,12).map((r,i)=><tr key={String(r.label)+i}><td>{r.label??'Ohne Angabe'}</td><td>{number(r.orders)}</td><td>{percent(r.on_time_rate)}</td><td>{percent(r.volume_rate)}</td></tr>)}</tbody></table></div>;
-}
 export function DashboardWidgetView({widget,detail,filters}:DataProps){
- const {rows,loading,error}=useBreakdown(widget,detail,filters);
  const value=widget.metric?metricValue(widget.metric,detail.metrics,detail.ribbon):null;
  if(PROCESS_TYPES.some(t=>t===widget.type))return <ProcessChart widget={widget} filters={filters}/>;
  if(widget.type==='text')return <div className="nxt-widget-notes"><Icon name="info" size={22}/><p>{widget.text||'Hier eine Forschungsfrage oder Interpretation formulieren.'}</p></div>;
  if(detail.error)return <Notice kind="error">{detail.error}</Notice>;
+ if(widget.type==='table'||widget.type==='customer_table')return <SegmentTable widget={widget} filters={filters}/>;
+ if(widget.type==='comparison')return <MultiComparison widget={widget} filters={filters}/>;
+ if(widget.type==='line')return <InteractiveTrend values={detail.trend} widget={widget} filters={filters}/>;
  if(detail.pending&&!detail.metrics)return <Spinner text="Daten werden berechnet …"/>;
  if(widget.type==='bar'||ADVANCED_TYPES.includes(widget.type))return <AdvancedChart widget={widget} detail={detail} filters={filters}/>;
  if(widget.type==='kpi')return <div className="nxt-widget-kpi"><strong>{metricFormat(widget.metric||'onTimeRate',value)}</strong><small>{METRIC_LABELS[widget.metric||'onTimeRate']} · WoodCorp O2C</small></div>;
- if(widget.type==='line')return <InteractiveTrend values={detail.trend} initialMetric={widget.metric}/>;
+ if(widget.type==='status')return <StatusComposition detail={detail}/>;
+ if(widget.type==='scenario')return <ScenarioWidget widget={widget} detail={detail}/>;
  if(widget.type==='donut'){
   const total=detail.metrics?.dateCoverage||0,late=detail.ribbon?.lateOrders??0,onTime=Math.max(0,total-late),share=total?100*onTime/total:0;
   return <div className="nxt-widget-donut"><div className="donut-ring" style={{background:`conic-gradient(#008B92 ${share}%, #E1EAEB 0)`}} role="img" aria-label={`${percent(share)} pünktliche Lieferungen`}><div><b>{total?percent(share):'–'}</b><span>Pünktlich</span></div></div><p>{number(onTime)} pünktlich · {number(late)} verspätet</p><details className="nxt-chart-data-table"><summary>Werte als Tabelle</summary><div className="table-overflow"><table><thead><tr><th>Lieferstatus</th><th>Aufträge</th></tr></thead><tbody><tr><td>Pünktlich</td><td>{number(onTime)}</td></tr><tr><td>Verspätet</td><td>{number(late)}</td></tr></tbody></table></div></details></div>;
  }
- if(loading)return <Spinner text="Vergleichsdaten werden geladen …"/>;
- if(error)return <Notice kind="error">{error}</Notice>;
- if(widget.type==='table')return <TableWidget rows={rows}/>;
+
 
  return null;
 }
@@ -91,10 +65,10 @@ function WidgetItem({widget,detail,filters,selected,onSelect,disabled,index,onRe
  const drag=useDraggable({id:'widget:'+widget.id,disabled});const drop=useDroppable({id:'drop:'+widget.id});
  const tile=useRef<HTMLElement|null>(null),[preview,setPreview]=useState<Partial<DashboardWidget>|null>(null);
  const resizePatch=(size:CardSize)=>{const grid=tile.current?.closest<HTMLElement>('.dashboard-edit-grid'),width=grid?.clientWidth??0;const columns=grid?getComputedStyle(grid).gridTemplateColumns.trim().split(/\s+/).length:1;return widgetResizeLayout(size,width,columns>1&&width>=(isChartWidget(widget)?860:440),widget.width)};
- const shown={...widget,...preview};
+ const shown={...widget,...preview};const access=React.useContext(ChartAccess);
  return <article data-resizable-card ref={el=>{tile.current=el;drop.setNodeRef(el)}} className={'dashboard-edit-widget nxt-card-shell '+tileClass(shown)+(shown.displayHeight===undefined?'':' sized-tile')+(selected?' selected':'')+(drop.isOver?' drop-target':'')} style={{...tileStyle(shown),...(drag.isDragging?{opacity:.45}:{})}}>
   <div className="dashboard-edit-widget-top nxt-card-header"><button type="button" className="dashboard-drag-handle" disabled={disabled} ref={drag.setNodeRef} {...drag.attributes} {...drag.listeners} title="Widget verschieben"><Icon name="grip-vertical" size={16}/></button><button type="button" onClick={onSelect} aria-pressed={selected} className="dashboard-widget-title"><Icon name={WIDGET_ICONS[widget.type]} size={17}/>{widget.title}</button><button type="button" title="Widget nach oben" onClick={()=>onMove(index-1)} disabled={disabled||index===0}><Icon name="chevron-left" size={17}/></button><button type="button" title="Widget nach unten" onClick={()=>onMove(index+1)} disabled={disabled}><Icon name="chevron-right" size={17}/></button><button type="button" title="Widget entfernen" onClick={onRemove} disabled={disabled}><Icon name="trash-2" size={17}/></button></div>
-  <div className="dashboard-edit-widget-content nxt-card-body dashboard-widget-body"><DashboardWidgetView widget={widget} detail={detail} filters={filters}/></div>
+  <div className="dashboard-edit-widget-content nxt-card-body dashboard-widget-body"><ChartAccess.Provider value={{...access,saveView:disabled?undefined:(_id,patch)=>onResize(patch)}}><DashboardWidgetView widget={widget} detail={detail} filters={filters}/></ChartAccess.Provider></div>
   {!disabled&&<ResizeGrip label={widget.title} stepX={500} stepY={24} onPreview={size=>setPreview(size?resizePatch(size):null)} onCommit={size=>{onSelect();onResize(size?resizePatch(size):{width:freshWidget(widget.type).width,displayHeight:undefined});setPreview(null)}}/>}
  </article>;
 }

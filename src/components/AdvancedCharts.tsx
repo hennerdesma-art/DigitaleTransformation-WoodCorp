@@ -1,4 +1,5 @@
 import React,{useEffect,useMemo,useState} from 'react';
+import {BubbleChart} from './DataWidgets';
 import {InteractiveBars,CostScenario} from './InteractiveCharts';
 import {analysisApi,type SegmentStats,type HeatmapCell,type DistributionBucket} from '../lib/supabase';
 import type {Filter,DashboardData} from '../core/types';
@@ -229,6 +230,7 @@ function Funnel({detail}:{detail:DashboardData}){
  </div>;
 }
 export function AdvancedChart({widget,detail,filters,compact=false}:{widget:DashboardWidget;detail:DashboardData;filters:Filter[];compact?:boolean}){
+ if(widget.type==='scatter')return <BubbleChart widget={widget} filters={filters}/>;
  if(['bar','bar_horizontal','bar_vertical'].includes(widget.type))return <InteractiveBars key={widget.id} widget={widget} filters={filters} compact={compact}/>;
  return <StaticChart widget={widget} detail={detail} filters={filters}/>;
 }
