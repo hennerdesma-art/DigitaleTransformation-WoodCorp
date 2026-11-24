@@ -3,13 +3,16 @@
  */
 export const BEDROCK_REGION='eu-central-1';
 export const BEDROCK_MODEL='eu.anthropic.claude-sonnet-4-6';
+export const BEDROCK_MODELS=[BEDROCK_MODEL,'eu.anthropic.claude-opus-4-6-v1'] as const;
+export const MODEL_LABELS:Record<string,string>={[BEDROCK_MODEL]:'Claude Sonnet 4.6','eu.anthropic.claude-opus-4-6-v1':'Claude Opus 4.6'};
+export const validModel=(model:unknown):model is typeof BEDROCK_MODELS[number]=>typeof model==='string'&&(BEDROCK_MODELS as readonly string[]).includes(model);
 export type BedrockConfig={region:string;model:string;token:string};
 type Env=(name:string)=>string|undefined;
-export function bedrockConfig(env:Env):BedrockConfig|null{
+export function bedrockConfig(env:Env,model:string=BEDROCK_MODEL):BedrockConfig|null{
  const token=env('AWS_BEARER_TOKEN_BEDROCK');
  // Provider and model are fixed, reviewed deployment constants; legacy generic model/provider secrets are intentionally unused.
- if(env('AWS_REGION')!==BEDROCK_REGION||!token?.trim())return null;
- return {region:BEDROCK_REGION,model:BEDROCK_MODEL,token:token.trim()};
+ if(env('AWS_REGION')!==BEDROCK_REGION||!token?.trim()||!validModel(model))return null;
+ return {region:BEDROCK_REGION,model,token:token.trim()};
 }
 export class BedrockError extends Error{
  constructor(message:string,public readonly status:number,public readonly providerStatus:number|null=null){super(message);this.name='BedrockError'}
@@ -32,7 +35,7 @@ export function bedrockSchema(schema:unknown):unknown{
  return out;
 }
 export async function requestBedrock(config:BedrockConfig,instructions:string,input:unknown,schema:unknown,fetcher:typeof fetch=fetch,timeout=110000){
- if(config.region!==BEDROCK_REGION||config.model!==BEDROCK_MODEL||!config.token)throw new BedrockError('Amazon Bedrock ist nicht konfiguriert.',503);
+ if(config.region!==BEDROCK_REGION||!validModel(config.model)||!config.token)throw new BedrockError('Amazon Bedrock ist nicht konfiguriert.',503);
  const payload={system:[{text:instructions}],messages:[{role:'user',content:[{text:JSON.stringify(input)}]}],inferenceConfig:{maxTokens:3600,temperature:0.2},outputConfig:{textFormat:{type:'json_schema',structure:{jsonSchema:{name:'nxt_analysis_plan',schema:JSON.stringify(bedrockSchema(schema)),description:'NXT answer and validated workspace operations'}}}}};
  let res:Response;
  try{res=await fetcher('https://bedrock-runtime.'+config.region+'.amazonaws.com/model/'+encodeURIComponent(config.model)+'/converse',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+config.token},body:JSON.stringify(payload),signal:AbortSignal.timeout(timeout),redirect:'error'})}

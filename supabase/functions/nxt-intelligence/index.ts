@@ -1,15 +1,18 @@
 import {createClient} from "npm:@supabase/supabase-js@2.119.0";
 import {PLAN_SCHEMA,validatePlan,KNOWLEDGE_VERSION,AI_DIMENSIONS} from "./protocol.ts";
 import {MASTER_PLAYBOOK} from "./knowledge.ts";
-import {bedrockConfig,requestBedrock,BedrockError,BEDROCK_MODEL,BEDROCK_REGION} from "./bedrock.ts";
+import {bedrockConfig,requestBedrock,BedrockError,BEDROCK_MODEL,BEDROCK_REGION,BEDROCK_MODELS,MODEL_LABELS,validModel} from "./bedrock.ts";
 const url=Deno.env.get("SUPABASE_URL")!;
 const service=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const anon=Deno.env.get("SUPABASE_ANON_KEY")!;
 const admin=createClient(url,service,{auth:{persistSession:false,autoRefreshToken:false}});
 const origins=new Set(["https://hennerdesma-art.github.io","http://localhost:5173","http://127.0.0.1:5173"]);
 const response=(body:unknown,code:number,origin:string)=>new Response(code===204?null:JSON.stringify(body),{status:code,headers:{"content-type":"application/json; charset=utf-8","access-control-allow-origin":origins.has(origin)?origin:"https://hennerdesma-art.github.io","access-control-allow-headers":"authorization, apikey, content-type, x-client-info","access-control-allow-methods":"POST, OPTIONS","cache-control":"no-store","vary":"Origin"}});
-const config=()=>bedrockConfig(name=>Deno.env.get(name));
-const enabled=()=>Deno.env.get("NXT_AI_ENABLED")==="true"&&!!config();
+const config=(model=BEDROCK_MODEL)=>bedrockConfig(name=>Deno.env.get(name),model);
+// Project and per-user switches live in protected database policy. Optional emergency override remains server-only.
+const forceDisabled=()=>Deno.env.get("NXT_AI_FORCE_DISABLED")==="true";
+const policy=async(actor:string,action:string,payload:Record<string,unknown>={})=>{const r=await admin.rpc("nxt_ai_control",{p_actor:actor,p_action:action,p_payload:payload});if(r.error||!r.data)throw Error("KI-Verwaltung nicht verfügbar.");return r.data};
+const policyError=(reason:string)=>({membership:"Kein Projektzugang.",admin_required:"Nur Administratoren dürfen KI-Zugänge verwalten.",disabled:"KI-Zugang ist deaktiviert.",quota:"Tageskontingent erreicht.",cooldown:"Bitte fünf Sekunden zwischen KI-Anfragen einhalten.",invalid_model:"Modell nicht freigegeben.",invalid_project:"Ungültige Projekteinstellungen.",invalid_user:"Ungültige Nutzerkonfiguration.",member_missing:"Mitglied nicht mehr vorhanden."} as Record<string,string>)[reason]||"KI-Konfiguration konnte nicht geprüft werden.";
 const isString=(x:unknown,max:number)=>typeof x==="string"&&x.length<=max&&x.trim().length>0;
 const safeNumber=(x:unknown)=>typeof x==="number"&&Number.isFinite(x)?x:null;
 const safeFields=new Set([...AI_DIMENSIONS,"delivered_date","promised_date","ordered_quantity","delivered_quantity","order_value","days_to_del_deadline","quantity_change_count","delivery_date_change_count","production_start_change_count","price_change_count","anomalous_event_count"]);
@@ -29,10 +32,42 @@ Deno.serve(async(req)=>{
   if(Number(req.headers.get("content-length")||0)>200000)return response({error:"Anfrage zu groß."},413,origin);
   const raw=await req.text();if(new TextEncoder().encode(raw).length>200000)return response({error:"Anfrage zu groß."},413,origin);
   let body:any;try{body=JSON.parse(raw)}catch{return response({error:"Ungültiges JSON."},400,origin)}
-  if(body?.action==="status")return response({enabled:enabled(),configured:!!config(),provider:"Amazon Bedrock",model:BEDROCK_MODEL,region:BEDROCK_REGION,knowledgeVersion:KNOWLEDGE_VERSION},200,origin);
+  if(body?.action==="status"){
+   const p=await policy(auth.user.id,"status");
+   if(!p.allowed)return response({error:policyError(p.reason)},403,origin);
+   return response({...p,enabled:p.projectEnabled&&p.userEnabled&&!forceDisabled()&&!!config(p.model),configured:!!config(p.model),forcedDisabled:forceDisabled(),provider:"Amazon Bedrock",modelLabel:MODEL_LABELS[p.model],region:BEDROCK_REGION,knowledgeVersion:KNOWLEDGE_VERSION},200,origin);
+  }
+  if(["admin_list","update_project","update_user","test_model"].includes(body?.action)){
+   if(member.role!=="admin")return response({error:"Nur Administratoren."},403,origin);
+   if(body.action==="admin_list"){
+    const p=await policy(auth.user.id,"admin_list");
+    if(!p.allowed)return response({error:policyError(p.reason)},403,origin);
+    return response({...p,configured:!!config(),forcedDisabled:forceDisabled(),availableModels:BEDROCK_MODELS.map(id=>({id,label:MODEL_LABELS[id],verifiedAt:p.models.find((m:any)=>m.id===id)?.verifiedAt||null}))},200,origin);
+   }
+   if(body.action==="update_project"||body.action==="update_user"){
+    const p=body.payload;
+    if(!p||typeof p!=="object")return response({error:"Ungültige Einstellungen."},400,origin);
+    const integer=(v:unknown,min:number,max:number)=>Number.isInteger(v)&&Number(v)>=min&&Number(v)<=max;
+    if(body.action==="update_project"&&(typeof p.enabled!=="boolean"||!integer(p.defaultLimit,1,200)||!integer(p.projectLimit,1,1000)||!validModel(p.defaultModel)))return response({error:"Ungültige Projekteinstellungen."},400,origin);
+    if(body.action==="update_user"&&(!isString(p.userId,36)||!/^([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/i.test(p.userId)||!(p.enabledOverride===null||typeof p.enabledOverride==="boolean")||!(p.dailyLimit===null||integer(p.dailyLimit,1,200))||!integer(p.bonus,0,180)||!(p.modelOverride===null||validModel(p.modelOverride))))return response({error:"Ungültige Nutzereinstellungen."},400,origin);
+    const result=await policy(auth.user.id,body.action,p);
+    return response(result.allowed?{ok:true}:{error:policyError(result.reason)},result.allowed?200:400,origin);
+   }
+   // Explicit, quota-counted paid test. Never includes real workspace data.
+   if(body.consent!==true||!validModel(body.model)||forceDisabled())return response({error:"Modelltest nicht freigegeben."},400,origin);
+   const testProvider=config(body.model);
+   if(!testProvider)return response({error:"Amazon Bedrock ist nicht konfiguriert."},503,origin);
+   const reserved=await policy(auth.user.id,"reserve_test",{model:body.model});
+   if(!reserved.allowed)return response({error:policyError(reserved.reason)},429,origin);
+   const result=await requestBedrock(testProvider,MASTER_PLAYBOOK,{workspaceTitle:"Synthetic model verification",selectedId:"test:root",nodes:[{id:"test:root",label:"Synthetic root",kind:"root",widgets:[]}],allowedFields:["factory"],edges:[],filters:[],canEdit:true,question:"Synthetic test. Return a short answer and exactly one add_widget operation for test:root, label OTIF, widgetType kpi, metric otifRate. All other fields null. No other operations."},PLAN_SCHEMA);
+   const plan=validatePlan(result.plan,["test:root"],["factory"],true);
+   if(plan.operations.length!==1||plan.operations[0].kind!=="add_widget"||plan.operations[0].target!=="test:root"||plan.operations[0].widgetType!=="kpi"||plan.operations[0].metric!=="otifRate")return response({error:"Modelltest hat keine gültige Testoperation geliefert."},502,origin);
+   const marked=await policy(auth.user.id,"mark_verified",{model:body.model});
+   if(!marked.allowed)return response({error:"Modelltest konnte nicht gespeichert werden."},503,origin);
+   return response({ok:true,model:body.model,usage:result.usage},200,origin);
+  }
   if(body?.action!=="ask"||body.consent!==true||!isString(body.prompt,1600))return response({error:"Ungültige Anfrage oder fehlende Freigabe."},400,origin);
-  const provider=config();
-  if(!enabled()||!provider)return response({error:"Amazon Bedrock noch nicht aktiviert oder unvollständig konfiguriert. Lokale Vorlagen sind verfügbar."},503,origin);
+  if(forceDisabled()||!config())return response({error:"Amazon Bedrock ist nicht verfügbar. Lokale Vorlagen sind verfügbar."},503,origin);
   const context=body.context;
   if(!context||!isString(context.selectedId,180)||!Array.isArray(context.nodes)||context.nodes.length>300||!Array.isArray(context.edges)||context.edges.length>400||!Array.isArray(context.filters)||context.filters.length>12||!Array.isArray(context.allowedFields))return response({error:"Workspace-Kontext ungültig."},400,origin);
   const client=createClient(url,anon,{global:{headers:{Authorization:"Bearer "+bearer}},auth:{persistSession:false,autoRefreshToken:false}});
@@ -61,8 +96,10 @@ Deno.serve(async(req)=>{
    return {field:f.field,op:f.op,value:f.value};
   });
   // Charge a single atomic server-side allowance BEFORE calling the model. Fail closed.
-  const {data:reserved,error:limitError}=await admin.rpc("nxt_ai_reserve_request",{p_user:auth.user.id});
-  if(limitError||reserved!==true)return response({error:limitError?"KI-Kontingent nicht verfügbar.":"KI-Limit erreicht. Bitte später erneut versuchen."},limitError?503:429,origin);
+  const reserved=await policy(auth.user.id,"reserve");
+  if(!reserved.allowed)return response({error:policyError(reserved.reason)},reserved.reason==="disabled"||reserved.reason==="membership"?403:429,origin);
+  const provider=config(reserved.model);
+  if(!provider)return response({error:"Freigegebenes Modell nicht verfügbar."},503,origin);
   const metricsResult=await client.rpc("nxt_case_metrics",{p_filters:filters});
   if(metricsResult.error)return response({error:"Der aktuelle Filterkontext konnte nicht berechnet werden."},400,origin);
   const m=metricsResult.data;
@@ -86,5 +123,5 @@ Deno.serve(async(req)=>{
   const {plan:parsed}=await requestBedrock(provider,MASTER_PLAYBOOK,modelContext,PLAN_SCHEMA);
   const plan=validatePlan(parsed,ids,fields,canEdit);
   return response(plan,200,origin);
- }catch(e){if(e instanceof BedrockError)return response({error:e.message},e.status,origin);return response({error:e instanceof Error&&/Ungültig|Unbekannt|Dimension|Zielwert|Filter|Widget|Knoten|lesbar|Kennzahl/.test(e.message)?e.message:"Die Anfrage konnte nicht sicher verarbeitet werden."},400,origin)}
+ }catch(e){if(e instanceof BedrockError)return response({error:e.message},e.status,origin);if(e instanceof Error&&e.message==="KI-Verwaltung nicht verfügbar.")return response({error:e.message},503,origin);return response({error:e instanceof Error&&/Ungültig|Unbekannt|Dimension|Zielwert|Filter|Widget|Knoten|lesbar|Kennzahl/.test(e.message)?e.message:"Die Anfrage konnte nicht sicher verarbeitet werden."},400,origin)}
 });

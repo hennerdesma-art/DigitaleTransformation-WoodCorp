@@ -28,6 +28,7 @@ import './styles/v10.css';
 import {ContainerSettings} from './components/ContainerSettings';
 import {AiDashboardPrep} from './components/AiDashboardPrep';
 import {IntelligencePanel} from './components/IntelligencePanel';
+import {IntelligenceAdmin} from './components/IntelligenceAdmin';
 import {assistantFingerprint,applyAssistantPlan,resolveAssistantNodeId,type AssistantState} from './core/assistant';
 import type {AiPlan} from './core/assistantProtocol';
 import './styles/intelligence.css';
@@ -272,6 +273,7 @@ function TeamPanel({role}:{role:Role}){
     </tr>)}</tbody>
    </table></div>
   </div>
+  {role==='admin'&&<IntelligenceAdmin members={members}/>}
   {deleteTarget&&<Modal title="Teamzugang endgültig löschen" onClose={()=>{if(!deleting)setDeleteTarget(null)}}>
    <form className="nxt-team-delete-confirm" onSubmit={e=>void remove(e)}>
     <p>Das Supabase-Auth-Konto von <strong>{display(deleteTarget)}</strong> wird dauerhaft entfernt – einschließlich seiner Projektberechtigung, aktiven Auth-Sitzungen, bisherigen Einladungen und <strong>{deleteTarget.workspace_count||0} eigenen Workspaces</strong>. Die WoodCorp-Rohdaten und die Workspaces anderer Mitglieder bleiben erhalten.</p>
