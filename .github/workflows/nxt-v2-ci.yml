@@ -24,6 +24,7 @@ jobs:
           test -f dist/icons/sprite.svg
           test -f dist/icons/network.svg
           test -f dist/nxt-logo.png
+          test -f dist/nxt-intelligence.webp
       - name: Upload review build
         uses: actions/upload-artifact@v4
         with:

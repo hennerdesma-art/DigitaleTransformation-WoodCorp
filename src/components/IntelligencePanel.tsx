@@ -37,7 +37,7 @@ export function IntelligencePanel({state,workspace,fingerprint,canEdit,busy,onAp
   try{
    let result:AiPlan;let source:'local'|'model'='local';
    if(status?.enabled&&consent){
-    source='model';result=await intelligenceApi.ask(text,contextForAssistant(state,workspace,canEdit),entries.slice(-8).map(({role,text})=>({role,text:text.slice(0,1600)})),c.signal);
+    source='model';result=await intelligenceApi.ask(text,contextForAssistant(state,workspace,canEdit),entries.slice(-8).map(e=>({role:e.role,text:(e.text+(e.plan?.operations.length?'\n'+(e.applied?'Applied':'Proposed')+': '+JSON.stringify(e.plan.operations.map(o=>({kind:o.kind,target:o.target,label:o.label,ref:o.ref,widgetType:o.widgetType,metric:o.metric,field:o.field,value:o.value}))):'')).slice(0,1600)})),c.signal);
     void intelligenceApi.status(c.signal).then(setStatus).catch(()=>{});
    }else{
     let metrics=null;

@@ -17,6 +17,7 @@ const isString=(x:unknown,max:number)=>typeof x==="string"&&x.length<=max&&x.tri
 const safeNumber=(x:unknown)=>typeof x==="number"&&Number.isFinite(x)?x:null;
 const safeFields=new Set([...AI_DIMENSIONS,"delivered_date","promised_date","ordered_quantity","delivered_quantity","order_value","days_to_del_deadline","quantity_change_count","delivery_date_change_count","production_start_change_count","price_change_count","anomalous_event_count"]);
 const cleanText=(x:unknown,max:number)=>typeof x==="string"?x.slice(0,max):null;
+const modelFilters=(value:unknown)=>Array.isArray(value)?value.slice(0,12).flatMap((f:any)=>{if(!f||!safeFields.has(f.field)||!["eq","in","between","gte","lte"].includes(f.op))return [];const v=f.value;if(typeof v==="string"&&v.length<=200)return [{field:f.field,op:f.op,value:v}];if(Array.isArray(v)&&v.length<=20&&v.every(x=>typeof x==="string"&&x.length<=200))return [{field:f.field,op:f.op,value:v}];return []}):[];
 Deno.serve(async(req)=>{
  const origin=req.headers.get("origin")||"";
  if(req.method==="OPTIONS")return response({},204,origin);
@@ -85,7 +86,7 @@ Deno.serve(async(req)=>{
   // Validate and minimize context. Selected node and IDs are logical references, never executable SQL.
   const nodes=context.nodes.map((n:any)=>{
    if(!n||!isString(n.id,180)||!isString(n.label,100)||!["root","segment","metric","note","condition","container"].includes(n.kind)||!Array.isArray(n.widgets)||n.widgets.length>24)throw Error("Ungültiger Knoten.");
-   return {id:n.id,label:n.label,kind:n.kind,metric:cleanText(n.metric,50),visualization:cleanText(n.visualization,40),containerId:cleanText(n.containerId,180),description:cleanText(n.description,240),question:cleanText(n.question,700),widgets:n.widgets.map((w:any)=>({id:cleanText(w?.id,120),type:cleanText(w?.type,40),title:cleanText(w?.title,100),metric:cleanText(w?.metric,50),dimension:cleanText(w?.dimension,50),compareDimension:cleanText(w?.compareDimension,50)}))};
+   return {id:n.id,label:n.label,kind:n.kind,metric:cleanText(n.metric,50),visualization:cleanText(n.visualization,40),containerId:cleanText(n.containerId,180),description:cleanText(n.description,240),question:cleanText(n.question,700),localFilters:modelFilters(n.localFilters),widgets:n.widgets.map((w:any)=>({id:cleanText(w?.id,120),type:cleanText(w?.type,40),title:cleanText(w?.title,100),metric:cleanText(w?.metric,50),dimension:cleanText(w?.dimension,50),compareDimension:cleanText(w?.compareDimension,50)}))};
   });
   const ids=nodes.map((n:any)=>n.id);if(new Set(ids).size!==ids.length||!ids.includes(context.selectedId))return response({error:"Ausgewählter Knoten nicht vorhanden."},400,origin);
   const edges=context.edges.map((e:any)=>({source:e?.source,target:e?.target})).filter((e:any)=>ids.includes(e.source)&&ids.includes(e.target));
@@ -119,7 +120,7 @@ Deno.serve(async(req)=>{
    }
   }
   const history=Array.isArray(body.history)?body.history.slice(-8).filter((x:any)=>["user","assistant"].includes(x?.role)&&isString(x.text,1600)).map((x:any)=>({role:x.role,text:x.text})):[];
-  const modelContext={workspaceTitle,selectedId:context.selectedId,nodes,edges,canEdit,allowedFields:fields,filters:filters.map((f:any)=>safeFields.has(f.field)?f:{field:f.field,op:f.op,value:"[nicht übertragen]"}),evidence,history,question:body.prompt};
+  const modelContext={workspaceTitle,selectedId:context.selectedId,nodes,edges,canEdit,allowedFields:fields,globalFilters:modelFilters(context.globalFilters),filters:modelFilters(filters),evidence,history,question:body.prompt};
   const {plan:parsed}=await requestBedrock(provider,MASTER_PLAYBOOK,modelContext,PLAN_SCHEMA);
   const plan=validatePlan(parsed,ids,fields,canEdit);
   return response(plan,200,origin);
