@@ -1,7 +1,7 @@
 import {action,validatePlan,AI_GRAPH_FORMAT,AI_SEGMENT_METRICS,actionFilterValue,coordinatePair,type AiPlan,type AiAction} from './assistantProtocol';
 import {freshWidget,normalizeDashboard,standardDashboard,makeDocument,METRICS,WIDGET_LABELS,METRIC_LABELS,type NodeDashboard,type MetricKey,type WidgetType} from './dashboard';
 import {findingStamp} from './findings';
-import {nodeFor,referenceEdge,annotationEdge,isValidAnnotation,isValidReference,moveIntoContainer,worldPosition,containerSize,changeContainerSettings,serializeDraft,type NNode,type NEdge} from './graph';
+import {nodeFor,referenceEdge,annotationEdge,isValidAnnotation,isValidReference,moveIntoContainer,worldPosition,containerSize,nodeLayoutSize,fitGraphContainers,changeContainerSettings,serializeDraft,type NNode,type NEdge} from './graph';
 import {effectiveFilters,validateFilters,conflictingFields,formatFilter} from './filters';
 import type {AnalysisNode,Filter,Metrics,GraphViz,ContainerTone} from './types';
 import type {FieldKey} from '../config';
@@ -30,13 +30,13 @@ function baseDashboard(n:NNode):NodeDashboard{
 function nextPosition(nodes:NNode[],parent:NNode){
  const p=worldPosition(parent,nodes);let x=p.x+320;
  for(const n of nodes.filter(n=>!n.data.analysis.containerId)){
-  const q=worldPosition(n,nodes);const width=n.data.analysis.kind==='container'?containerSize(n.data.analysis).width:n.measured?.width??480;
+  const q=worldPosition(n,nodes);const width=nodeLayoutSize(n).width;
   x=Math.max(x,q.x+width+100);
  }
  return {x,y:p.y+220};
 }
 // New groups use compact columns by default. Existing positions only change through explicit layout actions.
-export function assistantBlockSize(n:NNode){const a=n.data.analysis;return a.kind==='container'?containerSize(a):a.kind==='note'?{width:n.measured?.width??320,height:n.measured?.height??280}:{width:n.measured?.width??(a.visualization&&a.visualization!=='kpi'?460:260),height:n.measured?.height??(a.visualization&&a.visualization!=='kpi'?440:190)}}
+export function assistantBlockSize(n:NNode){return nodeLayoutSize(n)}
 /** Pack group members only. Never change membership, filters, or analytic edges. */
 function arrangeGroup(nodes:NNode[],id:string,columns:number):NNode[]{
  const group=nodes.find(n=>n.id===id);
@@ -191,6 +191,7 @@ export function applyAssistantPlan(state:AssistantState,raw:AiPlan):AssistantSta
    if(op.kind==='arrange_container')nodes=arrangeGroup(nodes,n.id,Number(op.value));
   }
  }
+ nodes=fitGraphContainers(nodes);
  if(layoutOps.some(o=>o.kind!=='set_container_style')||plan.operations.some(o=>o.kind==='set_node_visualization'))validateLayout(state.nodes,nodes);
  const topology=nodes.map(n=>n.data.analysis);
  if(plan.operations.some(o=>o.kind==='add_filter'||o.kind==='add_branch'||o.kind==='add_container')){

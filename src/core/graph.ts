@@ -2,6 +2,7 @@ import type {Node,Edge,XYPosition} from '@xyflow/react';
 import type {AnalysisNode,GraphNodeData,BreakdownRow,SavedDraft,Filter,EdgeKind} from './types';
 import type {FieldKey} from '../config';
 import {filterLinks} from './filters';
+import {cardBounds,cardDimensions,clampSize,isValidCardDimension,type CardSize} from './cardLayout';
 export type NNode=Node<GraphNodeData,'analytics'>;
 export type NEdge=Edge<{kind:EdgeKind}>;
 export const ROOT_ID='root:otd';
@@ -37,7 +38,7 @@ export function splitGraph(nodes:NNode[],edges:NEdge[],parentId:string,field:Fie
   const id='split:'+parentId+':'+field+':'+encodeURIComponent(String(r.label));
   if(existing.has(id))return;
   const a:AnalysisNode={id,parentId,label:String(r.label),kind:'segment',createdBy:'system',predicate:{id:'p:'+id,field,op:'eq',value:String(r.label),scope:'local'}};
-  const pos=worldPosition(parent,nodes);const x=pos.x+(i-(count-1)/2)*218,y=pos.y+235;
+  const pos=worldPosition(parent,nodes);const x=pos.x+(i-(count-1)/2)*240,y=pos.y+nodeLayoutSize(parent).height+74;
   outNodes.push(nodeFor(a,{x,y},{orders:Number(r.orders),onTimeRate:r.on_time_rate===null?null:Number(r.on_time_rate)}));
   outEdges.push(semanticEdge(parentId,id));
  });
@@ -53,6 +54,7 @@ export function cleanDraft(value:unknown):SavedDraft|null{
  const groups=new Set(d.nodes.filter(n=>n.analysis.kind==='container').map(n=>n.id));
  for(const n of d.nodes){
   const a=n.analysis;
+  if(!isValidCardDimension(a.cardWidth)||!isValidCardDimension(a.cardHeight))return null;
   if(a.containerId&&(!groups.has(a.containerId)||a.kind==='container'||a.containerId===n.id))return null;
   if(a.kind==='container'&&((a.containerWidth!==undefined&&(!Number.isFinite(a.containerWidth)||a.containerWidth<320||a.containerWidth>4000))||(a.containerHeight!==undefined&&(!Number.isFinite(a.containerHeight)||a.containerHeight<160||a.containerHeight>4000))||(a.containerTone!==undefined&&!['teal','slate','sand'].includes(a.containerTone))||(a.containerCollapsed!==undefined&&typeof a.containerCollapsed!=='boolean')))return null;
  }
@@ -62,7 +64,7 @@ export function serializeDraft(nodes:NNode[],edges:NEdge[],locals:Record<string,
  return {version:2,nodes:nodes.map(n=>({id:n.id,position:{x:n.position.x,y:n.position.y},analysis:n.data.analysis})),edges:edges.map(e=>({id:e.id,source:e.source,target:e.target,kind:e.data?.kind||'reference'})),localFilters:locals,viewport,timestamp:new Date().toISOString()};
 }
 export function restoreDraft(d:SavedDraft):{nodes:NNode[];edges:NEdge[]}{
- return {nodes:d.nodes.map(n=>nodeFor(n.analysis,n.position)),edges:d.edges.map(e=>({... (e.kind==='analytic'?semanticEdge(e.source,e.target):e.kind==='annotation'?annotationEdge(e.source,e.target):referenceEdge(e.source,e.target)),id:e.id}))};
+ return {nodes:fitGraphContainers(d.nodes.map(n=>nodeFor(n.analysis,n.position))),edges:d.edges.map(e=>({... (e.kind==='analytic'?semanticEdge(e.source,e.target):e.kind==='annotation'?annotationEdge(e.source,e.target):referenceEdge(e.source,e.target)),id:e.id}))};
 }
 /**
  * Every arrow is a directed filter dependency. Do not introduce a cycle,
@@ -94,7 +96,8 @@ export function containerLayout(n:NNode):NNode{
   const size=containerSize(a);
   return {...n,parentId:undefined,style:{...n.style,width:size.width,height:size.height},zIndex:-1,dragHandle:'.nxt-container-header'};
  }
- return {...n,parentId:a.containerId};
+ const size=cardDimensions(a);
+ return {...n,parentId:a.containerId,width:undefined,height:undefined,style:{...n.style,width:size.width,height:size.height}};
 }
 export function orderedNodes(nodes:NNode[]):NNode[]{
  return [...nodes.filter(n=>n.data.analysis.kind==='container'),...nodes.filter(n=>n.data.analysis.kind!=='container')];
@@ -110,19 +113,35 @@ export function containerAt(nodes:NNode[],point:XYPosition,exclude?:string):NNod
   return point.x>=n.position.x&&point.x<n.position.x+s.width&&point.y>=n.position.y&&point.y<n.position.y+s.height;
  });
 }
-function childSize(n:NNode){
- const viz=n.data.analysis.visualization;
- if(n.data.analysis.kind==='note')return {width:n.measured?.width??320,height:n.measured?.height??280};
- return {width:n.measured?.width??(viz&&viz!=='kpi'?460:260),height:n.measured?.height??(viz&&viz!=='kpi'?440:190)};
-}
+export function nodeLayoutSize(n:NNode):CardSize{return n.data.analysis.kind==='container'?containerSize(n.data.analysis):cardDimensions(n.data.analysis);}
+const childSize=nodeLayoutSize;
 export function minimumContainerSize(nodes:NNode[],id:string){
  return nodes.filter(n=>n.data.analysis.containerId===id).reduce((size,n)=>{
   const c=childSize(n);return {width:Math.max(size.width,Math.ceil(n.position.x+c.width+18)),height:Math.max(size.height,Math.ceil(n.position.y+c.height+18))};
  },{width:320,height:160});
 }
+/** Enlarge only groups that need room. Preserve all node coordinates and filter relationships. */
+export function fitGraphContainers(nodes:NNode[]):NNode[]{
+ return nodes.map(n=>{const a=n.data.analysis;if(a.kind!=='container')return n;const min=minimumContainerSize(nodes,n.id),width=Math.min(4000,Math.max(a.containerWidth??CONTAINER_DEFAULT.width,min.width)),height=Math.min(4000,Math.max(a.containerHeight??CONTAINER_DEFAULT.height,min.height));if(width===(a.containerWidth??CONTAINER_DEFAULT.width)&&height===(a.containerHeight??CONTAINER_DEFAULT.height))return n;return containerLayout({...n,data:{...n.data,analysis:{...a,containerWidth:width,containerHeight:height}}});});
+}
+/** A bottom-right resize leaves positions, membership, filters and links untouched. */
+export function resizeGraphCard(nodes:NNode[],id:string,size:CardSize|null):NNode[]{
+ const n=nodes.find(x=>x.id===id);if(!n)return nodes;const a=n.data.analysis,b=cardBounds(a);
+ if(a.kind==='container'){
+  if(a.containerCollapsed)return nodes;const min=minimumContainerSize(nodes,id),target=clampSize(size??b.standard,b);
+  const width=Math.min(4000,Math.max(min.width,target.width)),height=Math.min(4000,Math.max(min.height,target.height));
+  if(width===containerSize(a).width&&height===containerSize(a).height)return nodes;
+  return nodes.map(x=>x.id===id?containerLayout({...x,data:{...x.data,analysis:{...a,containerWidth:width,containerHeight:height}}}):x);
+ }
+ const limit=a.containerId?{...b,max:{width:Math.min(b.max.width,Math.max(b.min.width,4000-n.position.x-18)),height:Math.min(b.max.height,Math.max(b.min.height,4000-n.position.y-18))}}:b;
+ const target=clampSize(size??b.standard,limit),current=cardDimensions(a);
+ if(size&&target.width===current.width&&target.height===current.height)return nodes;
+ const next=nodes.map(x=>x.id===id?containerLayout({...x,data:{...x.data,analysis:{...a,cardWidth:size?target.width:undefined,cardHeight:size?target.height:undefined}}}):x);
+ return a.containerId?fitGraphContainers(next):next;
+}
 export function changeContainerSettings(nodes:NNode[],id:string,patch:Partial<AnalysisNode>):NNode[]{
  const min=minimumContainerSize(nodes,id);
- return nodes.map(n=>{
+ const next=nodes.map(n=>{
   if(n.id!==id)return n;
   const a={...n.data.analysis,...patch,id:n.id};
   if(a.kind==='container'){
@@ -132,6 +151,7 @@ export function changeContainerSettings(nodes:NNode[],id:string,patch:Partial<An
   }
   return containerLayout({...n,data:{...n.data,analysis:a}});
  });
+ return nodes.find(n=>n.id===id)?.data.analysis.kind==='container'?next:fitGraphContainers(next);
 }
 export function moveIntoContainer(nodes:NNode[],edges:NEdge[],id:string,groupId?:string,world?:XYPosition):NNode[]{
  const n=nodes.find(x=>x.id===id);

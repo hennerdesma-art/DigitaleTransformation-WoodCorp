@@ -3,7 +3,8 @@ import {ReactFlowProvider,useEdgesState,useNodesState,useReactFlow,type Connecti
 import {FIELD_LABELS,FIELDS,PROJECT,FILTER_KIND,OTIF_STATUS_LABELS,FILTER_GROUPS,filterGroup,CHART_SEGMENT_FIELDS,PROCESS_VARIANT_LEGEND,type FieldKey} from './config';
 import {analysisApi,memberApi,supabase,clearAnalyticsCache} from './lib/supabase';
 import {effectiveFilters,labels,makeFilter,toBackend,validateFilters,formatFilter,traceFilters} from './core/filters';
-import {ROOT_ID,rootAnalysis,createInitialGraph,createBlankWorkspaceGraph,splitGraph,nodeFor,referenceEdge,annotationEdge,isValidAnnotation,isValidReference,cleanDraft,serializeDraft,restoreDraft,containerAt,worldPosition,moveIntoContainer,removeContainer,changeContainerSettings,type NNode,type NEdge} from './core/graph';
+import {ROOT_ID,rootAnalysis,createInitialGraph,createBlankWorkspaceGraph,splitGraph,nodeFor,referenceEdge,annotationEdge,isValidAnnotation,isValidReference,cleanDraft,serializeDraft,restoreDraft,containerAt,worldPosition,moveIntoContainer,removeContainer,changeContainerSettings,resizeGraphCard,type NNode,type NEdge} from './core/graph';
+import type {CardSize} from './core/cardLayout';
 import type {Filter,Role,Ribbon,Metrics,TrendRow,BreakdownRow,PaletteType,DashboardData,SavedDraft,AnalysisNode} from './core/types';
 import {CanvasWithFlow} from './components/GraphCanvas';
 import Icon from './components/Icon';
@@ -27,6 +28,7 @@ import './styles/v7.css';
 import './styles/v8.css';
 import './styles/v9.css';
 import './styles/v10.css';
+import './styles/chart-cards.css';
 import {ContainerSettings} from './components/ContainerSettings';
 import {AiDashboardPrep} from './components/AiDashboardPrep';
 import {IntelligencePanel} from './components/IntelligencePanel';
@@ -343,7 +345,7 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
  useEffect(()=>{void reloadWorkspaces();void reloadCatalog();void reloadCandidates()},[userId,reloadWorkspaces,reloadCatalog,reloadCandidates]);
  useEffect(()=>{if(toast){const t=setTimeout(()=>setToast(''),4200);return()=>clearTimeout(t)}},[toast]);
  const handleSetView=(next:View)=>{setView(next);if(next==='builder')setEditMode(canModify);if(next==='tree'||next==='analytics')setRightVisible(true)};
- const graphFilterKey=JSON.stringify({nodes:nodes.map(n=>n.data.analysis),edges:edges.map(e=>({source:e.source,target:e.target,kind:e.data?.kind}))});
+ const graphFilterKey=JSON.stringify({nodes:nodes.map(n=>{const {cardWidth,cardHeight,containerWidth,containerHeight,...analysis}=n.data.analysis;return analysis}),edges:edges.map(e=>({source:e.source,target:e.target,kind:e.data?.kind}))});
  const topology=useMemo(()=>JSON.parse(graphFilterKey) as {nodes:AnalysisNode[];edges:Array<{source:string;target:string;kind?:string}>},[graphFilterKey]);
  const analysisNodes=topology.nodes;
  const selectedNode=nodes.find(n=>n.id===selectedId);
@@ -664,7 +666,8 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
   if(next.nodes.length>nodes.length||next.nodes.some(n=>{const old=nodes.find(o=>o.id===n.id);return old&&(old.position.x!==n.position.x||old.position.y!==n.position.y||old.data.analysis.containerWidth!==n.data.analysis.containerWidth||old.data.analysis.containerHeight!==n.data.analysis.containerHeight)}))requestAnimationFrame(()=>void flow.fitView({duration:300,padding:.2}));
  };
  const branchFilter=(nodeId:string,field:FieldKey,value:string)=>{if(!canModify||!allowedFields.includes(field))return;try{if(!nodes.some(n=>n.id===nodeId))throw Error('Knoten fehlt.');const existing=effective(nodeId);if(existing.some(f=>f.field===field&&f.op==='eq'&&f.value===value)){say('Dieser Filter gilt bereits.');return;}const f=makeFilter(field,value,'local'),next=validateFilters([...existing,f]);if(conflictingFields(next).length)throw Error('Auswahl widerspricht vorhandenen Filtern.');const local=validateFilters([...(locals[nodeId]||[]),f]);remember();setLocals(old=>({...old,[nodeId]:local}));say('Zweigfilter angewendet · gilt auch für analytische Nachfolger.');}catch(e){say(e instanceof Error?e.message:'Zweigfilter fehlgeschlagen');}};
- const modeActions={nodes,edges,globals,locals,onRemoveEdge:(id:string)=>{if(!editMode||!canModify)return;remember();setEdges(es=>es.filter(e=>e.id!==id));say('Verbindung entfernt');},onNodesChange:onNodeChanges,onEdgesChange:onEdgeChanges,onConnect:connect,onSelect:setSelectedId,onSelectionClear:()=>{},selectedId,editMode,onEditToggle:()=>{if(canModify)setEditMode(v=>!v)},onFilter:(id:string)=>setDialog({kind:'node',id}),onSplit:(id:string)=>setDialog({kind:'split',id}),onRemove:removeNode,onConfigure:(id:string)=>{setSelectedId(id);setConfigureNodeId(id)},onExplain:(id:string)=>{setSelectedId(id);setRightVisible(true);setSelectedTab('Berechnungslogik')},onAdd:addNode,onSave:saveDraft,onReset:resetDraft,onGraphMove:finishDrag,onGraphStart:remember,onToggleContainer:toggleContainer,onUndo:undo,onRedo:redo,fieldNames,onViewportChange:(v:Viewport)=>{viewportRef.current=v;},fullscreen,setFullscreen,canEdit:canModify,dirty,onHelp:()=>handleSetView('builder')};
+ const resizeCard=(id:string,size:CardSize|null)=>{if(!canModify||!editMode)return;const next=resizeGraphCard(nodes,id,size);if(next===nodes)return;remember();setNodes(next);setDirty(true);};
+ const modeActions={nodes,edges,globals,locals,onResizeCard:resizeCard,onRemoveEdge:(id:string)=>{if(!editMode||!canModify)return;remember();setEdges(es=>es.filter(e=>e.id!==id));say('Verbindung entfernt');},onNodesChange:onNodeChanges,onEdgesChange:onEdgeChanges,onConnect:connect,onSelect:setSelectedId,onSelectionClear:()=>{},selectedId,editMode,onEditToggle:()=>{if(canModify)setEditMode(v=>!v)},onFilter:(id:string)=>setDialog({kind:'node',id}),onSplit:(id:string)=>setDialog({kind:'split',id}),onRemove:removeNode,onConfigure:(id:string)=>{setSelectedId(id);setConfigureNodeId(id)},onExplain:(id:string)=>{setSelectedId(id);setRightVisible(true);setSelectedTab('Berechnungslogik')},onAdd:addNode,onSave:saveDraft,onReset:resetDraft,onGraphMove:finishDrag,onGraphStart:remember,onToggleContainer:toggleContainer,onUndo:undo,onRedo:redo,fieldNames,onViewportChange:(v:Viewport)=>{viewportRef.current=v;},fullscreen,setFullscreen,canEdit:canModify,dirty,onHelp:()=>handleSetView('builder')};
  return <ChartAccess.Provider value={{fields:allowedFields,branchFilter:canModify?branchFilter:undefined}}><div className={'app-shell '+(collapsed?'sidebar-collapsed':'')}><Header userEmail={email} onSignOut={onSignOut} onProfile={()=>handleSetView('profile')} onSearch={pageSearch} onHelp={()=>setHelp(true)}/>
   <Sidebar view={view} onNavigate={handleSetView} collapsed={collapsed} setCollapsed={setCollapsed} role={role}/>
   <main className="app-main">

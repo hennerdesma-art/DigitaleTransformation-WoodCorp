@@ -1,7 +1,9 @@
 import React,{memo,useMemo,useRef} from 'react';
 import {ReactFlow,Background,BackgroundVariant,Controls,Handle,MiniMap,Position,useReactFlow,type EdgeChange,type NodeChange,type Connection,type NodeProps,type Viewport} from '@xyflow/react';
 import {DndContext,PointerSensor,KeyboardSensor,useSensor,useSensors,type DragEndEvent,useDraggable} from '@dnd-kit/core';
-import {orderedNodes,containerLayout,type NNode,type NEdge} from '../core/graph';
+import {orderedNodes,containerLayout,resizeGraphCard,type NNode,type NEdge} from '../core/graph';
+import {ResizeGrip} from './ResizeGrip';
+import type {CardSize} from '../core/cardLayout';
 import {findingStatus} from '../core/findings';
 import type {Filter,PaletteType} from '../core/types';
 import Icon from './Icon';
@@ -15,10 +17,12 @@ function AnalyticNode({id,data,selected}:NodeProps<NNode>){
  const chosen=(analysis.metricId==='otd'?'onTimeRate':analysis.metricId||'otifRate') as MetricKey;
  const mainValue=data.primaryValue===undefined?onTimeRate:data.primaryValue;
  const fieldNames=data.fieldNames as Record<FieldKey,string>|undefined;
+ const resizePreview=data.onResizePreview as ((id:string,size:CardSize|null)=>void)|undefined,resizeCommit=data.onResizeCard as ((id:string,size:CardSize|null)=>void)|undefined,getScale=data.resizeZoom as (()=>number)|undefined;
+ const grip=editMode&&resizeCommit&&resizePreview?<ResizeGrip label={analysis.label} getScale={getScale} onPreview={size=>resizePreview(id,size)} onCommit={size=>resizeCommit(id,size)}/>:null;
  if(analysis.kind==='container'){
   const count=Number(data.memberCount||0);
   const onToggle=data.onToggleContainer as ((id:string)=>void)|undefined;
-  return <div className={'nxt-container-node tone-'+(analysis.containerTone||'teal')+(selected?' selected-container':'')+(analysis.containerCollapsed?' collapsed-container':'')} role="group" aria-label={analysis.label+' – '+count+' Elemente'}>
+  return <div className={'nxt-container-node tone-'+(analysis.containerTone||'teal')+(selected?' selected-container':'')+(analysis.containerCollapsed?' collapsed-container':'')} data-resizable-card role="group" aria-label={analysis.label+' – '+count+' Elemente'}>
    <Handle type="target" position={Position.Top} id="target" isConnectable={!!editMode} className="port" aria-label="Container-Eingang"/>
    <div className="nxt-container-header"><Icon name="layers" size={20}/><div className="nxt-container-title"><strong title={analysis.label}>{analysis.label}</strong><small>{count} {count===1?'Element':'Elemente'} · gemeinsamer Filterkontext</small></div>
     <div className="nxt-container-actions nodrag">
@@ -29,24 +33,26 @@ function AnalyticNode({id,data,selected}:NodeProps<NNode>){
    {analysis.description&&<p className="nxt-container-description">{analysis.description}</p>}
    {!analysis.containerCollapsed&&!count&&<div className="nxt-container-empty"><Icon name="square-dashed" size={32}/><strong>Elemente hier hineinziehen</strong><small>Ein Eingang · ein gemeinsamer Filterfluss</small></div>}
    {analysis.containerCollapsed&&<div className="nxt-container-folded">Inhalte eingeklappt · Filter bleiben aktiv</div>}
+   {!analysis.containerCollapsed&&grip}
    <Handle type="source" position={Position.Bottom} id="source" isConnectable={!!editMode} className="port" aria-label="Container-Ausgang"/>
   </div>;
  }
- const dark=analysis.kind==='root';
- const isNote=analysis.kind==='note';const graphChart=!!analysis.visualization&&analysis.visualization!=='kpi';
- return <div className={'graph-node '+(dark?'root-node ':'')+(isNote?'note-node ':'')+(graphChart?'chart-node ':'')+(['stacked','stacked100','heatmap','pareto','scatter','waterfall','histogram','treemap','funnel'].includes(analysis.visualization||'')?'advanced-node ':'')+(selected?'selected-node ':'')} tabIndex={0} role="group" aria-label={analysis.label+' – '+(orders==null?'Noch keine Kennzahl':number(orders)+' Aufträge')}>
+ const isNote=analysis.kind==='note',graphChart=!!analysis.visualization&&analysis.visualization!=='kpi',dark=analysis.kind==='root'&&!graphChart;
+ return <div data-resizable-card className={'graph-node nxt-card-shell '+(dark?'root-node ':'')+(isNote?'note-node ':'')+(graphChart?'chart-node ':'')+(selected?'selected-node ':'')} tabIndex={0} role="group" aria-label={analysis.label+' – '+(orders==null?'Noch keine Kennzahl':number(orders)+' Aufträge')}>
   <Handle type="target" position={Position.Top} id="target" isConnectable={!!editMode} className="port" aria-label="Eingangsverbindung"/>
-  <div className="graph-node-content"><span className="node-grip"><Icon name="grip-vertical" size={15}/></span>
-   <div className="node-labels"><strong title={analysis.label}>{analysis.label}</strong>
-    {dark&&<span className="root-subtitle">Ausgangspunkt · frei konfigurierbar</span>}
-    {isNote?<><small className="nxt-finding-text nowheel nodrag">{analysis.description||'Freie Anmerkung'}</small>{analysis.finding&&<span className={'nxt-finding-status '+((data.findingStatus as ReturnType<typeof findingStatus>|undefined)?.state||'unverified')}>{(data.findingStatus as ReturnType<typeof findingStatus>|undefined)?.text||'Datenabgleich ausstehend'}</span>}</>:graphChart?<GraphNodeVisual data={data}/>:<><b className="node-measure">{busy?'…':mainValue==null?'–':metricFormat(chosen,mainValue)}</b><small>{data.primaryLabel||'OTIF'} · {orders==null?'Noch keine Fälle':number(orders)+' Aufträge'}</small></>}
-   </div></div>
-  {data.filterSummary&&<small className="node-filter-summary" title={String(data.filterSummary)}>Filter: {String(data.filterSummary)}</small>}
-  {!graphChart&&data.error&&<small className="node-viz-error" role="status">{String(data.error)}</small>}
-  {analysis.predicate&&<div className="node-dimension" title={fieldNames?.[analysis.predicate.field]||FIELD_LABELS[analysis.predicate.field]}>{fieldNames?.[analysis.predicate.field]||FIELD_LABELS[analysis.predicate.field]}</div>}
-  <div className="node-buttons">{!isNote&&<button type="button" className="node-action nodrag" title="Berechnungslogik anzeigen" aria-label={"Berechnungslogik für "+analysis.label} onClick={e=>{e.stopPropagation();data.onExplain?.(id)}}><Icon name="info" size={14}/></button>}<button className="node-action nodrag" type="button" title="Knotenfilter hinzufügen" aria-label={'Filter für '+analysis.label} onClick={e=>{e.stopPropagation();onFilter?.(id)}}><Icon name="filter" size={14}/>{!!localCount&&<em>{localCount}</em>}</button>
-   {editMode&&<><button className="node-action nodrag" type="button" title="Knoten und Diagramm konfigurieren" aria-label={'Knoten '+analysis.label+' konfigurieren'} onClick={e=>{e.stopPropagation();onConfigure?.(id)}}><Icon name="settings" size={14}/></button><button className="node-action nodrag" type="button" title="Nach Dimension aufgliedern" aria-label={'Aufgliederung für '+analysis.label} onClick={e=>{e.stopPropagation();onSplit?.(id)}}><Icon name="split" size={14}/></button>{<button className="node-action nodrag" type="button" title="Knoten entfernen" aria-label={'Knoten '+analysis.label+' entfernen'} onClick={e=>{e.stopPropagation();onRemove?.(id)}}><Icon name="trash-2" size={14}/></button>}</>}
+  <header className="nxt-card-header graph-node-header">
+   <div className="nxt-card-title"><span className="node-grip" aria-hidden="true"><Icon name="grip-vertical" size={15}/></span><div><strong title={analysis.label}>{analysis.label}</strong>{dark&&<small className="root-subtitle">Ausgangspunkt</small>}</div></div>
+   <div className="node-buttons">
+    {!isNote&&<button type="button" className="node-action nodrag" title="Berechnungslogik anzeigen" aria-label={'Berechnungslogik für '+analysis.label} onClick={e=>{e.stopPropagation();data.onExplain?.(id)}}><Icon name="info" size={14}/></button>}
+    <button className="node-action nodrag" type="button" title="Knotenfilter hinzufügen" aria-label={'Filter für '+analysis.label} onClick={e=>{e.stopPropagation();onFilter?.(id)}}><Icon name="filter" size={14}/>{!!localCount&&<em>{localCount}</em>}</button>
+    {editMode&&<><button className="node-action nodrag" type="button" title="Knoten und Diagramm konfigurieren" aria-label={'Knoten '+analysis.label+' konfigurieren'} onClick={e=>{e.stopPropagation();onConfigure?.(id)}}><Icon name="settings" size={14}/></button>{!isNote&&<button className="node-action nodrag" type="button" title="Nach Dimension aufgliedern" aria-label={'Aufgliederung für '+analysis.label} onClick={e=>{e.stopPropagation();onSplit?.(id)}}><Icon name="split" size={14}/></button>}<button className="node-action nodrag" type="button" title="Knoten entfernen" aria-label={'Knoten '+analysis.label+' entfernen'} onClick={e=>{e.stopPropagation();onRemove?.(id)}}><Icon name="trash-2" size={14}/></button></>}
+   </div>
+  </header>
+  <div className={'nxt-card-body '+(graphChart||isNote?'nxt-node-scroll nodrag nowheel':'nxt-node-kpi')}>
+   {isNote?<><div className="nxt-finding-text">{analysis.description||'Freie Anmerkung'}</div>{analysis.finding&&<span className={'nxt-finding-status '+((data.findingStatus as ReturnType<typeof findingStatus>|undefined)?.state||'unverified')}>{(data.findingStatus as ReturnType<typeof findingStatus>|undefined)?.text||'Datenabgleich ausstehend'}</span>}</>:graphChart?<GraphNodeVisual data={data}/>:<><b className="node-measure">{busy?'…':mainValue==null?'–':metricFormat(chosen,mainValue)}</b><small>{data.primaryLabel||'OTIF'} · {orders==null?'Noch keine Fälle':number(orders)+' Aufträge'}</small>{data.error&&<small className="node-viz-error" role="status">{String(data.error)}</small>}</>}
   </div>
+  {(data.filterSummary||analysis.predicate)&&<footer className="nxt-card-footer">{data.filterSummary&&<small className="node-filter-summary" title={String(data.filterSummary)}>Filter: {String(data.filterSummary)}</small>}{analysis.predicate&&<small className="node-dimension" title={fieldNames?.[analysis.predicate.field]||FIELD_LABELS[analysis.predicate.field]}>{fieldNames?.[analysis.predicate.field]||FIELD_LABELS[analysis.predicate.field]}</small>}</footer>}
+  {grip}
   <Handle type="source" position={Position.Bottom} id="source" isConnectable={!!editMode} className="port" aria-label="Ausgangsverbindung"/>
  </div>;
 }
@@ -90,11 +96,13 @@ export function Palette({onAdd,onUnsupported,tab,setTab,enabled}:{onAdd:(type:Pa
 export interface CanvasProps{
  nodes:NNode[];edges:NEdge[];onNodesChange:(changes:NodeChange<NNode>[])=>void;onEdgesChange:(changes:EdgeChange<NEdge>[])=>void;onConnect:(connection:Connection,mode:'filter'|'annotation')=>void;globals:Filter[];locals:Record<string,Filter[]>;onRemoveEdge:(id:string)=>void;
  onSelect:(id:string)=>void;onSelectionClear:()=>void;selectedId:string;editMode:boolean;onEditToggle:()=>void;onFilter:(id:string)=>void;onSplit:(id:string)=>void;onRemove:(id:string)=>void;onConfigure:(id:string)=>void;onExplain:(id:string)=>void;
- onAdd:(type:PaletteType,pos:{x:number;y:number})=>void;onSave:()=>void;onReset:()=>void;onGraphMove:(node:NNode)=>void;onGraphStart:()=>void;onToggleContainer:(id:string)=>void;onUndo:()=>void;onRedo:()=>void;
+ onAdd:(type:PaletteType,pos:{x:number;y:number})=>void;onSave:()=>void;onReset:()=>void;onGraphMove:(node:NNode)=>void;onGraphStart:()=>void;onResizeCard:(id:string,size:CardSize|null)=>void;onToggleContainer:(id:string)=>void;onUndo:()=>void;onRedo:()=>void;
  onViewportChange:(v:Viewport)=>void;fieldNames:Record<FieldKey,string>;fullscreen:boolean;setFullscreen:(v:boolean)=>void;canEdit:boolean;dirty:boolean;onHelp:()=>void;
 }
-export function CanvasWithFlow({nodes,edges,onNodesChange,onEdgesChange,onConnect,globals,locals,onRemoveEdge,onSelect,onSelectionClear,selectedId,editMode,onEditToggle,onFilter,onSplit,onRemove,onConfigure,onExplain,onAdd,onSave,onReset,onGraphMove,onGraphStart,onToggleContainer,onUndo,onRedo,onViewportChange,fieldNames,fullscreen,setFullscreen,canEdit,dirty,onHelp}:CanvasProps){
+export function CanvasWithFlow({nodes,edges,onNodesChange,onEdgesChange,onConnect,globals,locals,onRemoveEdge,onSelect,onSelectionClear,selectedId,editMode,onEditToggle,onFilter,onSplit,onRemove,onConfigure,onExplain,onAdd,onSave,onReset,onGraphMove,onGraphStart,onResizeCard,onToggleContainer,onUndo,onRedo,onViewportChange,fieldNames,fullscreen,setFullscreen,canEdit,dirty,onHelp}:CanvasProps){
  const flow=useReactFlow<NNode,NEdge>();const canvasRef=useRef<HTMLDivElement>(null);const [tab,setTab]=React.useState<'builder'|'filter'>('builder');const [showPalette,setShowPalette]=React.useState(true);const [showMap,setShowMap]=React.useState(false);const [zoom,setZoom]=React.useState(100);const [tool,setTool]=React.useState<'select'|'pan'|'connect'>('select');
+ const [resizePreview,setResizePreview]=React.useState<{id:string;size:CardSize}|null>(null);
+ React.useEffect(()=>{if(!editMode)setResizePreview(null)},[editMode]);
  const [connectionMode,setConnectionMode]=React.useState<'filter'|'annotation'>('filter');
  const sensors=useSensors(useSensor(PointerSensor,{activationConstraint:{distance:8}}),useSensor(KeyboardSensor));
  const addNearCenter=(type:PaletteType)=>{const bounds=canvasRef.current?.getBoundingClientRect();if(!bounds)return;const pos=flow.screenToFlowPosition({x:bounds.left+bounds.width*.68,y:bounds.top+bounds.height*.2});onAdd(type,pos);};
@@ -111,7 +119,8 @@ export function CanvasWithFlow({nodes,edges,onNodesChange,onEdgesChange,onConnec
  };document.addEventListener('keydown',key);return()=>document.removeEventListener('keydown',key);},[fullscreen,onUndo,onRedo,setFullscreen]);
  const collapsedGroups=new Set(nodes.filter(n=>n.data.analysis.kind==='container'&&n.data.analysis.containerCollapsed).map(n=>n.id));
  const hiddenIds=new Set(nodes.filter(n=>n.data.analysis.containerId&&collapsedGroups.has(n.data.analysis.containerId)).map(n=>n.id));
- const enriched=orderedNodes(nodes).map(n=>({...containerLayout(n),hidden:hiddenIds.has(n.id),draggable:editMode,connectable:editMode,data:{...n.data,fieldNames,editMode,findingStatus:n.data.analysis.kind==='note'?findingStatus(n.data.analysis,nodes,edges,globals,locals):undefined,onFilter,onSplit,onRemove,onConfigure,onExplain,onToggleContainer,memberCount:n.data.analysis.kind==='container'?nodes.filter(x=>x.data.analysis.containerId===n.id).length:undefined}}));
+ const previewNodes=editMode&&resizePreview?resizeGraphCard(nodes,resizePreview.id,resizePreview.size):nodes;
+ const enriched=orderedNodes(previewNodes).map(n=>({...containerLayout(n),hidden:hiddenIds.has(n.id),draggable:editMode,connectable:editMode,data:{...n.data,fieldNames,editMode,resizeZoom:()=>flow.getZoom(),onResizePreview:(id:string,size:CardSize|null)=>setResizePreview(size?{id,size}:null),onResizeCard,findingStatus:n.data.analysis.kind==='note'?findingStatus(n.data.analysis,nodes,edges,globals,locals):undefined,onFilter,onSplit,onRemove,onConfigure,onExplain,onToggleContainer,memberCount:n.data.analysis.kind==='container'?nodes.filter(x=>x.data.analysis.containerId===n.id).length:undefined}}));
  const visibleEdges=edges.map(e=>({...e,hidden:hiddenIds.has(e.source)||hiddenIds.has(e.target)}));
  return <DndContext sensors={sensors} onDragEnd={onDragEnd}><div className={'canvas-stack '+(fullscreen?'fullscreen-active':'')}>
   {showPalette&&!fullscreen&&<Palette tab={tab} setTab={setTab} enabled={editMode} onAdd={addNearCenter} onUnsupported={onHelp}/>}
