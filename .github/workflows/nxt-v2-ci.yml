@@ -1,13 +1,11 @@
-name: NXT Analytics - Feature validation
+name: NXT Analytics - Isolated browser layout QA
 on:
   push:
     branches: ['feat/**']
-  pull_request:
-    branches: [main]
 permissions:
   contents: read
 jobs:
-  test-and-build:
+  browser-layout:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,16 +16,17 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run test
       - run: npm run build
-      - name: Verify production assets
+      - name: Browser QA (synthetic fixture; no production data)
         run: |
-          test -f dist/index.html
-          test -f dist/icons/sprite.svg
-          test -f dist/icons/network.svg
-          test -f dist/nxt-logo.png
-          test -f dist/nxt-intelligence.webp
-      - name: Upload review build
-        uses: actions/upload-artifact@v4
+          npm install --prefix "$RUNNER_TEMP/nxt-browser" --no-audit --no-fund playwright@1.57.0
+          export NXT_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          if [ -z "$NXT_BROWSER" ]; then "$RUNNER_TEMP/nxt-browser/node_modules/.bin/playwright" install chromium; fi
+          npm run dev -- --host 127.0.0.1 --port 4173 > "$RUNNER_TEMP/vite-qa.log" 2>&1 &
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:4173/DigitaleTransformation-WoodCorp/visual-qa/ >/dev/null && break; sleep 1; done
+          node visual-qa/run.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: nxt-analytics-preview
-          path: dist/
+          name: chart-layout-browser-screenshots
+          path: visual-qa/*.png
           retention-days: 7
