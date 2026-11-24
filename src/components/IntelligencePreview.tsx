@@ -4,18 +4,18 @@ import Icon from './Icon';
 import {DashboardRenderer} from './DashboardBuilder';
 import {analysisApi} from '../lib/supabase';
 import {effectiveFilters,filterSignature,formatFilter,conflictingFields} from '../core/filters';
-import {applyAssistantPlan,type AssistantState} from '../core/assistant';
+import {applyAssistantPlan,assistantBlockSize,type AssistantState} from '../core/assistant';
 import type {AiPlan} from '../core/assistantProtocol';
 import type {DashboardData,Ribbon} from '../core/types';
-import {worldPosition,containerSize} from '../core/graph';
+import {worldPosition} from '../core/graph';
 function Structure({state,onSelect,selected}:{state:AssistantState;onSelect:(id:string)=>void;selected:string}){
- const list=state.nodes.filter(n=>!n.data.analysis.containerId||!state.nodes.find(g=>g.id===n.data.analysis.containerId)?.data.analysis.containerCollapsed).map(n=>{const p=worldPosition(n,state.nodes),a=n.data.analysis,group=a.kind==='container',size=group?containerSize(a):{width:n.measured?.width??250,height:n.measured?.height??150};return {n,p,group,size}});
+ const list=state.nodes.filter(n=>!n.data.analysis.containerId||!state.nodes.find(g=>g.id===n.data.analysis.containerId)?.data.analysis.containerCollapsed).map(n=>{const p=worldPosition(n,state.nodes),a=n.data.analysis,group=a.kind==='container',size=assistantBlockSize(n);return {n,p,group,size}});
  const minX=Math.min(0,...list.map(x=>x.p.x))-45,minY=Math.min(0,...list.map(x=>x.p.y))-45,maxX=Math.max(400,...list.map(x=>x.p.x+x.size.width))+45,maxY=Math.max(260,...list.map(x=>x.p.y+x.size.height))+45;
  const byId=new Map(list.map(x=>[x.n.id,x]));
  return <div className="nxt-ai-structure-scroll"><svg role="img" aria-label="Vorschau des Analysepfads mit Containern und Verbindungen" viewBox={minX+' '+minY+' '+(maxX-minX)+' '+(maxY-minY)} style={{minWidth:Math.min(2400,Math.max(650,(maxX-minX)*.72)),width:'100%',display:'block'}}><defs><marker id="ai-preview-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0 0L7 3.5L0 7Z" fill="#008b92"/></marker></defs>
  {list.filter(x=>x.group).map(({n,p,size})=><g key={n.id} onClick={()=>onSelect(n.id)}><rect x={p.x} y={p.y} width={size.width} height={size.height} rx={17} fill="#e8f5f5" stroke={n.id===selected?'#00666b':'#70b9bd'} strokeWidth={2} strokeDasharray="6 4"/><text x={p.x+16} y={p.y+31} fontSize={16} fill="#00666b" fontWeight="600">{n.data.analysis.label.slice(0,48)}</text></g>)}
  {state.edges.map(e=>{const a=byId.get(e.source),b=byId.get(e.target);if(!a||!b)return null;const x1=a.p.x+a.size.width/2,y1=a.p.y+a.size.height,x2=b.p.x+b.size.width/2,y2=b.p.y;return <path key={e.id} d={'M'+x1+' '+y1+' C'+x1+' '+(y1+45)+' '+x2+' '+(y2-45)+' '+x2+' '+y2} stroke="#008b92" strokeWidth={2.4} fill="none" markerEnd="url(#ai-preview-arrow)"/>})}
- {list.filter(x=>!x.group).map(({n,p,size})=><g key={n.id} onClick={()=>onSelect(n.id)} tabIndex={0} role="button" aria-label={'Dashboard '+n.data.analysis.label+' öffnen'} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();onSelect(n.id)}}} style={{cursor:'pointer'}}><rect x={p.x} y={p.y} width={size.width} height={size.height} rx={12} fill="white" stroke={n.id===selected?'#008b92':'#bdd5d6'} strokeWidth={n.id===selected?3:1.5}/><text x={p.x+14} y={p.y+28} fontSize={14} fontWeight="600" fill="#163338">{n.data.analysis.label.slice(0,Math.floor((size.width-20)/7))}</text><text x={p.x+14} y={p.y+54} fontSize={12} fill="#526b70">{state.dashboards[n.id]?.widgets.length||0} Dashboard-Blöcke</text></g>)}
+ {list.filter(x=>!x.group).map(({n,p,size})=><g key={n.id} onClick={()=>onSelect(n.id)} tabIndex={0} role="button" aria-label={'Dashboard '+n.data.analysis.label+' öffnen'} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();onSelect(n.id)}}} style={{cursor:'pointer'}}><rect x={p.x} y={p.y} width={size.width} height={size.height} rx={12} fill="white" stroke={n.id===selected?'#008b92':'#bdd5d6'} strokeWidth={n.id===selected?3:1.5}/><text x={p.x+14} y={p.y+28} fontSize={14} fontWeight="600" fill="#163338">{n.data.analysis.label.slice(0,Math.floor((size.width-20)/7))}</text><text x={p.x+14} y={p.y+54} fontSize={12} fill="#526b70">{n.data.analysis.visualization||'kpi'} · {state.dashboards[n.id]?.widgets.length||0} Dashboard-Blöcke</text></g>)}
  </svg></div>;
 }
 const blank:DashboardData={metrics:null,trend:[],breakdown:[],pending:true,error:null};

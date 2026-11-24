@@ -1,5 +1,5 @@
 import {createClient} from "npm:@supabase/supabase-js@2.119.0";
-import {PLAN_SCHEMA,validatePlan,KNOWLEDGE_VERSION,AI_DIMENSIONS} from "./protocol.ts";
+import {PLAN_SCHEMA,validatePlan,KNOWLEDGE_VERSION,AI_DIMENSIONS,AI_METRICS,AI_WIDGET_TYPES,AI_CANVAS_TYPES,AI_INTERVAL_KEYS} from "./protocol.ts";
 import {MASTER_PLAYBOOK} from "./knowledge.ts";
 import {bedrockConfig,requestBedrock,BedrockError,BEDROCK_MODEL,BEDROCK_REGION,BEDROCK_MODELS,MODEL_LABELS,validModel} from "./bedrock.ts";
 const url=Deno.env.get("SUPABASE_URL")!;
@@ -86,7 +86,7 @@ Deno.serve(async(req)=>{
   // Validate and minimize context. Selected node and IDs are logical references, never executable SQL.
   const nodes=context.nodes.map((n:any)=>{
    if(!n||!isString(n.id,180)||!isString(n.label,100)||!["root","segment","metric","note","condition","container"].includes(n.kind)||!Array.isArray(n.widgets)||n.widgets.length>24)throw Error("Ungültiger Knoten.");
-   return {id:n.id,label:n.label,kind:n.kind,metric:cleanText(n.metric,50),visualization:cleanText(n.visualization,40),containerId:cleanText(n.containerId,180),description:cleanText(n.description,240),question:cleanText(n.question,700),localFilters:modelFilters(n.localFilters),widgets:n.widgets.map((w:any)=>({id:cleanText(w?.id,120),type:cleanText(w?.type,40),title:cleanText(w?.title,100),metric:cleanText(w?.metric,50),dimension:cleanText(w?.dimension,50),compareDimension:cleanText(w?.compareDimension,50)}))};
+   return {id:n.id,label:n.label,kind:n.kind,metric:cleanText(n.metric,50),visualization:cleanText(n.visualization,40),chartDimension:cleanText(n.chartDimension,50),intervalKey:cleanText(n.intervalKey,50),containerCollapsed:n.containerCollapsed===true,containerId:cleanText(n.containerId,180),description:cleanText(n.description,240),question:cleanText(n.question,700),localFilters:modelFilters(n.localFilters),widgets:n.widgets.map((w:any)=>({id:cleanText(w?.id,120),type:cleanText(w?.type,40),title:cleanText(w?.title,100),metric:cleanText(w?.metric,50),dimension:cleanText(w?.dimension,50),compareDimension:cleanText(w?.compareDimension,50),width:w?.width==='half'?'half':'full',target:safeNumber(w?.target),intervalKey:cleanText(w?.intervalKey,50),distributionMeasure:cleanText(w?.distributionMeasure,50)}))};
   });
   const ids=nodes.map((n:any)=>n.id);if(new Set(ids).size!==ids.length||!ids.includes(context.selectedId))return response({error:"Ausgewählter Knoten nicht vorhanden."},400,origin);
   const edges=context.edges.map((e:any)=>({source:e?.source,target:e?.target})).filter((e:any)=>ids.includes(e.source)&&ids.includes(e.target));
@@ -104,8 +104,8 @@ Deno.serve(async(req)=>{
   const metricsResult=await client.rpc("nxt_case_metrics",{p_filters:filters});
   if(metricsResult.error)return response({error:"Der aktuelle Filterkontext konnte nicht berechnet werden."},400,origin);
   const m=metricsResult.data;
-  const metricKeys=["orders","otifRate","onTimeRate","volumeConformanceRate","otifCases","dateCoverage","volumeCoverage","otifCoverage","lateOrders","avgDelayDays","totalPenaltyEur","latePenaltyEur","shortfallPenaltyEur","kgEligibleCases","kgExcludedCases","unclassifiedCases"];
-  const evidence:Record<string,unknown>={source:"nxt_case_metrics",scope:"selected node effective filters",metrics:m?.orders>=5?Object.fromEntries(metricKeys.map(k=>[k,safeNumber(m?.[k])])):{suppressed:"Weniger als fünf Aufträge oder keine Daten."}};
+  const metricKeys=["orders","otifRate","onTimeRate","volumeConformanceRate","otifCases","onTimeCases","inFullCases","onTimeNotFullCases","lateInFullCases","lateNotFullCases","affectedFactories","dateCoverage","volumeCoverage","otifCoverage","lateOrders","avgDelayDays","totalPenaltyEur","latePenaltyEur","shortfallPenaltyEur","kgEligibleCases","kgExcludedCases","unclassifiedCases"];
+  const evidence:Record<string,unknown>={source:"nxt_case_metrics",scope:"selected node effective filters",segmentPolicy:"At most 12 displayed groups per dimension, ordered by modeled total penalty; groups with fewer than five cases omitted; not exhaustive",metrics:m?.orders>=5?Object.fromEntries(metricKeys.map(k=>[k,safeNumber(m?.[k])])):{suppressed:"Weniger als fünf Aufträge oder keine Daten."}};
   if(m?.orders>=5){
    const dims=["factory","product_type","delivery_company"].filter(x=>fields.includes(x));
    const results=await Promise.allSettled(dims.map(p_field=>client.rpc("nxt_chart_segments",{p_field,p_filters:filters})));
@@ -120,9 +120,11 @@ Deno.serve(async(req)=>{
    }
   }
   const history=Array.isArray(body.history)?body.history.slice(-8).filter((x:any)=>["user","assistant"].includes(x?.role)&&isString(x.text,1600)).map((x:any)=>({role:x.role,text:x.text})):[];
-  const modelContext={workspaceTitle,selectedId:context.selectedId,nodes,edges,canEdit,allowedFields:fields,globalFilters:modelFilters(context.globalFilters),filters:modelFilters(filters),evidence,history,question:body.prompt};
+  const graphFormat=context.graphFormat===2?2:1;
+  const modelContext={workspaceTitle,selectedId:context.selectedId,nodes,edges,canEdit,allowedFields:fields,capabilities:{graphFormat,metrics:AI_METRICS,dashboardWidgets:AI_WIDGET_TYPES,canvasVisuals:graphFormat===2?AI_CANVAS_TYPES:['kpi'],intervalKeys:AI_INTERVAL_KEYS,maxActions:30,maxWidgetsPerNode:24,maxNodes:300,maxEdges:400},globalFilters:modelFilters(context.globalFilters),filters:modelFilters(filters),redactedEffectiveFilterCount:filters.length-modelFilters(filters).length,evidence,history,question:body.prompt};
   const {plan:parsed}=await requestBedrock(provider,MASTER_PLAYBOOK,modelContext,PLAN_SCHEMA);
   const plan=validatePlan(parsed,ids,fields,canEdit);
+  if(graphFormat!==2&&plan.operations.some(o=>(o.kind==='add_branch'&&o.widgetType&&o.widgetType!=='kpi')||(o.kind==='add_container'&&o.value==='standalone')))return response({error:'Bitte die Website neu laden, um neue Canvas-Visualisierungen zu verwenden.'},409,origin);
   return response(plan,200,origin);
  }catch(e){if(e instanceof BedrockError)return response({error:e.message},e.status,origin);if(e instanceof Error&&e.message==="KI-Verwaltung nicht verfügbar.")return response({error:e.message},503,origin);return response({error:e instanceof Error&&/Ungültig|Unbekannt|Dimension|Zielwert|Filter|Widget|Knoten|lesbar|Kennzahl/.test(e.message)?e.message:"Die Anfrage konnte nicht sicher verarbeitet werden."},400,origin)}
 });
