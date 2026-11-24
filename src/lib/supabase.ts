@@ -1,10 +1,11 @@
+import {SEGMENT_METRIC_KEYS,segmentMetric,type RootCauseMetric} from '../core/rootCauseMetrics';
 import {createClient} from '@supabase/supabase-js';
 import {PROJECT,type FieldKey} from '../config';
 import {toBackend} from '../core/filters';
 import type {Filter,Metrics,Ribbon,BreakdownRow,TrendRow,CalculationTemplate,CalculatedMetric} from '../core/types';
 import {validateRate} from '../core/calculations';
 import type {E02Summary,E02IntervalKey,E02DistributionBucket} from '../core/processIntervals';
-export type SegmentStats={
+export type SegmentStats=Partial<Record<RootCauseMetric,number|null>> & {
  label:string|null;orders:number;otif_cases:number;on_time_not_full_cases:number;
  late_in_full_cases:number;late_not_full_cases:number;unknown_cases:number;late_orders:number;
  otif_rate:number|null;on_time_rate:number|null;volume_rate:number|null;
@@ -65,7 +66,7 @@ export const analysisApi={
   return {...m,deliveryDateCount:m.dateCoverage??0} as Ribbon;
  },
  breakdown:(field:FieldKey,filters:Filter[])=>request<BreakdownRow[]>('nxt_breakdown',{p_field:field,...normalized(filters)}),
- trend:(filters:Filter[])=>request<TrendRow[]>('nxt_monthly',normalized(filters)),
+ trend:async(filters:Filter[]):Promise<TrendRow[]>=>{const rows=await request<SegmentStats[]>('nxt_chart_segments',{p_field:'delivery_month',...normalized(filters)});return rows.filter(r=>r.label!=null).map(r=>({month:r.label!,orders:r.orders,on_time_rate:r.on_time_rate,values:Object.fromEntries(SEGMENT_METRIC_KEYS.map(k=>[k,segmentMetric(r,k)]))})).sort((a,b)=>a.month.localeCompare(b.month));},
  dimensions:()=>request<Record<FieldKey,string[]>>('nxt_dimensions',{},10*60_000),
  calculated:(template:CalculationTemplate,filters:Filter[],rate?:number)=>request<CalculatedMetric>('nxt_calculated_metric',
    {p_template:template,...normalized(filters),p_rate_eur_per_kg:validateRate(template,rate)}),

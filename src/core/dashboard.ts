@@ -1,10 +1,11 @@
+import {ROOT_CAUSE_LABELS,ROOT_CAUSE_METRICS,formatRootCauseMetric,type RootCauseMetric} from './rootCauseMetrics';
 import {FIELDS,type FieldKey} from '../config';
 import {validE02Key,type E02IntervalKey} from './processIntervals';
 import {cleanDraft,type NNode,type NEdge} from './graph';
 import type {SavedDraft,Filter,Metrics,Ribbon} from './types';
 
 export type WidgetType='kpi'|'line'|'bar'|'table'|'donut'|'text'|'bar_horizontal'|'bar_vertical'|'stacked'|'stacked100'|'heatmap'|'pareto'|'scatter'|'waterfall'|'bullet'|'histogram'|'treemap'|'funnel'|'e02_overview'|'e02_compare'|'e02_quality'|'e02_distribution';
-export type MetricKey='orders'|'otifRate'|'onTimeRate'|'volumeConformanceRate'|'otifCases'|'lateOrders'|'avgDelayDays'|'affectedFactories'|'totalPenaltyEur'|'latePenaltyEur'|'shortfallPenaltyEur';
+export type MetricKey='orders'|'otifRate'|'onTimeRate'|'volumeConformanceRate'|'otifCases'|'lateOrders'|'avgDelayDays'|'affectedFactories'|'totalPenaltyEur'|'latePenaltyEur'|'shortfallPenaltyEur'|RootCauseMetric;
 export type Width='half'|'full';
 export type DashboardWidget={
  id:string;type:WidgetType;title:string;width:Width;
@@ -14,7 +15,7 @@ export type NodeDashboard={question:string;widgets:DashboardWidget[]};
 export type WorkspaceDocument={version:3;graph:SavedDraft;globalFilters:Filter[];dashboards:Record<string,NodeDashboard>;metricNames?:Partial<Record<MetricKey,string>>};
 
 export const METRIC_LABELS:Record<MetricKey,string>={
- orders:'Aufträge',otifRate:'OTIF · On Time In Full',onTimeRate:'On-Time Delivery',volumeConformanceRate:'Mengenkonformität',otifCases:'OTIF-Aufträge',lateOrders:'Verspätete Aufträge',avgDelayDays:'Ø Lieferverzug',affectedFactories:'Betroffene Werke',totalPenaltyEur:'Berechnete Vertragsstrafe',latePenaltyEur:'Verspätungsstrafe',shortfallPenaltyEur:'Unterlieferungsstrafe'
+ orders:'Aufträge',otifRate:'OTIF · On Time In Full',onTimeRate:'On-Time Delivery',volumeConformanceRate:'Mengenkonformität',otifCases:'OTIF-Aufträge',lateOrders:'Verspätete Aufträge',avgDelayDays:'Ø Lieferverzug',affectedFactories:'Betroffene Werke',totalPenaltyEur:'Berechnete Vertragsstrafe',latePenaltyEur:'Verspätungsstrafe',shortfallPenaltyEur:'Unterlieferungsstrafe',...ROOT_CAUSE_LABELS
 };
 export const WIDGET_LABELS:Record<WidgetType,string>={
  kpi:'KPI-Karte',line:'Zeitreihe',bar:'Balkendiagramm',table:'Datentabelle',donut:'Donutdiagramm',text:'Text / Forschungsfrage',
@@ -122,6 +123,7 @@ export function metricValue(metric:MetricKey,m:Metrics|null,r:Ribbon|null|undefi
 export function metricFormat(metric:MetricKey,value:number|null):string{
  if(value==null||!Number.isFinite(value))return '–';
  const number=(n:number,digits:number)=>n.toLocaleString('de-DE',{minimumFractionDigits:digits,maximumFractionDigits:digits});
+ if(Object.prototype.hasOwnProperty.call(ROOT_CAUSE_METRICS,metric))return formatRootCauseMetric(metric as RootCauseMetric,value);
  if(['onTimeRate','volumeConformanceRate','otifRate'].includes(metric))return number(value,1)+' %';
  if(metric==='avgDelayDays')return number(value,1)+' Tage';
  if(metric.endsWith('PenaltyEur'))return number(value,2)+' €';

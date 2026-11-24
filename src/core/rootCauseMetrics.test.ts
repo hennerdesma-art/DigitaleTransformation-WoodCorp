@@ -1,0 +1,6 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {ROOT_CAUSE_KEYS,segmentMetric,scenarioSavings} from './rootCauseMetrics';
+import {METRIC_LABELS,metricFormat} from './dashboard';import {KPI_DEFINITIONS} from './kpiDefinitions';import {makeFilter} from './filters';
+test('root-cause metrics have unique keys, definitions and truthful units',()=>{assert.equal(new Set(ROOT_CAUSE_KEYS).size,ROOT_CAUSE_KEYS.length);for(const k of ROOT_CAUSE_KEYS){assert.ok(METRIC_LABELS[k]);assert.ok(KPI_DEFINITIONS[k]);}assert.equal(metricFormat('penaltyPerKgEur',0.2739),'0,2739 €/kg');assert.equal(segmentMetric({otif_rate:null},'otifRate'),null);assert.equal(segmentMetric({overDeliveryRate:36.84},'overDeliveryRate'),36.84)});
+test('typed root-cause filters',()=>{assert.equal(makeFilter('credit_block','Ja').op,'eq');assert.equal(makeFilter('production_days',['0','20'],'local','between').op,'between');assert.throws(()=>makeFilter('production_days','Ja'));assert.equal(makeFilter('order_received_date','2018-01-01').field,'order_received_date')});
+test('scenario combines each distinct penalty component once',()=>{assert.deepEqual(scenarioSavings(1000,200,10,50),{saved:200,remaining:1000});assert.throws(()=>scenarioSavings(1000,200,101,50))});
