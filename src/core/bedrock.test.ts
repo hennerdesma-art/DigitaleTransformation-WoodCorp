@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {bedrockConfig,bedrockSchema,requestBedrock,BedrockError,BEDROCK_MODEL,BEDROCK_REGION} from '../../supabase/functions/nxt-intelligence/bedrock';
+import {bedrockConfig,bedrockSchema,requestBedrock,BedrockError,BEDROCK_MODEL,BEDROCK_REGION,BEDROCK_MAX_OUTPUT_TOKENS} from '../../supabase/functions/nxt-intelligence/bedrock';
 import {PLAN_SCHEMA,validatePlan,action} from './assistantProtocol';
 const env:Record<string,string>={AWS_REGION:BEDROCK_REGION,NXT_AI_MODEL:BEDROCK_MODEL,NXT_AI_PROVIDER:'bedrock',AWS_BEARER_TOKEN_BEDROCK:'synthetic-test-token'};
 const cfg=bedrockConfig(k=>env[k])!;
@@ -11,7 +11,7 @@ test('Converse request uses bearer auth and strict structured output; validates 
  const mock:typeof fetch=async(url,init)=>{
   assert.equal(url,'https://bedrock-runtime.eu-central-1.amazonaws.com/model/eu.anthropic.claude-sonnet-4-6/converse');
   assert.equal(new Headers(init?.headers).get('Authorization'),'Bearer synthetic-test-token');
-  const body=JSON.parse(String(init?.body));assert.equal(body.outputConfig.textFormat.type,'json_schema');assert.equal(body.inferenceConfig.maxTokens,3600);assert.deepEqual(JSON.parse(body.outputConfig.textFormat.structure.jsonSchema.schema),bedrockSchema(PLAN_SCHEMA));
+  const body=JSON.parse(String(init?.body));assert.equal(body.outputConfig.textFormat.type,'json_schema');assert.equal(body.inferenceConfig.maxTokens,8192);assert.equal(BEDROCK_MAX_OUTPUT_TOKENS,8192);assert.deepEqual(JSON.parse(body.outputConfig.textFormat.structure.jsonSchema.schema),bedrockSchema(PLAN_SCHEMA));
   assert.equal(init?.redirect,'error');return new Response(JSON.stringify({stopReason:'end_turn',output:{message:{content:[{text:JSON.stringify(expected)}]}},usage:{inputTokens:100,outputTokens:30}}),{status:200});
  };
  const got=await requestBedrock(cfg,'Synthetic instructions',{question:'test'},PLAN_SCHEMA,mock);
@@ -27,4 +27,11 @@ test('HTTP, truncated, malformed and unauthorized replies fail safely',async()=>
  const invalid:typeof fetch=async()=>new Response(JSON.stringify({stopReason:'end_turn',output:{message:{content:[{text:'not JSON'}]}}}));
  await assert.rejects(requestBedrock(cfg,'x',{},PLAN_SCHEMA,invalid),BedrockError);
  await assert.rejects(requestBedrock({...cfg,region:'us-east-1'},'x',{},PLAN_SCHEMA,invalid),BedrockError);
+});
+
+test('max_tokens and safety stop reasons are distinct; incomplete plans never accepted',async()=>{
+ for(const [reason,pattern] of [['max_tokens',/Antwortbudget ausgeschöpft/],['model_context_window_exceeded',/Kontextgrenze/],['content_filtered',/Sicherheitsprüfung/],['tool_use',/Kein vollständiger/]] as const){
+  let calls=0;const mock:typeof fetch=async()=>{calls++;return new Response(JSON.stringify({stopReason:reason,output:{message:{content:[{text:JSON.stringify({answer:'x',operations:[]})}]}},usage:{outputTokens:8192}}))};
+  await assert.rejects(requestBedrock(cfg,'x',{},PLAN_SCHEMA,mock),e=>e instanceof BedrockError&&pattern.test(e.message));assert.equal(calls,1);
+ }
 });

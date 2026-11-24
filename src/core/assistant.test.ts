@@ -40,7 +40,7 @@ import {KNOWLEDGE_VERSION} from './assistantProtocol';
 test('live prompt examples execute as one connected group and separate canvas charts',()=>{
  const s=state();const plan={...PLAYBOOK_EXAMPLES.grouped,operations:PLAYBOOK_EXAMPLES.grouped.operations.map(o=>({...o,target:o.target==='example:root'?'root':o.target}))};
  const next=applyAssistantPlan(s,validatePlan(plan,['root'],s.allowedFields));const group=next.nodes.find(n=>n.data.analysis.kind==='container')!;const members=next.nodes.filter(n=>n.data.analysis.containerId===group.id);
- assert.equal(next.edges.length,1);assert.equal(next.edges[0].target,group.id);assert.deepEqual(members.map(n=>n.data.analysis.visualization),['line','heatmap']);assert.notEqual(members[0].position.x,members[1].position.x);assert.equal(members[0].position.y,members[1].position.y);assert.equal(s.nodes.length,1);assert.equal(KNOWLEDGE_VERSION,'nxt-ai-v1.2.2');assert.match(MASTER_PLAYBOOK,/STANDARD WORKFLOW/);
+ assert.equal(next.edges.length,1);assert.equal(next.edges[0].target,group.id);assert.deepEqual(members.map(n=>n.data.analysis.visualization),['line','heatmap']);assert.notEqual(members[0].position.x,members[1].position.x);assert.equal(members[0].position.y,members[1].position.y);assert.equal(s.nodes.length,1);assert.equal(KNOWLEDGE_VERSION,'nxt-ai-v1.2.3');assert.match(MASTER_PLAYBOOK,/STANDARD WORKFLOW/);
 });
 test('standalone container inherits global, not anchor local filters; no visible links',()=>{
  const s=state();s.globals=[{id:'g',field:'delivery_year',op:'eq',value:'2018'}];s.locals.root=[{id:'f',field:'factory',op:'eq',value:'Essen'}];
@@ -107,3 +107,15 @@ test('downstream group from member retains private member filters',()=>{
  assert.deepEqual(effectiveFilters([],next.nodes.map(n=>n.data.analysis),next.locals,b.id,next.edges).map(f=>f.value),['Essen']);
 });
 test('reported extension request is an explicit build_path intent',()=>{assert.equal(resolveAssistantIntent('kannst du eine weitere analyse tätigen und den thinking path weiter ausbauen. ich möchte wissen was der größte treiber der unkosten der vertragsstrafen sind.'),'build_path');assert.equal(resolveAssistantIntent('Wie kann ich den Thinking Path weiter ausbauen?'),'auto');});
+
+import {AI_PROMPT_LIMIT,AI_HISTORY_LIMIT,assistantPromptProblem,boundedAssistantHistory} from './assistantProtocol';
+test('long analysis prompts retain all requested stages and reject excess instead of clipping',()=>{
+ const long='Erstelle einen neuen Thinking Path. '+('Forschungsfrage, Ergebnisse und nächste Untersuchung. '.repeat(55))+' Abschließend Handlungsempfehlungen.';
+ assert.ok(long.length>1600);assert.ok(long.length<AI_PROMPT_LIMIT);
+ assert.equal(assistantPromptProblem(long),null);assert.equal(resolveAssistantIntent(long),'build_path');
+ assert.equal(boundedAssistantHistory(long),long);
+ assert.equal(assistantPromptProblem('x'.repeat(AI_PROMPT_LIMIT)),null);
+ assert.match(assistantPromptProblem('x'.repeat(AI_PROMPT_LIMIT+1))||'',/nichts abgeschnitten/);
+ assert.ok(assistantPromptProblem('  '));
+ const clipped=boundedAssistantHistory('x'.repeat(AI_HISTORY_LIMIT+100));assert.ok(clipped.length<=AI_HISTORY_LIMIT);assert.match(clipped,/Älterer Chatkontext gekürzt/);
+});

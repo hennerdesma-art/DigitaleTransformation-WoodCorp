@@ -1,6 +1,7 @@
 /** Amazon Bedrock Converse adapter. Only the approved EU inference profile is accepted.
  * This module has no access to browser state or Supabase service credentials.
  */
+export const BEDROCK_MAX_OUTPUT_TOKENS=8192;
 export const BEDROCK_REGION='eu-central-1';
 export const BEDROCK_MODEL='eu.anthropic.claude-sonnet-4-6';
 export const BEDROCK_MODELS=[BEDROCK_MODEL,'eu.anthropic.claude-opus-4-6-v1'] as const;
@@ -34,15 +35,18 @@ export function bedrockSchema(schema:unknown):unknown{
  }
  return out;
 }
-export async function requestBedrock(config:BedrockConfig,instructions:string,input:unknown,schema:unknown,fetcher:typeof fetch=fetch,timeout=110000){
+export async function requestBedrock(config:BedrockConfig,instructions:string,input:unknown,schema:unknown,fetcher:typeof fetch=fetch,timeout=120000){
  if(config.region!==BEDROCK_REGION||!validModel(config.model)||!config.token)throw new BedrockError('Amazon Bedrock ist nicht konfiguriert.',503);
- const payload={system:[{text:instructions}],messages:[{role:'user',content:[{text:JSON.stringify(input)}]}],inferenceConfig:{maxTokens:3600,temperature:0.2},outputConfig:{textFormat:{type:'json_schema',structure:{jsonSchema:{name:'nxt_analysis_plan',schema:JSON.stringify(bedrockSchema(schema)),description:'NXT answer and validated workspace operations'}}}}};
+ const payload={system:[{text:instructions}],messages:[{role:'user',content:[{text:JSON.stringify(input)}]}],inferenceConfig:{maxTokens:BEDROCK_MAX_OUTPUT_TOKENS,temperature:0.2},outputConfig:{textFormat:{type:'json_schema',structure:{jsonSchema:{name:'nxt_analysis_plan',schema:JSON.stringify(bedrockSchema(schema)),description:'NXT answer and validated workspace operations'}}}}};
  let res:Response;
  try{res=await fetcher('https://bedrock-runtime.'+config.region+'.amazonaws.com/model/'+encodeURIComponent(config.model)+'/converse',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+config.token},body:JSON.stringify(payload),signal:AbortSignal.timeout(timeout),redirect:'error'})}
  catch{throw new BedrockError('Amazon Bedrock: Anfrage hat das Zeitlimit überschritten oder der Dienst ist nicht erreichbar.',504)}
  if(!res.ok)throw providerError(res.status);
  let body:any;try{body=await res.json()}catch{throw new BedrockError('Amazon Bedrock: Ungültige Antwort.',502)}
- if(body.stopReason!=='end_turn')throw new BedrockError('Amazon Bedrock: Antwort nicht vollständig. Bitte Anfrage eingrenzen.',502);
+ if(body.stopReason==='max_tokens')throw new BedrockError('Amazon Bedrock: Antwortbudget ausgeschöpft (8.192 Tokens). Keine Änderungen übernommen. Die Anfrage bleibt zum Bearbeiten erhalten. Bitte eine in sich abgeschlossene Analyseetappe mit ca. 12–18 Aktionen anfordern.',422);
+ if(body.stopReason==='model_context_window_exceeded')throw new BedrockError('Amazon Bedrock: Kontextgrenze erreicht. Bitte in diesem Workspace einen neuen Chat starten. Keine Änderungen übernommen.',422);
+ if(body.stopReason==='guardrail_intervened'||body.stopReason==='content_filtered')throw new BedrockError('Amazon Bedrock: Antwort durch Sicherheitsprüfung gestoppt. Keine Änderungen übernommen.',422);
+ if(body.stopReason!=='end_turn')throw new BedrockError('Amazon Bedrock: Kein vollständiger, abschließender Vorschlag. Keine Änderungen übernommen; Anfrage kann bearbeitet und erneut gesendet werden.',502);
  const content=body.output?.message?.content;
  if(!Array.isArray(content))throw new BedrockError('Amazon Bedrock: Keine verwertbare Antwort.',502);
  const text=content.map((part:any)=>typeof part?.text==='string'?part.text:'').join('');

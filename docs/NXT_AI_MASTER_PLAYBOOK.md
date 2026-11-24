@@ -1,4 +1,4 @@
-# NXT AI Master Playbook v1.2.2
+# NXT AI Master Playbook v1.2.3
 
 ## Purpose
 NXT Intelligence is a context-aware workspace copilot: explain selected blocks, propose changes, build a reproducible investigation path. Always preserve validated WoodCorp measures and NXT design. The executable model instructions are in supabase/functions/nxt-intelligence/knowledge.ts, versioned alongside the allowed action schema.
@@ -93,3 +93,6 @@ The shared classifier recognizes direct German/English creation commands and exp
 
 ## v1.2.2 – Kosten-Drilldown und verkettete Container
 A connected add_container targeting another group always creates a separate top-level container with a directed analytical edge, not a nested layout object. This preserves the source group's effective common context and excludes private sibling filters. Target the member itself when private member filters must propagate. Existing manual groups and positions are preserved; standalone retains its explicit global-only meaning. The build classifier recognizes polite extension requests. For cost prompts the existing authenticated chart RPC is called at most four additional times, once per eligible product, to produce ranked joint factory × product type × delivery company cost cells. Suppression, missing categories, incomplete coverage and truncation are explicitly marked; no raw rows, no new database schema or quota changes. No causal attribution or unsupported person/SKU-level claims.
+
+## v1.2.3 – Long requests and complete proposals
+The current prompt limit is shared between browser and server (6000 characters); no silent truncation. Older chat messages are bounded to 6000 characters with an explicit truncation marker. Bedrock's maxTokens is 8192 and timeout 120 seconds; the 30-operation validation limit, existing quotas, permissions, data scope, and schema remain unchanged. For broad requests prefer a complete 12–18-action stage, with a concrete next-node/question instruction. Token-limit, context-limit, safety stop, and other incomplete responses are distinguished, and no partial plan is applied. Failed requests restore the draft if the user has not entered a new draft. No automatic model retry; further stages require explicit user action and count against quota. Larger responses can cost more.
