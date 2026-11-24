@@ -133,3 +133,5 @@
 .nxt-finding-text{white-space:pre-wrap;overflow-wrap:anywhere;max-height:190px;overflow:auto;display:block;line-height:1.4!important}
 .nxt-finding-status{display:block;font-size:10px;border-radius:5px;padding:4px 6px;background:#e5eeee;color:#335b60;white-space:normal}
 .nxt-finding-status.stale{background:#fff0db;color:#80470a}.nxt-finding-status.current{background:#dcf0ed;color:#17665e}
+
+.nxt-finding-body{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;line-height:1.55}.graph-node .nxt-finding-text{white-space:pre-wrap!important;overflow-wrap:anywhere!important}

@@ -1,7 +1,7 @@
 import type {AnalysisNode,Filter,FindingStamp,Metrics} from './types';
 import type {NNode,NEdge} from './graph';
 import {effectiveFilters,filterSignature} from './filters';
-export const metricFingerprint=(m:Metrics|null|undefined)=>m?JSON.stringify(Object.entries(m).filter(([k])=>k!=='firstDelivery'&&k!=='lastDelivery').sort(([a],[b])=>a.localeCompare(b))):null;
+export const metricFingerprint=(m:Metrics|null|undefined)=>m?JSON.stringify(Object.entries(m).sort(([a],[b])=>a.localeCompare(b))):null;
 export function findingStamp(sourceId:string,nodes:NNode[],edges:NEdge[],globals:Filter[],locals:Record<string,Filter[]>):FindingStamp{
  const source=nodes.find(n=>n.id===sourceId);
  if(!source||source.data.analysis.kind==='note')throw Error('Bitte einen gültigen Analyseblock als Quelle wählen.');

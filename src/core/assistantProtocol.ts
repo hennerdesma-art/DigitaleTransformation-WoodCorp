@@ -141,6 +141,7 @@ export function validatePlan(input:unknown,existingIds:string[],allowedFields:st
    if(!str(op.label,700))throw Error('Forschungsfrage fehlt.');
   }else if(op.kind==='add_widget'){
    if(!isOne(AI_WIDGET_TYPES,op.widgetType)||!str(op.label,100))throw Error('Widgettyp oder Titel ungültig.');
+   if(op.widgetType==='heatmap'&&[op.dimension,op.compareDimension].some(d=>d&&!['factory','product_type','delivery_company','cust_market','cust_country','warehouse_type'].includes(d)))throw Error('Heatmap-Dimension nicht unterstützt.');
    if(op.widgetType==='bullet'&&op.targetValue==null)throw Error('Zielwert ausdrücklich angeben.');
    if(op.widgetType==='bullet'&&op.metric&&!['otifRate','onTimeRate','volumeConformanceRate'].includes(op.metric))throw Error('Bullet benötigt eine Prozent-Kennzahl.');
    if(['bar','line','bar_horizontal','bar_vertical'].includes(op.widgetType||'')&&op.metric&&!isOne(AI_SEGMENT_METRICS,op.metric))throw Error('Kennzahl für Segmentvergleich nicht unterstützt.');

@@ -215,8 +215,8 @@ export function actionLabel(op:AiAction,labels:Record<string,string>){
   case 'rename_node':return t+' → „'+op.label+'“';
   case 'set_question':return 'Forschungsfrage in '+t+': '+op.label;
   case 'add_filter':return 'Filter '+op.field+' '+(op.widgetType||'=')+' '+op.value+' auf '+t;
-  case 'add_finding':return 'Finding „'+op.label+'“ mit Bezug auf '+t+' erstellen';
-  case 'edit_finding':return 'Finding „'+t+'“ aktualisieren';
+  case 'add_finding':return 'Finding „'+op.label+'“ mit Bezug auf '+t+': '+op.value;
+  case 'edit_finding':return 'Finding „'+t+'“ aktualisieren: '+op.value;
   case 'add_reference':return 'Referenz von '+t+' zu '+(labels[op.value||'']||op.value)+' (ohne Filtervererbung)';
   case 'remove_widget':return 'Widget '+(labels[op.widgetId||'']||op.widgetId)+' aus '+t+' entfernen';
   case 'rename_widget':return 'Widget in '+t+' umbenennen: '+op.label;
