@@ -1,4 +1,5 @@
 import React,{useEffect,useMemo,useState} from 'react';
+import {InteractiveBars,CostScenario} from './InteractiveCharts';
 import {analysisApi,type SegmentStats,type HeatmapCell,type DistributionBucket} from '../lib/supabase';
 import type {Filter,DashboardData} from '../core/types';
 import {metricFormat,type DashboardWidget,type MetricKey,type WidgetType} from '../core/dashboard';
@@ -123,7 +124,7 @@ function Heatmap({cells}:{cells:HeatmapCell[]}){
 }
 function Pareto({rows}:{rows:SegmentStats[]}){
  const data=[...rows].filter(r=>r.label&&val(r.total_penalty_eur)>0).sort((a,b)=>val(b.total_penalty_eur)-val(a.total_penalty_eur)).slice(0,12);
- const total=data.reduce((s,r)=>s+val(r.total_penalty_eur),0),max=Math.max(1,...data.map(r=>val(r.total_penalty_eur)));
+ const total=rows.reduce((s,r)=>s+val(r.total_penalty_eur),0),max=Math.max(1,...data.map(r=>val(r.total_penalty_eur)));
  if(!data.length)return <p className="widget-empty">Keine Kostenanteile für diese Auswahl.</p>;
  let sum=0;
  const cum=data.map(r=>{sum+=val(r.total_penalty_eur);return sum/Math.max(1,total)*100});
@@ -135,7 +136,7 @@ function Pareto({rows}:{rows:SegmentStats[]}){
    <polyline points={coords} fill="none" stroke="#B25558" strokeWidth="2.6" strokeLinejoin="round"/>
    {data.map((r,i)=><text key={i} x={26+i*520/data.length+240/data.length} y="222" textAnchor="middle" fontSize="9" fill="#315257">{String(r.label).slice(0,7)}</text>)}
   </svg>
-  <p className="nxt-chart-note">Balken: modellierte Strafgebühren (0,75 €/kg). Linie: kumulierter Anteil. Die Gesamtsumme kann Aufträge mit mehreren Kostenkomponenten enthalten.</p>
+  <p className="nxt-chart-note">Balken: modellierte Strafgebühren (0,75 €/kg). Linie: kumulierter Anteil an allen Segmenten (Top 12 dargestellt). Die Gesamtsumme kann Aufträge mit mehreren Kostenkomponenten enthalten.</p>
   <TableFallback headers={['Segment','Berechnete Strafgebühren','Kumuliert']} rows={data.map((r,i)=>[String(r.label),euro(val(r.total_penalty_eur)),fmt(cum[i],1)+' %'])}/>
  </div>;
 }
@@ -227,7 +228,11 @@ function Funnel({detail}:{detail:DashboardData}){
   <p className="nxt-chart-note">Deskriptive Teilmengen pünktlicher und OTIF-Aufträge; keine Prozesskonversionsmessung.</p>
  </div>;
 }
-export function AdvancedChart({widget,detail,filters}:{widget:DashboardWidget;detail:DashboardData;filters:Filter[]}){
+export function AdvancedChart({widget,detail,filters,compact=false}:{widget:DashboardWidget;detail:DashboardData;filters:Filter[];compact?:boolean}){
+ if(['bar','bar_horizontal','bar_vertical'].includes(widget.type))return <InteractiveBars key={widget.id} widget={widget} filters={filters} compact={compact}/>;
+ return <StaticChart widget={widget} detail={detail} filters={filters}/>;
+}
+function StaticChart({widget,detail,filters}:{widget:DashboardWidget;detail:DashboardData;filters:Filter[]}){
  const state=useAdvancedData(widget,filters);
  if(detail.error)return <Notice kind="error">{detail.error}</Notice>;
  if(state.loading)return <Spinner text="Diagrammdaten werden geladen …"/>;
@@ -240,7 +245,7 @@ export function AdvancedChart({widget,detail,filters}:{widget:DashboardWidget;de
   case 'heatmap':return <Heatmap cells={state.heatmap}/>;
   case 'pareto':return <Pareto rows={state.segments}/>;
   case 'scatter':return <Scatter rows={state.segments}/>;
-  case 'waterfall':return <Waterfall detail={detail}/>;
+  case 'waterfall':return <><Waterfall detail={detail}/><CostScenario detail={detail}/></>;
   case 'bullet':return <Bullet widget={widget} detail={detail}/>;
   case 'histogram':return <Histogram bins={state.bins}/>;
   case 'treemap':return <Treemap rows={state.segments}/>;

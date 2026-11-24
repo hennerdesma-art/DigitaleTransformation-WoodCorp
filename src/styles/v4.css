@@ -103,3 +103,26 @@
 .nxt-filter-legend summary{cursor:pointer;color:#00676c}
 .nxt-typed-filter .nxt-multiselect{max-height:250px;overflow:auto;overflow-wrap:anywhere;min-width:0}
 .nxt-typed-filter .field select{max-width:100%;min-width:0}
+
+/* Compact, keyboard-accessible analytics controls */
+.nxt-interactive-chart{display:grid;gap:8px;min-width:0}
+.nxt-chart-current{display:grid;gap:3px;color:#164d51}
+.nxt-chart-current small{font-size:11px;color:#60777b}
+.nxt-chart-settings,.nxt-chart-selection{border:1px solid #c7dddd;border-radius:8px;padding:9px;background:#f7fbfb;min-width:0;overflow-wrap:anywhere}
+.nxt-chart-settings summary,.nxt-interactive-chart summary{cursor:pointer;font-size:12px;font-weight:600;color:#00676c}
+.nxt-chart-control-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));gap:8px;margin:8px 0}
+.nxt-chart-control-grid .field,.nxt-interactive-chart .field{min-width:0;margin:0;font-size:12px}
+.nxt-interactive-chart select,.nxt-chart-settings select,.nxt-chart-controls input{min-width:0;max-width:100%;width:100%;font:inherit;padding:6px;border:1px solid #cadcde;border-radius:6px;color:inherit;background:white}
+.nxt-chart-controls{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:5px 0}
+.nxt-chart-controls button,.nxt-chart-reset{background:white;color:#17494c;border:1px solid #bbd6d7;border-radius:6px;padding:6px 9px;font:inherit;font-size:12px;cursor:pointer}
+.nxt-chart-scroll{overflow:auto;max-height:300px;min-width:0}
+.nxt-chart-scroll label{display:flex;gap:6px;font-size:12px;padding:4px;align-items:start}
+.nxt-segment-button{border:0;border-radius:6px;background:transparent;color:inherit;font:inherit;cursor:pointer;text-align:left;width:100%;padding:4px;min-width:0}
+.nxt-ranked-row.nxt-segment-button{display:grid;grid-template-columns:minmax(65px,1fr) minmax(35px,1fr) minmax(45px,auto);gap:6px;align-items:center}
+.nxt-segment-button span,.nxt-segment-button small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nxt-segment-button b{font-size:11px;white-space:nowrap}
+.nxt-segment-button.selected{background:#d9eeee;outline:1px solid #008b92}
+.nxt-segment-button:focus-visible,.nxt-chart-controls button:focus-visible,.nxt-chart-reset:focus-visible{outline:2px solid #008b92;outline-offset:2px}
+.nxt-vertical-scroll{overflow-x:auto}.nxt-vertical-item.nxt-segment-button{min-width:65px;text-align:center}
+.nxt-chart-selection{margin-bottom:8px;display:grid;gap:4px}
+.graph-node .nxt-chart-scroll{max-height:145px}.graph-node .nxt-chart-control-grid{grid-template-columns:1fr}.graph-node .nxt-interactive-chart{max-width:100%}

@@ -1,4 +1,5 @@
 import React,{useState} from 'react';
+import {SegmentMetricOptions} from './InteractiveCharts';
 import type {AnalysisNode,GraphViz,CalculationTemplate,Filter} from '../core/types';
 import type {FieldKey} from '../config';
 import {CALCULATION_TEMPLATES,TEMPLATES,validateRate} from '../core/calculations';
@@ -29,6 +30,7 @@ export function NodeSettings({node,allowedFields,fieldNames,filters,containers=[
  const [containerId,setContainerId]=useState(node.containerId||'');
  const [name,setName]=useState(node.label),[viz,setViz]=useState<GraphViz>(node.visualization||'kpi');
  const [selectedMetric,setSelectedMetric]=useState<MetricKey>((node.metricId==='otd'?'onTimeRate':node.metricId&&METRICS.includes(node.metricId as MetricKey)?node.metricId:'otifRate') as MetricKey);
+ const [chartMetric,setChartMetric]=useState<MetricKey>((node.chartMetric||'onTimeRate') as MetricKey);
  const [field,setField]=useState<FieldKey>(node.chartDimension||'delivery_company');
  const [interval,setInterval]=useState<E02IntervalKey>(node.intervalKey||'order_to_production');
  const [template,setTemplate]=useState<CalculationTemplate>(node.calculationTemplate||'total_penalty_eur');
@@ -42,7 +44,7 @@ export function NodeSettings({node,allowedFields,fieldNames,filters,containers=[
  const submit=(e:React.FormEvent)=>{e.preventDefault();try{
   if(!name.trim()||name.length>100)throw Error('Bitte einen Namen mit maximal 100 Zeichen eingeben.');
   const parsed=viz==='calculation'?validateRate(template,rate):null;
-  onSave({label:name.trim(),containerId:containerId||undefined,visualization:viz,metricId:selectedMetric,chartDimension:field,calculationTemplate:template,rateEurPerKg:parsed??undefined,intervalKey:interval});
+  onSave({label:name.trim(),containerId:containerId||undefined,visualization:viz,metricId:selectedMetric,chartDimension:field,chartMetric,calculationTemplate:template,rateEurPerKg:parsed??undefined,intervalKey:interval});
   onClose();
  }catch(e){setError(e instanceof Error?e.message:'Konfiguration ungültig')}};
  return <Modal title="Knoten und Visualisierung konfigurieren" onClose={onClose}>
@@ -51,6 +53,7 @@ export function NodeSettings({node,allowedFields,fieldNames,filters,containers=[
    {!!containers.length&&<label className="field">Container / Gruppierung<select value={containerId} onChange={e=>setContainerId(e.target.value)}><option value="">Kein Container</option>{containers.map(c=><option key={c.id} value={c.id} disabled={!!c.containerCollapsed&&c.id!==node.containerId}>{c.label}{c.containerCollapsed?' (eingeklappt)':''}</option>)}</select><small className="muted">Die Gruppe vererbt ihren Filterkontext. Bestehende Pfeile bleiben erhalten.</small></label>}
    <label className="field">Anzeigeart<select value={viz} onChange={e=>changeVisual(e.target.value as GraphViz)}>{TYPES.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}</select></label>
    {viz==='kpi'&&<label className="field">Kennzahl<select value={selectedMetric} onChange={e=>setSelectedMetric(e.target.value as MetricKey)}>{METRICS.map(m=><option key={m} value={m}>{METRIC_LABELS[m]}</option>)}</select></label>}
+   {['bar','line'].includes(viz)&&<label className="field">Diagrammkennzahl<select value={chartMetric} onChange={e=>setChartMetric(e.target.value as MetricKey)}><SegmentMetricOptions/></select></label>}
    {(['bar','stacked','stacked100','heatmap','pareto','scatter','treemap'].includes(viz))&&<label className="field">Gruppierung<select value={field} onChange={e=>setField(e.target.value as FieldKey)}>{[...new Set([...allowedFields.filter(f=>viz==='heatmap'?['factory','product_type'].includes(f):CHART_SEGMENT_FIELDS.includes(f)),field])].map(key=><option key={key} value={key}>{fieldNames[key]||FIELD_LABELS[key]}</option>)}</select></label>}
    {viz==='process_interval'&&<label className="field">Intervall<select value={interval} onChange={e=>setInterval(e.target.value as E02IntervalKey)}>{E02_KEYS.map(k=><option key={k} value={k}>{E02_INTERVALS[k].title}</option>)}</select></label>}
    {viz==='calculation'&&<>

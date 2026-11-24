@@ -10,6 +10,7 @@ import Icon from './components/Icon';
 import {Brand,Button,IconButton,Modal,Notice,Spinner,number,percent,decimal,SmallTrend} from './components/Ui';
 import AuthScreen from './components/AuthScreen';
 import {extractInviteTicket,isInviteFragment,type InvitationTicket} from './lib/invite';
+import {ChartAccess} from './components/InteractiveCharts';
 import {DashboardRenderer,DashboardBuilder} from './components/DashboardBuilder';
 import {WorkspaceControls,FilterCatalogPage} from './components/WorkspaceControls';
 import {standardDashboard,makeDocument,validDocument,metricValue,metricFormat,METRIC_LABELS,type MetricKey,type NodeDashboard} from './core/dashboard';
@@ -151,7 +152,7 @@ function DetailPanel({node,detail,tab,setTab,onClose,onFilter,onExpand,onRename,
  return <aside className="detail-panel"><div className="detail-header"><div><Icon name="layers" size={20}/><div><strong>Knoten-Dashboard: {node.data.analysis.label}</strong><small>{node.data.analysis.predicate?fieldNames[node.data.analysis.predicate.field]:'Kennzahl'} · WoodCorp O2C</small></div></div><div className="detail-head-actions">{canEdit&&<IconButton name="type" title="Knoten umbenennen" onClick={onRename}/>}<IconButton name="maximize" title="Dashboard als Vollbild öffnen" onClick={onExpand}/><IconButton name="x" title="Detailbereich schließen" onClick={onClose}/></div></div>
  <nav className="detail-tabs" aria-label="Dashboard-Ansichten">{tabs.map(t=><button key={t} className={t===tab?'selected':''} aria-current={t===tab?'page':undefined} onClick={()=>setTab(t)}>{t}</button>)}</nav>
  {detail.pending&&!m?<Spinner text="Knotenkennzahlen werden geladen …"/>:detail.error?<Notice kind="error">{detail.error}</Notice>:<div className="detail-body">
- {tab==='Übersicht'&&<><div className="detail-dashboard-edit"><span className="muted">Knotenbezogenes Dashboard · {dashboard.widgets.length} Elemente</span>{canEdit&&<button className="nxt-button secondary" onClick={onEdit}><Icon name="layout-dashboard" size={16}/> Dashboard bearbeiten</button>}</div><DashboardRenderer dashboard={dashboard} detail={detail} filters={filters} compact onExplain={onExplain}/></>}
+ {tab==='Übersicht'&&<><div className="detail-dashboard-edit"><span className="muted">Knotenbezogenes Dashboard · {dashboard.widgets.length} Elemente</span>{canEdit&&<button className="nxt-button secondary" onClick={onEdit}><Icon name="layout-dashboard" size={16}/> Dashboard bearbeiten</button>}</div><DashboardRenderer key={node?.id} dashboard={dashboard} detail={detail} filters={filters} compact onExplain={onExplain}/></>}
  {tab==='Berechnungslogik'&&(node.data.analysis.visualization==='process_interval'?<ProcessDefinition intervalKey={node.data.analysis.intervalKey||'order_to_production'} stat={node.data.processInterval}/>:<CalculationLogic metric={explanatoryMetric} metrics={m} trace={filterTrace} fieldNames={fieldNames} node={node.data.analysis} calculated={node.data.calculation} compact/>)}
   {tab==='Details'&&<div className="chart-box"><h3>Kennzahlen und Datenumfang</h3><dl className="detail-list"><dt>Aufträge</dt><dd>{number(m?.orders)}</dd><dt>OTIF</dt><dd>{percent(m?.otifRate)}</dd><dt>OTIF-Aufträge</dt><dd>{number(m?.otifCases)}</dd><dt>Modellierte Vertragsstrafe (0,75 €/kg)</dt><dd>{metricFormat('totalPenaltyEur',m?.totalPenaltyEur??null)}</dd><dt>Pünktlich, aber nicht mengenkonform</dt><dd>{number(m?.onTimeNotFullCases)}</dd><dt>Verspätet, aber mengenkonform</dt><dd>{number(m?.lateInFullCases)}</dd><dt>Verspätet und nicht mengenkonform</dt><dd>{number(m?.lateNotFullCases)}</dd><dt>Pünktliche Lieferungen</dt><dd>{percent(m?.onTimeRate)}</dd><dt>Mengentreue</dt><dd>{percent(m?.volumeConformanceRate)}</dd><dt>Vollständige Liefertermine</dt><dd>{number(m?.dateCoverage)}</dd><dt>Früheste Lieferung</dt><dd>{fmtDate(m?.firstDelivery)}</dd><dt>Späteste Lieferung</dt><dd>{fmtDate(m?.lastDelivery)}</dd></dl></div>}
  {tab==='Treiber'&&<><Notice kind="warning">Dies sind beobachtete Segmentunterschiede, keine nachgewiesenen Ursachen.</Notice><div className="chart-box"><h3>Potenzielle Einflussbereiche · Lieferunternehmen</h3><BarChart rows={detail.breakdown}/></div></>}
@@ -627,12 +628,6 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
       if(!request){request=analysisApi.e02Summary(filters);processPromises.set(key,request)}
       const summary=await request;
       patch.processInterval=summary.intervals.find(r=>r.key===(a.intervalKey||'order_to_production'))||null;
-    }else if(viz==='bar'){
-      const dimension=a.chartDimension||'delivery_company';
-      const chartKey=key+':'+dimension;
-      let lookup=breakdownPromises.get(chartKey);
-      if(!lookup){lookup=analysisApi.breakdown(dimension,filters);breakdownPromises.set(chartKey,lookup)}
-      patch.chartRows=await lookup;
     }else if(viz==='line'){
       let lookup=trendPromises.get(key);
       if(!lookup){lookup=analysisApi.trend(filters);trendPromises.set(key,lookup)}
@@ -665,7 +660,7 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
   if(next.nodes.length>nodes.length||next.nodes.some(n=>{const old=nodes.find(o=>o.id===n.id);return old&&(old.position.x!==n.position.x||old.position.y!==n.position.y||old.data.analysis.containerWidth!==n.data.analysis.containerWidth||old.data.analysis.containerHeight!==n.data.analysis.containerHeight)}))requestAnimationFrame(()=>void flow.fitView({duration:300,padding:.2}));
  };
  const modeActions={nodes,edges,onNodesChange:onNodeChanges,onEdgesChange:onEdgeChanges,onConnect:connect,onSelect:setSelectedId,onSelectionClear:()=>{},selectedId,editMode,onEditToggle:()=>{if(canModify)setEditMode(v=>!v)},onFilter:(id:string)=>setDialog({kind:'node',id}),onSplit:(id:string)=>setDialog({kind:'split',id}),onRemove:removeNode,onConfigure:(id:string)=>{setSelectedId(id);setConfigureNodeId(id)},onExplain:(id:string)=>{setSelectedId(id);setRightVisible(true);setSelectedTab('Berechnungslogik')},onAdd:addNode,onSave:saveDraft,onReset:resetDraft,onGraphMove:finishDrag,onGraphStart:remember,onToggleContainer:toggleContainer,onUndo:undo,onRedo:redo,fieldNames,onViewportChange:(v:Viewport)=>{viewportRef.current=v;},fullscreen,setFullscreen,canEdit:canModify,dirty,onHelp:()=>handleSetView('builder')};
- return <div className={'app-shell '+(collapsed?'sidebar-collapsed':'')}><Header userEmail={email} onSignOut={onSignOut} onProfile={()=>handleSetView('profile')} onSearch={pageSearch} onHelp={()=>setHelp(true)}/>
+ return <ChartAccess.Provider value={{fields:allowedFields}}><div className={'app-shell '+(collapsed?'sidebar-collapsed':'')}><Header userEmail={email} onSignOut={onSignOut} onProfile={()=>handleSetView('profile')} onSearch={pageSearch} onHelp={()=>setHelp(true)}/>
   <Sidebar view={view} onNavigate={handleSetView} collapsed={collapsed} setCollapsed={setCollapsed} role={role}/>
   <main className="app-main">
    {(['analytics','tree','builder','home'] as View[]).includes(view)?<>
@@ -684,7 +679,7 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
   </main>
   {dialog&&dialog.kind!=='split'&&<FilterDialog target={{kind:dialog.kind==='global'?'global':'node',id:dialog.id}} dimensions={dimensions} allowedFields={allowedFields} fieldNames={fieldNames} onApply={applyFilter} onClose={()=>setDialog(null)}/>}
   {dialog?.kind==='split'&&<SplitDialog nodeName={nodes.find(n=>n.id===dialog.id)?.data.analysis.label||'Knoten'} dimensions={dimensions} allowedFields={allowedFields} fieldNames={fieldNames} onSplit={field=>split(dialog.id!,field)} onClose={()=>setDialog(null)}/>}
-  {fullDashboard&&<DashboardFullView title={selectedNode?.data.analysis.label||'Knoten-Dashboard'} dashboard={currentDashboard} detail={detail} filters={effective()} onClose={()=>setFullDashboard(false)} onEdit={()=>{setFullDashboard(false);handleSetView('builder')}} onExplain={metric=>{setFullDashboard(false);setLogicContext({metric,nodeId:selectedId})}} canEdit={canModify}/>}
+  {fullDashboard&&<DashboardFullView key={selectedId} title={selectedNode?.data.analysis.label||'Knoten-Dashboard'} dashboard={currentDashboard} detail={detail} filters={effective()} onClose={()=>setFullDashboard(false)} onEdit={()=>{setFullDashboard(false);handleSetView('builder')}} onExplain={metric=>{setFullDashboard(false);setLogicContext({metric,nodeId:selectedId})}} canEdit={canModify}/>}
   {logicContext&&<Modal title={'Berechnungslogik · '+METRIC_LABELS[logicContext.metric]} onClose={()=>setLogicContext(null)}><CalculationLogic metric={logicContext.metric} metrics={logicContext.nodeId?detail.metrics:ribbon} trace={logicContext.nodeId?traceFilters(globals,analysisNodes,locals,logicContext.nodeId,topology.edges):globals.map(filter=>({nodeId:null,sourceLabel:'Global',filter,scope:'global' as const}))} fieldNames={fieldNames}/></Modal>}
    {nameDialog==='node'&&<RenameNodeDialog label={selectedNode?.data.analysis.label||'KPI'} onSave={renameSelectedNode} onClose={()=>setNameDialog(null)}/>}
   {nameDialog==='metrics'&&<KpiNameDialog names={metricNames} onSave={names=>{if(canModify){setMetricNames(names);setDirty(true);say('KPI-Titel aktualisiert. Im Workspace speichern.')}}} onClose={()=>setNameDialog(null)}/>}
@@ -693,7 +688,7 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
   {help&&<Modal title="NXT Analytics – Bedienung" onClose={()=>setHelp(false)}><div className="help-copy"><p><b>Analysieren:</b> Knoten auswählen, global filtern und im rechten Dashboard die Detaildaten ansehen.</p><p><b>Bearbeiten:</b> Im Bearbeitungsmodus Knoten frei verschieben, Notizen aus der Palette ziehen und Verbindungspunkte mit der Maus verbinden. Jede neu gezeichnete Linie überträgt Filter in Pfeilrichtung; Rückverbindungen, die einen Zyklus bilden würden, werden verhindert.</p><p><b>Split:</b> Über die Knoten-Aktion eine Dimension auswählen. Die Filter jedes Vorgängers werden entlang aller eingehenden Pfeile vererbt (UND). Im Canvas lassen sich außerdem Balken-, Donut- und Zeitreihendiagramme sowie sichere SQL-Kennzahlen hinzufügen.</p><p><b>Container:</b> Container aus der Palette hinzufügen, Blöcke hinein- oder herausziehen oder die Gruppierung im Zahnrad wählen. Ein Pfeil zum Container überträgt den gemeinsamen Filterkontext auf alle Mitglieder. Beim Auflösen bleiben die Blöcke erhalten.</p><p><b>Speichern:</b> Änderungen lassen sich in privaten Supabase-Workspaces speichern und später für alle Projektmitglieder veröffentlichen. Dashboard-Widgets werden pro Knoten gesichert.</p></div></Modal>}
   {loaded&&<IntelligencePanel state={assistantState} workspace={activeWorkspace} fingerprint={assistantStamp} canEdit={canModify} busy={saving} onApply={applyAi} onUndo={undo} onSelectNode={setSelectedId} onOpenDashboard={()=>{setIntelligenceOpen(false);setFullDashboard(true);setView('analytics')}} open={intelligenceOpen} onOpen={setIntelligenceOpen}/>}
   {!!toast&&<div className="nxt-toast" role="status">{toast}<button aria-label="Meldung schließen" onClick={()=>setToast('')}>×</button></div>}
- </div>;
+ </div></ChartAccess.Provider>;
 }
 export default function App(){
  const [state,setState]=useState<'loading'|'login'|'app'|'no-access'>('loading');
