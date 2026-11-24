@@ -1,4 +1,5 @@
 import React,{useEffect,useRef,useState} from 'react';
+import {createPortal} from 'react-dom';
 import Icon from './Icon';
 import {Button,Notice,IconButton} from './Ui';
 import {analysisApi} from '../lib/supabase';
@@ -11,6 +12,8 @@ type Props={state:AssistantState;workspace:{id:string;title:string;revision:numb
 export function IntelligencePanel({state,workspace,fingerprint,canEdit,busy,onApply,onUndo,open,onOpen}:Props){
  const scope=workspace?.id||'local',scopeRef=useRef(scope),abortRef=useRef<AbortController|null>(null),end=useRef<HTMLDivElement>(null),launcher=useRef<HTMLButtonElement>(null),input=useRef<HTMLTextAreaElement>(null);
  const [threads,setThreads]=useState<Record<string,Entry[]>>({}),[draft,setDraft]=useState(''),[pending,setPending]=useState(false),[status,setStatus]=useState<AiStatus|null>(null),[statusError,setStatusError]=useState(false),[consent,setConsent]=useState(false),[error,setError]=useState('');
+ const [portalTarget,setPortalTarget]=useState<Element>(()=>document.fullscreenElement||document.body);
+ useEffect(()=>{const update=()=>setPortalTarget(document.fullscreenElement||document.body);document.addEventListener('fullscreenchange',update);return()=>document.removeEventListener('fullscreenchange',update)},[]);
  const entries=threads[scope]||[];
  const selected=state.nodes.find(n=>n.id===state.selectedId);
  const labels:Record<string,string>={};for(const n of state.nodes)labels[n.id]=n.data.analysis.label;for(const d of Object.values(state.dashboards))for(const w of d.widgets)labels[w.id]=w.title;
@@ -48,7 +51,7 @@ export function IntelligencePanel({state,workspace,fingerprint,canEdit,busy,onAp
   catch(e){setError(e instanceof Error?e.message:'Änderungen nicht übernommen.')}
  };
  const close=()=>{onOpen(false);requestAnimationFrame(()=>launcher.current?.focus())};
- return <div className="nxt-intelligence-shell">
+ return createPortal(<div className="nxt-intelligence-shell">
   {open&&<aside className="nxt-intelligence-panel" role="region" aria-label="NXT Intelligence Assistent">
    <header className="nxt-intelligence-head"><div className="nxt-intelligence-emblem"><Icon name="sparkles" size={23}/></div><div><strong>NXT Intelligence</strong><small>Workspace Copilot</small></div><IconButton name="x" title="Assistent schließen" onClick={close}/></header>
    <div className="nxt-intelligence-context"><span><Icon name="layout-dashboard" size={16}/> Workspace <b title={workspace?.title}>{workspace?.title||'Lokaler Entwurf'}</b></span><span><Icon name="network" size={16}/> Knoten <b title={selected?.data.analysis.label}>{selected?.data.analysis.label||'Keiner ausgewählt'}</b></span><div className="nxt-intelligence-mode"><i/>{status?.enabled&&consent?'KI-Modell aktiv':status?.enabled?'KI verfügbar · lokale Nutzung bis zur Freigabe':statusError?'Lokaler Modus · Serverstatus nicht erreichbar':'Lokaler Wissens- & Vorlagenmodus'}{!canEdit?' · Nur lesen':''}</div></div>
@@ -61,9 +64,9 @@ export function IntelligencePanel({state,workspace,fingerprint,canEdit,busy,onAp
    <footer className="nxt-intelligence-composer">
     {status?.enabled&&<label className="nxt-intelligence-consent"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/> Workspace-Kontext und aggregierte Kennzahlen an den konfigurierten KI-Dienst senden (keine Rohdaten).</label>}
     <form onSubmit={e=>{e.preventDefault();void send()}}><textarea ref={input} aria-label="Frage oder Änderungswunsch" rows={3} maxLength={1600} value={draft} onChange={e=>setDraft(e.target.value)} placeholder="Frage zu diesem Element oder Änderungswunsch …" onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();void send()}}}/><div><button type="button" className="nxt-intelligence-reset" disabled={pending} onClick={()=>{setThreads(old=>({...old,[scope]:[]}));setError('')}}>Neuer Chat</button><button type="submit" className="nxt-button primary" disabled={!draft.trim()||pending||!selected}><Icon name="arrow-right" size={17}/> Senden</button></div></form>
-    <small>Keine automatische Veröffentlichung. Übernommene Änderungen bleiben bis zum Speichern ein Entwurf.</small>
+    <small>Keine automatische Veröffentlichung. Übernommene Änderungen bleiben bis zum Speichern ein Entwurf.</small>{canEdit&&entries.some(e=>e.applied)&&<button type="button" className="nxt-intelligence-reset" disabled={busy||pending} onClick={()=>{onUndo();setError('')}}>Letzte Workspace-Änderung rückgängig</button>}
    </footer>
   </aside>}
   <button ref={launcher} type="button" className={'nxt-intelligence-launcher '+(open?'is-open':'')} aria-expanded={open} aria-label={open?'NXT Intelligence schließen':'NXT Intelligence öffnen'} onClick={()=>open?close():onOpen(true)}><Icon name={open?'x':'sparkles'} size={24}/>{!open&&<span>NXT Intelligence</span>}</button>
- </div>;
+ </div>,portalTarget);
 }

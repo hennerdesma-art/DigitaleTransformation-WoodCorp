@@ -18,8 +18,8 @@ begin
  if coalesce(n,0)>=100 then return false; end if;
  select used,last_request into n,last_at from nxt_private.ai_usage where day=d and principal=u;
  if coalesce(n,0)>=20 or (last_at is not null and last_at>now()-interval '5 seconds') then return false; end if;
- insert into nxt_private.ai_usage(day,principal,used,last_request) values(d,'global',1,now()),(d,u,1,now())
- on conflict(day,principal) do update set used=nxt_private.ai_usage.used+1,last_request=excluded.last_request;
+ insert into nxt_private.ai_usage as usage(day,principal,used,last_request) values(d,'global',1,now()),(d,u,1,now())
+ on conflict(day,principal) do update set used=usage.used+1,last_request=excluded.last_request;
  return true;
 end $$;
 revoke all on function public.nxt_ai_reserve_request(uuid) from public, anon, authenticated;

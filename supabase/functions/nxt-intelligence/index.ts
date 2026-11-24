@@ -75,7 +75,7 @@ Deno.serve(async(req)=>{
    }));
    if(/prozess|interval|bottleneck|durchlauf|produktion|root cause|ursach/i.test(body.prompt)){
     const p=await client.rpc("nxt_e02_interval_summary",{p_filters:filters});
-    if(!p.error&&Array.isArray(p.data?.intervals))evidence.processIntervals=p.data.intervals.slice(0,5).map((x:any)=>({key:x.key,validCases:x.validCases,missingCases:x.missingCases,negativeCases:x.negativeCases,medianDays:x.medianDays,p90Days:x.p90Days}));
+    if(!p.error&&Array.isArray(p.data?.intervals))evidence.processIntervals=p.data.intervals.slice(0,5).map((x:any)=>({key:x.key,validCases:x.validCases,missingCases:x.missingCases,negativeCases:x.negativeCases,medianDays:x.validCases>=5?x.medianDays:null,p90Days:x.validCases>=5?x.p90Days:null,otifValidCases:x.otifValidCases,nonOtifValidCases:x.nonOtifValidCases,otifMedianDays:x.otifValidCases>=5?x.otifMedianDays:null,nonOtifMedianDays:x.nonOtifValidCases>=5?x.nonOtifMedianDays:null}));
    }
   }
   const history=Array.isArray(body.history)?body.history.slice(-8).filter((x:any)=>["user","assistant"].includes(x?.role)&&isString(x.text,1600)).map((x:any)=>({role:x.role,text:x.text})):[];
