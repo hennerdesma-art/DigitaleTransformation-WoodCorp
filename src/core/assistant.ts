@@ -34,7 +34,7 @@ function nextPosition(nodes:NNode[],parent:NNode){
  }
  return {x,y:p.y+220};
 }
-// AI layout: new groups use up to two columns; existing manual positions are never moved.
+// New groups use compact columns by default. Existing positions only change through explicit layout actions.
 export function assistantBlockSize(n:NNode){const a=n.data.analysis;return a.kind==='container'?containerSize(a):{width:n.measured?.width??(a.visualization&&a.visualization!=='kpi'?460:260),height:n.measured?.height??(a.visualization&&a.visualization!=='kpi'?440:190)}}
 /** Pack group members only. Never change membership, filters, or analytic edges. */
 function arrangeGroup(nodes:NNode[],id:string,columns:number):NNode[]{
@@ -217,17 +217,17 @@ export function localAssistantPlan(prompt:string,s:AssistantState,metrics:Metric
  if(canEdit&&(template==='path'||/thinking.?path|analysepfad|analysebaum/.test(q))){
   // A known, reusable analysis scaffold; never claim this is an inferred cause.
   if(n.data.analysis.kind==='root'&&!n.data.analysis.metricId)actions.push(action('set_node_metric',id,{metric:'otifRate'}));
-  const container=n.data.analysis.kind==='container'?id:'new:performance';
+  const container=n.data.analysis.kind==='container'&&!n.data.analysis.containerCollapsed?id:'new:performance';
   if(container!==id)actions.push(action('add_container',id,{ref:container,label:'Performance Breakdown'}));
-  actions.push(action('add_branch',container,{ref:'new:delivery',label:'Lieferqualität',metric:'onTimeRate',widgetType:'line'}));
+  actions.push(action('add_branch',container,{ref:'new:delivery',label:'Lieferqualität',metric:'onTimeRate',widgetType:'line',field:'member'}));
   actions.push(action('set_question','new:delivery',{label:'Wie unterscheiden sich pünktliche und verspätete Lieferungen?'}));
   add('new:delivery','kpi','On-Time Delivery',{metric:'onTimeRate'});add('new:delivery','line','On-Time im Zeitverlauf');
   if(allowed.has('factory'))add('new:delivery','bar_vertical','On-Time je Werk',{metric:'onTimeRate',dimension:'factory'});
-  actions.push(action('add_branch',container,{ref:'new:volume',label:'Mengenkonformität',metric:'volumeConformanceRate',widgetType:'kpi'}));
+  actions.push(action('add_branch',container,{ref:'new:volume',label:'Mengenkonformität',metric:'volumeConformanceRate',widgetType:'kpi',field:'member'}));
   actions.push(action('set_question','new:volume',{label:'Welche Segmente tragen zu Mengenabweichungen bei?'}));
   add('new:volume','kpi','Mengenkonformität',{metric:'volumeConformanceRate'});
   if(allowed.has('factory'))add('new:volume','bar_vertical','Mengenkonformität je Werk',{metric:'volumeConformanceRate',dimension:'factory'});
-  actions.push(action('add_branch',container,{ref:'new:intervals',label:'Durchlaufzeit · Auftrag bis Lieferung',metric:'otifRate',widgetType:'process_interval',value:'order_to_delivery'}));
+  actions.push(action('add_branch',id,{ref:'new:intervals',label:'Durchlaufzeit · Auftrag bis Lieferung',metric:'otifRate',widgetType:'process_interval',value:'order_to_delivery',field:'direct'}));
   actions.push(action('set_question','new:intervals',{label:'Welche Prozessintervalle unterscheiden OTIF- von Nicht-OTIF-Aufträgen?'}));
   add('new:intervals','e02_compare','OTIF vs. Nicht-OTIF');add('new:intervals','e02_quality','Datenqualität');
   return {answer:'Lokale, fachlich definierte Analysevorlage. Sie ergänzt Lieferqualität, Mengenabweichungen und Prozessintervalle. Die KPIs werden nach Übernahme mit den vererbten Filtern live berechnet; dies ist noch keine KI-basierte Ursachenfeststellung.',operations:actions};

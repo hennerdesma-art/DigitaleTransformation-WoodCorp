@@ -40,7 +40,7 @@ import {KNOWLEDGE_VERSION} from './assistantProtocol';
 test('live prompt examples execute as one connected group and separate canvas charts',()=>{
  const s=state();const plan={...PLAYBOOK_EXAMPLES.grouped,operations:PLAYBOOK_EXAMPLES.grouped.operations.map(o=>({...o,target:o.target==='example:root'?'root':o.target}))};
  const next=applyAssistantPlan(s,validatePlan(plan,['root'],s.allowedFields));const group=next.nodes.find(n=>n.data.analysis.kind==='container')!;const members=next.nodes.filter(n=>n.data.analysis.containerId===group.id);
- assert.equal(next.edges.length,1);assert.equal(next.edges[0].target,group.id);assert.deepEqual(members.map(n=>n.data.analysis.visualization),['line','heatmap']);assert.notEqual(members[0].position.x,members[1].position.x);assert.equal(members[0].position.y,members[1].position.y);assert.equal(s.nodes.length,1);assert.equal(KNOWLEDGE_VERSION,'nxt-ai-v1.2.3');assert.match(MASTER_PLAYBOOK,/STANDARD WORKFLOW/);
+ assert.equal(next.edges.length,1);assert.equal(next.edges[0].target,group.id);assert.deepEqual(members.map(n=>n.data.analysis.visualization),['line','heatmap']);assert.notEqual(members[0].position.x,members[1].position.x);assert.equal(members[0].position.y,members[1].position.y);assert.equal(s.nodes.length,1);assert.equal(KNOWLEDGE_VERSION,'nxt-ai-v1.3.0');assert.match(MASTER_PLAYBOOK,/STANDARD WORKFLOW/);
 });
 test('standalone container inherits global, not anchor local filters; no visible links',()=>{
  const s=state();s.globals=[{id:'g',field:'delivery_year',op:'eq',value:'2018'}];s.locals.root=[{id:'f',field:'factory',op:'eq',value:'Essen'}];
@@ -71,7 +71,8 @@ test('explicit build preflight rejects readonly or outdated graph before provide
  assert.equal(buildRequestBlocker('build_path',false,2)?.status,403);
  assert.equal(buildRequestBlocker('build_path',true,1)?.status,409);
  assert.equal(buildRequestBlocker('build_dashboard',true,undefined)?.status,409);
- assert.equal(buildRequestBlocker('build_path',true,2),null);
+ assert.equal(buildRequestBlocker('build_path',true,2)?.status,409);
+ assert.equal(buildRequestBlocker('build_path',true,AI_GRAPH_FORMAT),null);
  assert.equal(buildRequestBlocker('auto',false,1),null);
 });
 test('reported empty plan cannot be a successful build response even for populated graph',()=>{
@@ -118,4 +119,52 @@ test('long analysis prompts retain all requested stages and reject excess instea
  assert.match(assistantPromptProblem('x'.repeat(AI_PROMPT_LIMIT+1))||'',/nichts abgeschnitten/);
  assert.ok(assistantPromptProblem('  '));
  const clipped=boundedAssistantHistory('x'.repeat(AI_HISTORY_LIMIT+100));assert.ok(clipped.length<=AI_HISTORY_LIMIT);assert.match(clipped,/Älterer Chatkontext gekürzt/);
+});
+
+import {requiresGraph3,coordinatePair} from './assistantProtocol';
+import {worldPosition,restoreDraft,containerSize} from './graph';
+test('direct chart from container inherits context without membership; explicit independent chart uses global only',()=>{
+ const s=state();s.globals=[{id:'g',field:'delivery_year',op:'eq',value:'2018'}];
+ const next=applyAssistantPlan(s,{answer:'x',operations:[action('add_container','root',{label:'Group',ref:'new:g'}),action('add_filter','new:g',{field:'factory',value:'Essen'}),action('add_branch','new:g',{label:'In group',ref:'new:m',field:'member'}),action('add_branch','new:g',{label:'Direct',ref:'new:d',field:'direct',widgetType:'pareto',metric:'totalPenaltyEur',dimension:'product_type'}),action('add_branch','new:g',{label:'Independent',ref:'new:i',field:'standalone',widgetType:'line',metric:'onTimeRate'})]});
+ const get=(label:string)=>next.nodes.find(n=>n.data.analysis.label===label)!;
+ assert.equal(get('In group').data.analysis.containerId,get('Group').id);
+ assert.equal(get('Direct').data.analysis.containerId,undefined);assert.equal(get('Independent').data.analysis.containerId,undefined);
+ assert.ok(next.edges.some(e=>e.source===get('Group').id&&e.target===get('Direct').id));assert.ok(!next.edges.some(e=>e.target===get('Independent').id));
+ const filters=(id:string)=>effectiveFilters(next.globals,next.nodes.map(n=>n.data.analysis),next.locals,id,next.edges).map(f=>f.value);
+ assert.deepEqual(filters(get('Direct').id),['2018','Essen']);assert.deepEqual(filters(get('Independent').id),['2018']);
+});
+test('layout edits move group and arrange members without changing filter graph or original positions; style persists',()=>{
+ const s=state();const initial=applyAssistantPlan(s,{answer:'x',operations:[action('add_container','root',{label:'G',ref:'new:g'}),action('add_filter','new:g',{field:'factory',value:'Essen'}),action('add_branch','new:g',{label:'A',ref:'new:a'}),action('add_branch','new:g',{label:'B',ref:'new:b'})]});
+ const group=initial.nodes.find(n=>n.data.analysis.label==='G')!,a=initial.nodes.find(n=>n.data.analysis.label==='A')!,b=initial.nodes.find(n=>n.data.analysis.label==='B')!;
+ const snapshot=JSON.stringify(initial);
+ const next=applyAssistantPlan(initial,{answer:'x',operations:[action('arrange_container',group.id,{value:'1'}),action('move_node',group.id,{value:'1000,1000'}),action('set_container_style',group.id,{value:'sand'}),action('resize_container',group.id,{value:'800,900'})]});
+ const g=next.nodes.find(n=>n.id===group.id)!,m=next.nodes.find(n=>n.id===a.id)!,m2=next.nodes.find(n=>n.id===b.id)!;
+ assert.equal(JSON.stringify(initial),snapshot);assert.equal(g.data.analysis.containerTone,'sand');assert.deepEqual(g.position,{x:1000,y:1000});
+ assert.equal(m.position.x,m2.position.x);assert.ok(m2.position.y>m.position.y);
+ assert.deepEqual(worldPosition(m,next.nodes),{x:1018,y:1086});assert.deepEqual(containerSize(g.data.analysis),{width:800,height:900});
+ assert.deepEqual(next.edges,initial.edges);assert.deepEqual(next.locals,initial.locals);assert.deepEqual(next.dashboards,initial.dashboards);
+ const restored=restoreDraft(serializeDraft(next.nodes,next.edges,next.locals,{x:0,y:0,zoom:1}));assert.equal(restored.nodes.find(n=>n.id===g.id)?.data.analysis.containerTone,'sand');assert.deepEqual(restored.nodes.find(n=>n.id===g.id)?.position,g.position);
+ const ctx=contextForAssistant(next,null,true);assert.deepEqual(ctx.nodes.find(n=>n.id===g.id)?.position,g.position);assert.equal(ctx.nodes.find(n=>n.id===g.id)?.containerTone,'sand');
+});
+test('pure moves and chart edits are bounded and collision-safe, cannot bypass role or target restrictions',()=>{
+ const s=state();const initial=applyAssistantPlan(s,{answer:'x',operations:[action('add_branch','root',{label:'A',ref:'new:a',field:'direct'})]});
+ const a=initial.nodes.find(n=>n.data.analysis.label==='A')!;
+ assert.throws(()=>applyAssistantPlan(initial,{answer:'x',operations:[action('move_node',a.id,{value:'0,0'})]}),/überlappen/);
+ for(const patch of ['NaN,3','100001,0','0.5,2'])assert.equal(coordinatePair(patch,-100000,100000,-100000,100000),null);
+ assert.throws(()=>applyAssistantPlan(initial,{answer:'x',operations:[action('set_container_style',a.id,{value:'sand'})]}),/Container/);
+ assert.throws(()=>validatePlan({answer:'x',operations:[action('set_container_style','root',{value:'#ff0000'})]},['root'],s.allowedFields));
+ assert.throws(()=>validatePlan({answer:'x',operations:[action('move_node','root',{value:'5,5'})]},['root'],s.allowedFields,false),/lesbar/);
+ assert.throws(()=>applyAssistantPlan(s,{answer:'x',operations:[action('add_branch','root',{label:'A',ref:'new:a',field:'member'})]}),/Container/);
+ const next=applyAssistantPlan(initial,{answer:'x',operations:[action('move_node',a.id,{value:'1000,1000'}),action('set_node_visualization',a.id,{widgetType:'pareto',metric:'totalPenaltyEur',dimension:'factory'})]});
+ assert.equal(next.nodes.find(n=>n.id===a.id)?.data.analysis.visualization,'pareto');assert.deepEqual(next.edges,initial.edges);assert.deepEqual(next.locals,initial.locals);assert.deepEqual(next.dashboards,initial.dashboards);
+ assert.equal(requiresGraph3(action('move_node','root',{value:'0,0'})),true);
+ assert.equal(resolveAssistantIntent('Verschiebe den Container nach rechts'),'edit_layout');
+ assert.equal(resolveAssistantIntent('Ändere die Farbe des Containers'),'edit_layout');
+ assert.equal(resolveAssistantIntent('Wie kann ich den Container verschieben?'),'auto');
+ assert.ok(buildPlanProblem('edit_layout',{answer:'x',operations:[]}));
+ assert.equal(buildPlanProblem('edit_layout',{answer:'x',operations:[action('move_node','root',{value:'1,1'})]}),null);
+});
+test('playbook direct chart example is executable without a container',()=>{
+ const s=state();const p={...PLAYBOOK_EXAMPLES.direct,operations:PLAYBOOK_EXAMPLES.direct.operations.map(o=>({...o,target:o.target==='example:root'?'root':o.target}))};
+ const next=applyAssistantPlan(s,validatePlan(p,['root'],s.allowedFields));assert.equal(next.nodes.filter(n=>n.data.analysis.kind==='container').length,0);assert.equal(next.edges.length,1);assert.equal(next.nodes[1].data.analysis.visualization,'pareto');
 });
