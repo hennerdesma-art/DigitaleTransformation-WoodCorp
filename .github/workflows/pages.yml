@@ -38,6 +38,7 @@ jobs:
           test -f dist/index.html
           test -f dist/icons/sprite.svg
           test -f dist/nxt-logo.png
+          test -f dist/nxt-intelligence.webp
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
       - name: Upload compiled website

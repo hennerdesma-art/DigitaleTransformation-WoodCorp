@@ -4,7 +4,7 @@ import {PLAN_SCHEMA,validatePlan,action} from './assistantProtocol';
 const env:Record<string,string>={AWS_REGION:BEDROCK_REGION,NXT_AI_MODEL:BEDROCK_MODEL,NXT_AI_PROVIDER:'bedrock',AWS_BEARER_TOKEN_BEDROCK:'synthetic-test-token'};
 const cfg=bedrockConfig(k=>env[k])!;
 test('provider config is fail-closed, EU profile only, no OpenAI fallback',()=>{
- assert.ok(cfg);assert.equal(bedrockConfig(k=>k==='AWS_BEARER_TOKEN_BEDROCK'?undefined:env[k]),null);assert.equal(bedrockConfig(k=>k==='AWS_REGION'?'us-east-1':env[k]),null);assert.equal(bedrockConfig(k=>k==='NXT_AI_MODEL'?'global.anthropic.claude-sonnet-4-6':env[k])?.model,BEDROCK_MODEL);assert.equal(bedrockConfig(k=>k==='NXT_AI_PROVIDER'?'openai':env[k])?.model,BEDROCK_MODEL);
+ assert.ok(cfg);assert.equal(bedrockConfig(k=>k==='AWS_BEARER_TOKEN_BEDROCK'?undefined:env[k]),null);assert.equal(bedrockConfig(k=>k==='AWS_REGION'?'us-east-1':env[k]),null);assert.equal(bedrockConfig(k=>k==='NXT_AI_MODEL'?'global.anthropic.claude-sonnet-4-6':env[k])?.model,BEDROCK_MODEL);assert.equal(bedrockConfig(k=>k==='NXT_AI_PROVIDER'?'openai':env[k])?.model,BEDROCK_MODEL);assert.equal(bedrockConfig(k=>env[k],'eu.anthropic.claude-opus-4-6-v1')?.model,'eu.anthropic.claude-opus-4-6-v1');assert.equal(bedrockConfig(k=>env[k],'global.anthropic.claude-opus-4-6-v1'),null);
 });
 test('Converse request uses bearer auth and strict structured output; validates returned plan',async()=>{
  const expected={answer:'Test',operations:[action('add_widget','smoke:root',{widgetType:'kpi',label:'OTIF',metric:'otifRate'})]};

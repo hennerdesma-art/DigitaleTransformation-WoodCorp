@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {nodeFor,serializeDraft} from './graph';import {effectiveFilters} from './filters';import {applyAssistantPlan,assistantFingerprint,contextForAssistant,localAssistantPlan,type AssistantState} from './assistant';import {action,validatePlan} from './assistantProtocol';
+import {nodeFor,serializeDraft} from './graph';import {effectiveFilters} from './filters';import {applyAssistantPlan,assistantFingerprint,contextForAssistant,localAssistantPlan,resolveAssistantNodeId,type AssistantState} from './assistant';import {action,validatePlan} from './assistantProtocol';
 const state=():AssistantState=>({nodes:[nodeFor({id:'root',parentId:null,label:'Root',kind:'root',createdBy:'user',metricId:'otifRate'},{x:0,y:0})],edges:[],globals:[],locals:{},dashboards:{root:{question:'',widgets:[]}},selectedId:'root',allowedFields:['factory','product_type','delivery_company','delivery_year']});
 test('proposals are read-only until applied and preserve separate siblings',()=>{
  const s=state(),plan={answer:'Vorschlag',operations:[action('add_container','root',{ref:'new:g',label:'Gruppe'}),action('add_branch','new:g',{ref:'new:a',label:'Werk A'}),action('add_branch','new:g',{ref:'new:b',label:'Werk B'}),action('add_filter','new:g',{field:'product_type',value:'Crates'}),action('add_filter','new:a',{field:'factory',value:'Essen'}),action('add_filter','new:b',{field:'factory',value:'Aachen'})]};
@@ -29,3 +29,8 @@ test('fingerprint detects selection, local filters, layout and revision changes'
  assert.notEqual(one,assistantFingerprint(s,'w',2));assert.notEqual(one,assistantFingerprint({...s,locals:{root:[{id:'f',field:'factory',op:'eq',value:'Essen'}]}},'w',1));
  assert.equal(contextForAssistant(s,{id:'w',title:'WoodCorp',revision:1},true).workspaceTitle,'WoodCorp');
 });
+
+test('generated local root is selected when old root ID is missing',()=>{const s=state();assert.equal(resolveAssistantNodeId(s.nodes,'root:otd'),'root');assert.equal(resolveAssistantNodeId([], 'root'),'')});
+test('new dashboard proposal replaces selected widgets only and includes real chart types',()=>{const s=state();const p=localAssistantPlan('Neu',s,null,true,'new_dashboard');const next=applyAssistantPlan(s,p);assert.ok(next.dashboards.root.widgets.length>=7);assert.ok(next.dashboards.root.widgets.some(w=>w.type==='e02_compare'));assert.equal(s.dashboards.root.widgets.length,0);});
+
+test('assistant context contains each branch local filters and global filters',()=>{const s=state();s.globals=[{id:'g',field:'delivery_year',op:'eq',value:'2018'}];s.locals.root=[{id:'f',field:'factory',op:'eq',value:'Essen'}];const c=contextForAssistant(s,null,true);assert.equal(c.globalFilters[0].value,'2018');assert.equal(c.nodes[0].localFilters[0].value,'Essen');assert.equal(c.filters.length,2)});
