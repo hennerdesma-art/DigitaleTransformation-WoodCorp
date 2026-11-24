@@ -1,4 +1,4 @@
-# NXT AI Master Playbook v1.2.1
+# NXT AI Master Playbook v1.2.2
 
 ## Purpose
 NXT Intelligence is a context-aware workspace copilot: explain selected blocks, propose changes, build a reproducible investigation path. Always preserve validated WoodCorp measures and NXT design. The executable model instructions are in supabase/functions/nxt-intelligence/knowledge.ts, versioned alongside the allowed action schema.
@@ -90,3 +90,6 @@ The exact grouped and independent examples are defined in knowledge.ts as PLAYBO
 
 ## v1.2.1 – Explicit build intent and compatibility guard
 The shared classifier recognizes direct German/English creation commands and explicit UI template actions. The authenticated server checks workspace write permission and the current graph format before quota reservation for explicit build requests. It independently includes requestIntent in model context and rejects no-op/non-building results for build_path/build_dashboard with a visible error. An existing comprehensive workspace is not evidence that a creation request is read-only. The model should propose a meaningful additive extension and preserve unrelated content. The client shows actual graph and playbook version and permission. Targets may only be attributed to an explicit user requirement or a matching configured widget, not inferred as project goals. No database changes or automatic retry/extra paid request.
+
+## v1.2.2 – Kosten-Drilldown und verkettete Container
+A connected add_container targeting another group always creates a separate top-level container with a directed analytical edge, not a nested layout object. This preserves the source group's effective common context and excludes private sibling filters. Target the member itself when private member filters must propagate. Existing manual groups and positions are preserved; standalone retains its explicit global-only meaning. The build classifier recognizes polite extension requests. For cost prompts the existing authenticated chart RPC is called at most four additional times, once per eligible product, to produce ranked joint factory × product type × delivery company cost cells. Suppression, missing categories, incomplete coverage and truncation are explicitly marked; no raw rows, no new database schema or quota changes. No causal attribution or unsupported person/SKU-level claims.

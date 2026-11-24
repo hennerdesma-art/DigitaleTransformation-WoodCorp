@@ -3,7 +3,7 @@ export const ACTION_KINDS=['add_widget','rename_node','set_question','add_branch
 export type ActionKind=typeof ACTION_KINDS[number];
 export type AiAction={kind:ActionKind;target:string;label:string|null;ref:string|null;widgetType:string|null;metric:string|null;dimension:string|null;compareDimension:string|null;field:string|null;value:string|null;widgetId:string|null;targetValue:number|null};
 export type AiPlan={answer:string;operations:AiAction[]};
-export const KNOWLEDGE_VERSION='nxt-ai-v1.2.1';
+export const KNOWLEDGE_VERSION='nxt-ai-v1.2.2';
 export const AI_GRAPH_FORMAT=2 as const;
 export type AiRequestIntent='auto'|'build_path'|'build_dashboard';
 // Explicit UI actions and unambiguous creation commands are not advisory requests.
@@ -14,7 +14,8 @@ export function resolveAssistantIntent(prompt:string,explicit:unknown=null):AiRe
  if(/^(wie|warum|was|welche[rsn]?|wieso|erkläre|beschreibe|bewerte|prüfe|analysiere|how|why|what|explain|describe|review)\b/.test(p)||/^(bitte\s+)?(nicht|keine)\b/.test(p))return 'auto';
  const command=/^(?:(?:bitte|kannst du|könntest du|würdest du|please|can you|could you)\s+)*(?:erstell(?:e|en)?|generier(?:e|en)?|bau(?:e|en)?|entwirf|entwickle|ergänz(?:e|en)?|füge|create|generate|build|design|add)\b/.test(p);
  const desire=/^(?:ich möchte|ich will|wir möchten|wir wollen|i want)\b/.test(p)&&/\b(?:erstell\w*|generier\w*|aufbauen|build|create)\b/.test(p);
- if(!command&&!desire)return 'auto';
+ const extend=/^(?:bitte|kannst du|könntest du|würdest du|ich möchte|ich will|can you|could you|please|erweitere|baue|entwickle)\b/.test(p)&&/\b(?:weiter\s+ausbauen|ausbauen|erweiter\w*|weiterentwickel\w*|fortsetzen|extend|expand)\b/.test(p)&&!/\b(?:nicht|keine)\b/.test(p);
+ if(!command&&!desire&&!extend)return 'auto';
  if(/thinking[\s-]*path|analysepfad|analysebaum|decision[\s-]*tree|analysegraph|ursachenbaum/.test(p))return 'build_path';
  if(/dashboard/.test(p))return 'build_dashboard';
  return 'auto';

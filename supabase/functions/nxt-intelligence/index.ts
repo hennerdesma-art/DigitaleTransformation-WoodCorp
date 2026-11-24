@@ -1,6 +1,7 @@
 import {createClient} from "npm:@supabase/supabase-js@2.119.0";
 import {PLAN_SCHEMA,validatePlan,KNOWLEDGE_VERSION,AI_DIMENSIONS,AI_METRICS,AI_WIDGET_TYPES,AI_CANVAS_TYPES,AI_INTERVAL_KEYS,AI_GRAPH_FORMAT,resolveAssistantIntent,buildRequestBlocker,buildPlanProblem} from "./protocol.ts";
 import {MASTER_PLAYBOOK} from "./knowledge.ts";
+import {costDriverCombinations,isCostDrilldown} from "./costEvidence.ts";
 import {bedrockConfig,requestBedrock,BedrockError,BEDROCK_MODEL,BEDROCK_REGION,BEDROCK_MODELS,MODEL_LABELS,validModel} from "./bedrock.ts";
 const url=Deno.env.get("SUPABASE_URL")!;
 const service=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -115,9 +116,19 @@ Deno.serve(async(req)=>{
    const results=await Promise.allSettled(dims.map(p_field=>client.rpc("nxt_chart_segments",{p_field,p_filters:filters})));
    evidence.segments=Object.fromEntries(results.map((r,i)=>{
     if(r.status!=="fulfilled"||r.value.error||!Array.isArray(r.value.data))return [dims[i],{unavailable:true}];
-    const rows=r.value.data.filter((x:any)=>x.orders>=5).sort((a:any,b:any)=>Number(b.total_penalty_eur||0)-Number(a.total_penalty_eur||0)).slice(0,12).map((x:any)=>({label:cleanText(x.label,100),orders:safeNumber(x.orders),otif_rate:safeNumber(x.otif_rate),on_time_rate:safeNumber(x.on_time_rate),volume_rate:safeNumber(x.volume_rate),total_penalty_eur:safeNumber(x.total_penalty_eur)}));
+    const rows=r.value.data.filter((x:any)=>x.orders>=5).sort((a:any,b:any)=>Number(b.total_penalty_eur||0)-Number(a.total_penalty_eur||0)).slice(0,12).map((x:any)=>({label:cleanText(x.label,100),orders:safeNumber(x.orders),otif_rate:safeNumber(x.otif_rate),on_time_rate:safeNumber(x.on_time_rate),volume_rate:safeNumber(x.volume_rate),total_penalty_eur:safeNumber(x.total_penalty_eur),late_penalty_eur:safeNumber(x.late_penalty_eur),shortfall_penalty_eur:safeNumber(x.shortfall_penalty_eur)}));
     return [dims[i],rows];
    }));
+   // Bounded additional read-only aggregate queries using the caller's RLS context.
+   // Joint cells, not independent marginal rankings, support the requested cost drilldown.
+   if(isCostDrilldown(body.prompt)&&["factory","product_type","delivery_company"].every(f=>fields.includes(f))){
+    const productIndex=dims.indexOf("product_type"), productResult=results[productIndex];
+    const products=productResult?.status==="fulfilled"&&!productResult.value.error?productResult.value.data:null;
+    evidence.costDriverCombinations=await costDriverCombinations(products,filters,m.orders,async scoped=>{
+     const r=await client.rpc("nxt_chart_heatmap",{p_x_field:"factory",p_y_field:"delivery_company",p_filters:scoped});
+     return r.error?null:r.data;
+    });
+   }
    if(/prozess|interval|bottleneck|durchlauf|produktion|root cause|ursach/i.test(body.prompt)){
     const p=await client.rpc("nxt_e02_interval_summary",{p_filters:filters});
     if(!p.error&&Array.isArray(p.data?.intervals))evidence.processIntervals=p.data.intervals.slice(0,5).map((x:any)=>({key:x.key,validCases:x.validCases,missingCases:x.missingCases,negativeCases:x.negativeCases,medianDays:x.validCases>=5?x.medianDays:null,p90Days:x.validCases>=5?x.p90Days:null,otifValidCases:x.otifValidCases,nonOtifValidCases:x.nonOtifValidCases,otifMedianDays:x.otifValidCases>=5?x.otifMedianDays:null,nonOtifMedianDays:x.nonOtifValidCases>=5?x.nonOtifMedianDays:null}));
