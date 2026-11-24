@@ -1,12 +1,13 @@
 import {action,validatePlan,type AiPlan,type AiAction} from './assistantProtocol';
 import {freshWidget,normalizeDashboard,standardDashboard,makeDocument,METRICS,WIDGET_LABELS,METRIC_LABELS,type NodeDashboard,type MetricKey,type WidgetType} from './dashboard';
-import {nodeFor,referenceEdge,isValidReference,moveIntoContainer,worldPosition,containerSize,serializeDraft,type NNode,type NEdge} from './graph';
+import {nodeFor,referenceEdge,isValidReference,moveIntoContainer,worldPosition,containerSize,changeContainerSettings,serializeDraft,type NNode,type NEdge} from './graph';
 import {effectiveFilters,validateFilters,conflictingFields,formatFilter} from './filters';
-import type {AnalysisNode,Filter,Metrics} from './types';
+import type {AnalysisNode,Filter,Metrics,GraphViz} from './types';
 import type {FieldKey} from '../config';
 import {KPI_DEFINITIONS} from './kpiDefinitions';
+import type {E02IntervalKey} from './processIntervals';
 export type AssistantState={nodes:NNode[];edges:NEdge[];globals:Filter[];locals:Record<string,Filter[]>;dashboards:Record<string,NodeDashboard>;selectedId:string;allowedFields:FieldKey[]};
-export type AssistantContext={workspaceId:string|null;revision:number|null;workspaceTitle:string;selectedId:string;nodes:{id:string;label:string;kind:string;metric:string|null;visualization:string|null;containerId:string|null;description:string|null;question:string|null;localFilters:{field:string;op:string;value:string|string[]}[];widgets:{id:string;type:string;title:string;metric:string|null;dimension:string|null;compareDimension:string|null}[]}[];edges:{source:string;target:string}[];filters:{field:string;op:string;value:string|string[]}[];globalFilters:{field:string;op:string;value:string|string[]}[];allowedFields:string[];canEdit:boolean};
+export type AssistantContext={graphFormat:2;workspaceId:string|null;revision:number|null;workspaceTitle:string;selectedId:string;nodes:{id:string;label:string;kind:string;metric:string|null;visualization:string|null;chartDimension:string|null;intervalKey:string|null;containerId:string|null;containerCollapsed:boolean;description:string|null;question:string|null;localFilters:{field:string;op:string;value:string|string[]}[];widgets:{id:string;type:string;title:string;metric:string|null;dimension:string|null;compareDimension:string|null;width:string;target:number|null;intervalKey:string|null;distributionMeasure:string|null}[]}[];edges:{source:string;target:string}[];filters:{field:string;op:string;value:string|string[]}[];globalFilters:{field:string;op:string;value:string|string[]}[];allowedFields:string[];canEdit:boolean};
 export function resolveAssistantNodeId(nodes:NNode[],selectedId:string):string{
  return nodes.some(n=>n.id===selectedId)?selectedId:nodes.find(n=>n.data.analysis.kind==='root')?.id||nodes[0]?.id||'';
 }
@@ -17,8 +18,8 @@ export function contextForAssistant(s:AssistantState,workspace:{id:string;title:
  if(!s.nodes.some(n=>n.id===s.selectedId))throw Error('Bitte zuerst einen Analyseblock auswählen.');
  const strip=({field,op,value}:Filter)=>({field,op,value});
  const filters=effectiveFilters(s.globals,s.nodes.map(n=>n.data.analysis),s.locals,s.selectedId,s.edges).map(strip);
- return {workspaceId:workspace?.id||null,revision:workspace?.revision??null,workspaceTitle:workspace?.title||'Lokaler Entwurf',selectedId:s.selectedId,canEdit,allowedFields:s.allowedFields,
- nodes:s.nodes.map(n=>{const a=n.data.analysis,d=s.dashboards[n.id];return {id:n.id,label:a.label,kind:a.kind,metric:a.metricId||null,visualization:a.visualization||null,containerId:a.containerId||null,description:a.description||null,question:d?.question||null,localFilters:[...(a.predicate?[a.predicate]:[]),...(s.locals[n.id]||[])].map(strip),widgets:(d?.widgets||[]).map(w=>({id:w.id,type:w.type,title:w.title,metric:w.metric||null,dimension:w.dimension||null,compareDimension:w.compareDimension||null}))}}),
+ return {graphFormat:2,workspaceId:workspace?.id||null,revision:workspace?.revision??null,workspaceTitle:workspace?.title||'Lokaler Entwurf',selectedId:s.selectedId,canEdit,allowedFields:s.allowedFields,
+ nodes:s.nodes.map(n=>{const a=n.data.analysis,d=s.dashboards[n.id];return {id:n.id,label:a.label,kind:a.kind,metric:a.metricId||null,visualization:a.visualization||null,chartDimension:a.chartDimension||null,intervalKey:a.intervalKey||null,containerId:a.containerId||null,containerCollapsed:!!a.containerCollapsed,description:a.description||null,question:d?.question||null,localFilters:[...(a.predicate?[a.predicate]:[]),...(s.locals[n.id]||[])].map(strip),widgets:(d?.widgets||[]).map(w=>({id:w.id,type:w.type,title:w.title,metric:w.metric||null,dimension:w.dimension||null,compareDimension:w.compareDimension||null,width:w.width,target:w.target??null,intervalKey:w.intervalKey||null,distributionMeasure:w.distributionMeasure||null}))}}),
  edges:s.edges.map(e=>({source:e.source,target:e.target})),filters,globalFilters:s.globals.map(strip)};
 }
 function baseDashboard(n:NNode):NodeDashboard{
@@ -33,12 +34,32 @@ function nextPosition(nodes:NNode[],parent:NNode){
  }
  return {x,y:p.y+220};
 }
+// AI layout: new groups use up to two columns; existing manual positions are never moved.
+function blockSize(n:NNode){const a=n.data.analysis;return a.kind==='container'?containerSize(a):{width:n.measured?.width??(a.visualization&&a.visualization!=='kpi'?460:260),height:n.measured?.height??(a.visualization&&a.visualization!=='kpi'?440:190)}}
+function layoutNewBlocks(nodes:NNode[],created:Map<string,string>):NNode[]{
+ let out=[...nodes];
+ for(const group of out.filter(n=>created.has(n.id)&&n.data.analysis.kind==='container')){
+  const members=out.filter(n=>n.data.analysis.containerId===group.id);
+  if(!members.length)continue;
+  const width=Math.max(...members.map(n=>blockSize(n).width));let y=86;
+  for(let i=0;i<members.length;i+=2){const row=members.slice(i,i+2);row.forEach((n,j)=>{out=out.map(x=>x.id===n.id?{...x,position:{x:18+j*(width+24),y}}:x)});y+=Math.max(...row.map(n=>blockSize(n).height))+24;}
+  out=changeContainerSettings(out,group.id,{});
+ }
+ const occupied=out.filter(n=>!created.has(n.id)&&!n.data.analysis.containerId).map(n=>({...n.position,...blockSize(n)}));
+ for(const [id,parentId] of created){const n=out.find(x=>x.id===id),parent=out.find(x=>x.id===parentId);if(!n||!parent||n.data.analysis.containerId)continue;
+  const p=worldPosition(parent,out),ps=blockSize(parent),s=blockSize(n);let x=p.x,y=p.y+ps.height+110;
+  // Search a free rectangle, respecting existing and already placed generated blocks.
+  for(let attempt=0;attempt<=occupied.length;attempt++){const hit=occupied.find(r=>x<r.x+r.width+70&&x+s.width+70>r.x&&y<r.y+r.height+70&&y+s.height+70>r.y);if(!hit)break;x=hit.x+hit.width+70;}
+  out=out.map(v=>v.id===id?{...v,position:{x,y}}:v);occupied.push({x,y,...s});
+ }
+ return out;
+}
 const dimensionTypes=['bar','table','bar_horizontal','bar_vertical','stacked','stacked100','heatmap','pareto','scatter','treemap'];
 const selectableMetricTypes=['kpi','bar_horizontal','bar_vertical','bullet'];
 export function applyAssistantPlan(state:AssistantState,raw:AiPlan):AssistantState{
  const plan=validatePlan(raw,state.nodes.map(n=>n.id),state.allowedFields);
  let nodes=[...state.nodes],edges=[...state.edges],locals={...state.locals},dashboards={...state.dashboards};
- const refs=new Map(nodes.map(n=>[n.id,n.id]));const changed=new Set<string>();
+ const refs=new Map(nodes.map(n=>[n.id,n.id]));const changed=new Set<string>();const created=new Map<string,string>();
  const get=(target:string)=>{const id=refs.get(target);const n=nodes.find(n=>n.id===id);if(!n)throw Error('Zielknoten nicht vorhanden.');return n};
  const patchNode=(id:string,patch:Partial<AnalysisNode>)=>{nodes=nodes.map(n=>n.id===id?{...n,data:{...n.data,analysis:{...n.data.analysis,...patch}}}:n);changed.add(id)};
  const updateDashboard=(n:NNode,fn:(d:NodeDashboard)=>NodeDashboard)=>{
@@ -80,20 +101,24 @@ export function applyAssistantPlan(state:AssistantState,raw:AiPlan):AssistantSta
    }
    case 'add_branch':
    case 'add_container':{
-    const isGroup=op.kind==='add_container';
-    if(isGroup&&a.kind==='container')throw Error('Container können nicht verschachtelt werden.');
+    const isGroup=op.kind==='add_container',standalone=isGroup&&op.value==='standalone';
+    if(isGroup&&a.kind==='container'&&!standalone)throw Error('Container können nicht verschachtelt werden.');
     if(!isGroup&&a.containerCollapsed)throw Error('Container zuerst öffnen.');
     if(nodes.length>=300)throw Error('Maximal 300 Knoten.');
-    const newId='ai:'+crypto.randomUUID(),analysis:AnalysisNode={id:newId,parentId:null,label:op.label!,kind:isGroup?'container':'metric',createdBy:'user',...(isGroup?{containerTone:'teal' as const}:{metricId:op.metric||'otifRate',visualization:'kpi' as const})};
-    nodes.push(nodeFor(analysis,nextPosition(nodes,n)));refs.set(op.ref!,newId);
+    const viz=(op.widgetType||'kpi') as GraphViz;
+    const metric=op.metric||(['bar','line'].includes(viz)?'onTimeRate':['pareto','treemap','waterfall'].includes(viz)?'totalPenaltyEur':'otifRate');
+    const newId='ai:'+crypto.randomUUID(),analysis:AnalysisNode={id:newId,parentId:null,label:op.label!,kind:isGroup?'container':'metric',createdBy:'user',...(isGroup?{containerTone:'teal' as const}:{metricId:metric,visualization:viz,...(op.dimension?{chartDimension:op.dimension as FieldKey}:{}),...(viz==='process_interval'?{intervalKey:op.value as E02IntervalKey}:{})})};
+    nodes.push(nodeFor(analysis,nextPosition(nodes,n)));refs.set(op.ref!,newId);created.set(newId,id);
     dashboards[newId]={question:'',widgets:[]};
-    if(a.kind==='container')nodes=moveIntoContainer(nodes,edges,newId,id);
+    if(standalone){/* Independent group: only workspace global filters apply. */}
+    else if(a.kind==='container')nodes=moveIntoContainer(nodes,edges,newId,id);
     else{if(edges.length>=400||!isValidReference(id,newId,edges,nodes))throw Error('Ungültige Verbindung oder Kantenlimit.');edges.push(referenceEdge(id,newId));}
     changed.add(newId);break;
    }
   }
  }
  // Check the full downstream impact; reject invalid or contradictory conditions rather than silently overriding.
+ if(created.size)nodes=layoutNewBlocks(nodes,created);
  const topology=nodes.map(n=>n.data.analysis);
  if(plan.operations.some(o=>o.kind==='add_filter'||o.kind==='add_branch'||o.kind==='add_container')){
   for(const n of nodes){
@@ -110,8 +135,8 @@ export function applyAssistantPlan(state:AssistantState,raw:AiPlan):AssistantSta
 export function actionLabel(op:AiAction,labels:Record<string,string>){
  const t=labels[op.target]||op.target;
  switch(op.kind){
-  case 'add_branch':return 'Analysezweig „'+op.label+'“ unter '+t;
-  case 'add_container':return 'Container „'+op.label+'“ unter '+t;
+  case 'add_branch':return (op.widgetType&&op.widgetType!=='kpi'?'Visualisierung '+op.widgetType:'Analysezweig')+' „'+op.label+'“ unter '+t;
+  case 'add_container':return 'Container „'+op.label+'“'+(op.value==='standalone'?' ohne eingehenden Filterpfeil':' unter '+t);
   case 'add_widget':return 'Block „'+op.label+'“ in '+t+' hinzufügen';
   case 'rename_node':return t+' → „'+op.label+'“';
   case 'set_question':return 'Forschungsfrage in '+t+': '+op.label;
@@ -129,17 +154,18 @@ export function localAssistantPlan(prompt:string,s:AssistantState,metrics:Metric
  const add=(target:string,widgetType:WidgetType,label:string,extra:Partial<AiAction>={})=>actions.push(action('add_widget',target,{widgetType,label,...extra}));
  if(canEdit&&(template==='path'||/thinking.?path|analysepfad|analysebaum/.test(q))){
   // A known, reusable analysis scaffold; never claim this is an inferred cause.
+  if(n.data.analysis.kind==='root'&&!n.data.analysis.metricId)actions.push(action('set_node_metric',id,{metric:'otifRate'}));
   const container=n.data.analysis.kind==='container'?id:'new:performance';
   if(container!==id)actions.push(action('add_container',id,{ref:container,label:'Performance Breakdown'}));
-  actions.push(action('add_branch',container,{ref:'new:delivery',label:'Lieferqualität',metric:'onTimeRate'}));
+  actions.push(action('add_branch',container,{ref:'new:delivery',label:'Lieferqualität',metric:'onTimeRate',widgetType:'line'}));
   actions.push(action('set_question','new:delivery',{label:'Wie unterscheiden sich pünktliche und verspätete Lieferungen?'}));
   add('new:delivery','kpi','On-Time Delivery',{metric:'onTimeRate'});add('new:delivery','line','On-Time im Zeitverlauf');
   if(allowed.has('factory'))add('new:delivery','bar_vertical','On-Time je Werk',{metric:'onTimeRate',dimension:'factory'});
-  actions.push(action('add_branch',container,{ref:'new:volume',label:'Mengenkonformität',metric:'volumeConformanceRate'}));
+  actions.push(action('add_branch',container,{ref:'new:volume',label:'Mengenkonformität',metric:'volumeConformanceRate',widgetType:'kpi'}));
   actions.push(action('set_question','new:volume',{label:'Welche Segmente tragen zu Mengenabweichungen bei?'}));
   add('new:volume','kpi','Mengenkonformität',{metric:'volumeConformanceRate'});
   if(allowed.has('factory'))add('new:volume','bar_vertical','Mengenkonformität je Werk',{metric:'volumeConformanceRate',dimension:'factory'});
-  actions.push(action('add_branch',container,{ref:'new:intervals',label:'Prozessintervalle',metric:'otifRate'}));
+  actions.push(action('add_branch',container,{ref:'new:intervals',label:'Durchlaufzeit · Auftrag bis Lieferung',metric:'otifRate',widgetType:'process_interval',value:'order_to_delivery'}));
   actions.push(action('set_question','new:intervals',{label:'Welche Prozessintervalle unterscheiden OTIF- von Nicht-OTIF-Aufträgen?'}));
   add('new:intervals','e02_compare','OTIF vs. Nicht-OTIF');add('new:intervals','e02_quality','Datenqualität');
   return {answer:'Lokale, fachlich definierte Analysevorlage. Sie ergänzt Lieferqualität, Mengenabweichungen und Prozessintervalle. Die KPIs werden nach Übernahme mit den vererbten Filtern live berechnet; dies ist noch keine KI-basierte Ursachenfeststellung.',operations:actions};
