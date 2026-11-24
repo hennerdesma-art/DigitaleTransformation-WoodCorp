@@ -3,8 +3,8 @@ import {ReactFlowProvider,useEdgesState,useNodesState,useReactFlow,type Connecti
 import {FIELD_LABELS,FIELDS,PROJECT,FILTER_KIND,OTIF_STATUS_LABELS,FILTER_GROUPS,filterGroup,CHART_SEGMENT_FIELDS,PROCESS_VARIANT_LEGEND,type FieldKey} from './config';
 import {analysisApi,memberApi,supabase,clearAnalyticsCache} from './lib/supabase';
 import {effectiveFilters,labels,makeFilter,toBackend,validateFilters,formatFilter,traceFilters} from './core/filters';
-import {ROOT_ID,rootAnalysis,createInitialGraph,createBlankWorkspaceGraph,splitGraph,nodeFor,referenceEdge,annotationEdge,isValidAnnotation,isValidReference,cleanDraft,serializeDraft,restoreDraft,containerAt,worldPosition,moveIntoContainer,removeContainer,changeContainerSettings,resizeGraphCard,type NNode,type NEdge} from './core/graph';
-import type {CardSize} from './core/cardLayout';
+import {ROOT_ID,rootAnalysis,createInitialGraph,createBlankWorkspaceGraph,splitGraph,nodeFor,referenceEdge,annotationEdge,isValidAnnotation,isValidReference,cleanDraft,serializeDraft,restoreDraft,containerAt,worldPosition,moveIntoContainer,removeContainer,changeContainerSettings,resizeGraphCard,freeCanvasPosition,nodeLayoutSize,type NNode,type NEdge} from './core/graph';
+import {cardDimensions,type CardSize} from './core/cardLayout';
 import type {Filter,Role,Ribbon,Metrics,TrendRow,BreakdownRow,PaletteType,DashboardData,SavedDraft,AnalysisNode} from './core/types';
 import {CanvasWithFlow} from './components/GraphCanvas';
 import Icon from './components/Icon';
@@ -12,10 +12,13 @@ import {Brand,Button,IconButton,Modal,Notice,Spinner,number,percent,decimal,Smal
 import AuthScreen from './components/AuthScreen';
 import {extractInviteTicket,isInviteFragment,type InvitationTicket} from './lib/invite';
 import {findingStamp,findingStatus} from './core/findings';
+import {canvasWidgetFor,combineLocals} from './core/analyticsCanvas';
+import {appendChartFilter} from './core/chartInteraction';
+import {CanvasWidgetSettings} from './components/CanvasWidgetSettings';
 import {ChartAccess} from './components/InteractiveCharts';
 import {DashboardRenderer,DashboardBuilder} from './components/DashboardBuilder';
 import {WorkspaceControls,FilterCatalogPage} from './components/WorkspaceControls';
-import {standardDashboard,makeDocument,validDocument,metricValue,metricFormat,METRIC_LABELS,type MetricKey,type NodeDashboard} from './core/dashboard';
+import {standardDashboard,makeDocument,validDocument,normalizeDashboard,freshWidget,WIDGET_TYPES,metricValue,metricFormat,METRIC_LABELS,type DashboardWidget,type WidgetType,type MetricKey,type NodeDashboard} from './core/dashboard';
 import {CalculationLogic} from './components/CalculationLogic';
 import {ProcessDefinition} from './components/ProcessCharts';
 import {E02_KEYS} from './core/processIntervals';
@@ -314,14 +317,14 @@ function FilterLibrary({dimensions,admin}:{dimensions:Record<string,string[]>;ad
 
 function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Role;email:string;onSignOut:()=>void}){
  const flow=useReactFlow<NNode,NEdge>();const [view,setView]=useState<View>('analytics');const [collapsed,setCollapsed]=useState(false);
- const [globals,setGlobals]=useState<Filter[]>([]);const [locals,setLocals]=useState<Record<string,Filter[]>>({});
+ const [globals,setGlobals]=useState<Filter[]>([]);const [locals,setLocals]=useState<Record<string,Filter[]>>({});const [canvasCross,setCanvasCross]=useState<Record<string,Filter[]>>({});
  const [dimensions,setDimensions]=useState<Record<string,string[]>>({});const [ribbon,setRibbon]=useState<Ribbon|null>(null);const [rootMetrics,setRootMetrics]=useState<Metrics|null>(null);const [ribbonTrend,setRibbonTrend]=useState<TrendRow[]>([]);
  const [selectedId,setSelectedId]=useState(ROOT_ID);const [selectedTab,setSelectedTab]=useState('Übersicht');const [logicContext,setLogicContext]=useState<{metric:MetricKey;nodeId:string|null}|null>(null);const [detail,setDetail]=useState<DashboardData>(emptyDetail);
  const [nodes,setNodes,onNodesChange]=useNodesState<NNode>([nodeFor(rootAnalysis(),{x:500,y:70})]);
  const [dashboards,setDashboards]=useState<Record<string,NodeDashboard>>({});const [metricNames,setMetricNames]=useState<MetricNames>({});const [fullDashboard,setFullDashboard]=useState(false);const [aiPrep,setAiPrep]=useState(false);const [intelligenceOpen,setIntelligenceOpen]=useState(false);const [nameDialog,setNameDialog]=useState<'node'|'metrics'|null>(null);const defaultDashboardRef=useRef<Record<string,NodeDashboard>>({});
  const [workspaces,setWorkspaces]=useState<WorkspaceRecord[]>([]);const [activeWorkspace,setActiveWorkspace]=useState<WorkspaceRecord|null>(null);
  const [catalog,setCatalog]=useState<FilterCatalogRow[]>([]);const [candidates,setCandidates]=useState<FilterCandidate[]>([]);const [saving,setSaving]=useState(false);const [catalogBusy,setCatalogBusy]=useState(false);
- const [edges,setEdges,onEdgesChange]=useEdgesState<NEdge>([]);const [editMode,setEditMode]=useState(false);const [rightVisible,setRightVisible]=useState(true);const [fullscreen,setFullscreen]=useState(false);const [busy,setBusy]=useState(true);const [warning,setWarning]=useState('');const [toast,setToast]=useState('');
+ const [edges,setEdges,onEdgesChange]=useEdgesState<NEdge>([]);const [editMode,setEditMode]=useState(false);const [rightVisible,setRightVisible]=useState(false);const [fullscreen,setFullscreen]=useState(false);const [busy,setBusy]=useState(true);const [warning,setWarning]=useState('');const [toast,setToast]=useState('');
  const [dialog,setDialog]=useState<{kind:'global'|'node'|'split';id?:string}|null>(null);const [configureNodeId,setConfigureNodeId]=useState<string|null>(null);const [help,setHelp]=useState(false);const [search,setSearch]=useState('');const [dirty,setDirty]=useState(false);const [loaded,setLoaded]=useState(false);const [reloadKey,setReloadKey]=useState(0);
  const viewportRef=useRef<Viewport>({x:0,y:0,zoom:1});const requestRef=useRef(0);const detailRequest=useRef(0);const graphRequest=useRef(0);const undoRef=useRef<Array<{nodes:NNode[];edges:NEdge[];locals:Record<string,Filter[]>;dashboards:Record<string,NodeDashboard>}>>([]);const redoRef=useRef<Array<{nodes:NNode[];edges:NEdge[];locals:Record<string,Filter[]>;dashboards:Record<string,NodeDashboard>}>>([]);const initializedRef=useRef(false);
  const localKey='nxt-v2-layout:'+userId;
@@ -338,20 +341,22 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
    return {question:'Ausgangspunkt – wähle erst eine KPI und füge danach Dashboard-Widgets hinzu.',widgets:[]} as NodeDashboard;
   return defaultDashboardRef.current[selectedId]??=standardDashboard();
  },[dashboards,selectedId,nodes]);
- const updateDashboard=(next:NodeDashboard)=>{if(!canModify)return;setDashboards(old=>({...old,[selectedId]:next}));setDirty(true);};
+ const updateDashboard=(next:NodeDashboard)=>{if(!canModify)return;const n=nodes.find(x=>x.id===selectedId);if(n?.data.analysis.canvasWidgetId&&!next.widgets.some(w=>w.id===n.data.analysis.canvasWidgetId)){setNodes(ns=>changeContainerSettings(ns,selectedId,{canvasWidgetId:undefined,canvasWidgetType:undefined,visualization:'kpi'}));say('Canvas-Verknüpfung entfernt; die KPI-Ansicht bleibt erhalten.');}setDashboards(old=>({...old,[selectedId]:next}));setDirty(true);};
  const reloadWorkspaces=useCallback(async()=>{try{setWorkspaces(await workspacesApi.list())}catch(e){say(e instanceof Error?e.message:'Workspace-Abfrage fehlgeschlagen')}},[say]);
  const reloadCatalog=useCallback(async()=>{try{setCatalog(await workspacesApi.catalog())}catch(e){say(e instanceof Error?e.message:'Filterkatalog nicht verfügbar')}},[say]);
  const reloadCandidates=useCallback(async()=>{try{setCandidates(await workspacesApi.candidates())}catch(e){say(e instanceof Error?e.message:'Filterkandidaten nicht verfügbar')}},[say]);
  useEffect(()=>{void reloadWorkspaces();void reloadCatalog();void reloadCandidates()},[userId,reloadWorkspaces,reloadCatalog,reloadCandidates]);
  useEffect(()=>{if(toast){const t=setTimeout(()=>setToast(''),4200);return()=>clearTimeout(t)}},[toast]);
- const handleSetView=(next:View)=>{setView(next);if(next==='builder')setEditMode(canModify);if(next==='tree'||next==='analytics')setRightVisible(true)};
+ const handleSetView=(next:View)=>{setView(next);if(next==='builder')setEditMode(canModify);if(next==='tree'||next==='analytics')setRightVisible(false)};
  const graphFilterKey=JSON.stringify({nodes:nodes.map(n=>{const {cardWidth,cardHeight,containerWidth,containerHeight,...analysis}=n.data.analysis;return analysis}),edges:edges.map(e=>({source:e.source,target:e.target,kind:e.data?.kind}))});
  const topology=useMemo(()=>JSON.parse(graphFilterKey) as {nodes:AnalysisNode[];edges:Array<{source:string;target:string;kind?:string}>},[graphFilterKey]);
  const analysisNodes=topology.nodes;
+ const runtimeLocals=useMemo(()=>{try{return combineLocals(locals,canvasCross)}catch{return locals}},[locals,canvasCross]);
+ useEffect(()=>{setCanvasCross({})},[activeWorkspace?.id,globals,locals,graphFilterKey]);
  const selectedNode=nodes.find(n=>n.id===selectedId);
  // Restored/new local workspaces use generated root IDs rather than ROOT_ID.
  useEffect(()=>{if(!loaded)return;const next=resolveAssistantNodeId(nodes,selectedId);if(next&&next!==selectedId)setSelectedId(next);},[loaded,nodes,selectedId]);
- const effective=useCallback((id=selectedId)=>effectiveFilters(globals,analysisNodes,locals,id,topology.edges),[globals,analysisNodes,locals,selectedId,topology.edges]);
+ const effective=useCallback((id=selectedId)=>effectiveFilters(globals,analysisNodes,runtimeLocals,id,topology.edges),[globals,analysisNodes,runtimeLocals,selectedId,topology.edges]);
  const snapshot=useCallback(()=>({nodes:structuredClone(nodes),edges:structuredClone(edges),locals:structuredClone(locals),dashboards:structuredClone(dashboards)}),[nodes,edges,locals,dashboards]);
  const remember=useCallback(()=>{undoRef.current=[...undoRef.current.slice(-29),snapshot()];redoRef.current=[];setDirty(true)},[snapshot]);
  const undo=useCallback(()=>{if(!canModify)return;const prev=undoRef.current.pop();if(!prev)return;redoRef.current.push(snapshot());setNodes(prev.nodes);setEdges(prev.edges);setLocals(prev.locals);setDashboards(prev.dashboards);setSelectedId(id=>prev.nodes.some(n=>n.id===id)?id:prev.nodes[0]?.id||ROOT_ID);setDirty(true)},[setNodes,setEdges,snapshot,canModify]);
@@ -376,7 +381,7 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
    setSelectedId(base.nodes[0].id);setSelectedTab('Übersicht');
    viewportRef.current=viewport;
    setActiveWorkspace(ws);setWorkspaces(prev=>[ws,...prev]);
-   localStorage.setItem(localKey,JSON.stringify(document.graph));
+   localStorage.setItem(localKey,JSON.stringify(document));
    initializedRef.current=true;setLoaded(true);setDirty(false);
    window.setTimeout(()=>void flow.fitView({duration:280,padding:.45}),80);
    say('Neuer privater Workspace: ein unkonfigurierter Ausgangsknoten, keine Unterpunkte.');
@@ -393,7 +398,7 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
  };
  const selectWorkspace=async(id:string)=>{
   if(dirty&&!confirm('Es gibt ungespeicherte Änderungen. Workspace trotzdem wechseln?'))return false;
-  if(id==='local'){setActiveWorkspace(null);setDashboards({});setMetricNames({});defaultDashboardRef.current={};setDirty(false);say('Lokale Kopie aktiviert; bisherige Ansicht bleibt erhalten');return true;}
+  if(id==='local'){setActiveWorkspace(null);setCanvasCross({});defaultDashboardRef.current={};setDirty(false);say('Lokale Kopie aktiviert; bisherige Ansicht bleibt erhalten');return true;}
   const ws=workspaces.find(w=>w.id===id);if(!ws)return false;
   const data=validDocument(ws.document);if(!data){say('Gespeicherte Workspace-Daten sind ungültig');return false;}
   try{const graph=restoreDraft(data.graph);setNodes(graph.nodes);setEdges(graph.edges);setGlobals(validateFilters(data.globalFilters));setLocals(data.graph.localFilters||{});setDashboards(data.dashboards);setMetricNames(data.metricNames||{});setSelectedId(graph.nodes.find(n=>n.id===ROOT_ID)?.id||graph.nodes[0]?.id||ROOT_ID);setActiveWorkspace(ws);setDirty(false);initializedRef.current=true;setLoaded(true);viewportRef.current=data.graph.viewport;
@@ -457,9 +462,14 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
  const resetDraft=()=>{if(!confirm('Lokalen Entwurf verwerfen und OTIF-Ausgangsknoten neu laden? Eine gespeicherte Server-Version bleibt erhalten.'))return;localStorage.removeItem(localKey);setActiveWorkspace(null);setDashboards({});setMetricNames({});initializedRef.current=false;setLocals({});setGlobals([]);setLoaded(false);setReloadKey(i=>i+1);say('Lokaler Entwurf zurückgesetzt')};
  const addNode=useCallback((type:PaletteType,position:{x:number;y:number})=>{if(!editMode||!canModify){say('Zum Hinzufügen zuerst den Bearbeitungsmodus mit Schreibrechten aktivieren.');return;}
   if(type==='connector'){say('Connector: Ziehe einen Verbindungspunkt an einem Knoten zu einem anderen Verbindungspunkt.');return;}
-  remember();const label=type==='container'?'Neuer Analysecontainer':type==='root'?'Neuer Ausgangsknoten':type==='metric'?'Neue KPI':type==='note'?'Neue Anmerkung':type==='condition'?'Neuer Filterknoten':type==='donut'?'Donut · On-Time':type==='bar'?'Balken · Segmentvergleich':type==='line'?'Zeitreihe · On-Time':type==='calculation'?'Vertragsstrafe · 0,75 €/kg':type==='process_interval'?'E02 · Prozessintervall':
+  if(nodes.length>=300){say('Maximal 300 Canvas-Elemente.');return;}
+  const widgetType=type.startsWith('widget:')?type.slice(7) as WidgetType:null;
+  if(widgetType&&!WIDGET_TYPES.includes(widgetType)){say('Elementtyp nicht verfügbar');return;}
+  const widget=widgetType?freshWidget(widgetType):null;
+  remember();const label=widget?widget.title:type==='container'?'Neuer Analysecontainer':type==='root'?'Neuer Ausgangsknoten':type==='metric'?'Neue KPI':type==='note'?'Neue Anmerkung':type==='condition'?'Neuer Filterknoten':type==='donut'?'Donut · On-Time':type==='bar'?'Balken · Segmentvergleich':type==='line'?'Zeitreihe · On-Time':type==='calculation'?'Vertragsstrafe · 0,75 €/kg':type==='process_interval'?'E02 · Prozessintervall':
   ({stacked:'OTIF-Klassen',stacked100:'OTIF 100%-Vergleich',heatmap:'OTIF-Heatmap',pareto:'Strafkosten-Pareto',scatter:'OTIF-Streudiagramm',waterfall:'Kosten-Wasserfall',histogram:'Mengenänderungen-Verteilung',treemap:'Kosten-Treemap',funnel:'OTIF-Funnel'} as Record<string,string>)[type]||'Neue Aufgliederung';
   const analysis:AnalysisNode={id:'user:'+crypto.randomUUID(),parentId:null,label,kind:type==='container'?'container':type==='root'?'root':type==='metric'?'metric':type==='note'?'note':type==='condition'?'condition':'segment',metricId:type==='root'||type==='container'?undefined:'otifRate',createdBy:'user',description:type==='note'?'Anmerkung':undefined,visualization:({donut:'donut',bar:'bar',line:'line',calculation:'calculation',stacked:'stacked',stacked100:'stacked100',heatmap:'heatmap',pareto:'pareto',scatter:'scatter',waterfall:'waterfall',histogram:'histogram',treemap:'treemap',funnel:'funnel',process_interval:'process_interval'} as Record<string,AnalysisNode['visualization']>)[type]||'kpi',intervalKey:type==='process_interval'?'order_to_production':undefined,chartDimension:'factory',calculationTemplate:'total_penalty_eur'};
+  if(widget){Object.assign(analysis,{kind:'metric',canvasWidgetId:widget.id,canvasWidgetType:widget.type,metricId:widget.metric||'otifRate',visualization:widget.type==='kpi'?'kpi':'bar'});setDashboards(ds=>({...ds,[analysis.id]:{question:'',widgets:[widget]}}));}
   setNodes(ns=>{
    if(type==='container')return [...ns,nodeFor(analysis,position)];
    const group=containerAt(ns,position);
@@ -467,14 +477,10 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
     try{return moveIntoContainer([...ns,nodeFor(analysis,position)],edges,analysis.id,group.id,position)}
     catch(e){say(e instanceof Error?e.message:'Container ungültig');return [...ns,nodeFor(analysis,position)]}
    }
-   let next={...position};
-   for(let i=0;i<40;i++){
-    if(!ns.some(n=>Math.abs(n.position.x-next.x)<250&&Math.abs(n.position.y-next.y)<180))break;
-    const count=i+1;next={x:position.x+count%4*275,y:position.y+Math.floor(count/4)*205};
-   }
+   const next=freeCanvasPosition(ns,position,cardDimensions(analysis));
    return [...ns,nodeFor(analysis,next)];
   });setSelectedId(analysis.id);say('Knoten hinzugefügt. Einstellungen über das Zahnrad am Knoten konfigurieren.');
- },[editMode,canModify,remember,setNodes,say,edges]);
+ },[editMode,canModify,remember,setNodes,say,edges,nodes.length]);
  const finishDrag=(node:NNode)=>{
   if(!editMode||!canModify)return;
   const current=nodes.find(n=>n.id===node.id);if(!current)return;
@@ -501,7 +507,7 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
   remember();setNodes(ns=>changeContainerSettings(ns,id,{containerCollapsed:!group.data.analysis.containerCollapsed}));
   if(!group.data.analysis.containerCollapsed&&nodes.some(n=>n.id===selectedId&&n.data.analysis.containerId===id))setSelectedId(id);
  };
- const removeNode=(id:string)=>{const n=nodes.find(n=>n.id===id);if(!editMode||!canModify||!n)return;if(!confirm(n.data.analysis.kind==='container'?'Container auflösen? Die enthaltenen Elemente bleiben an ihrer Position; die gemeinsamen Containerfilter und -verbindungen entfallen.':'Knoten und seine Verbindungen entfernen?'))return;remember();setNodes(ns=>n.data.analysis.kind==='container'?removeContainer(ns,id):ns.filter(n=>n.id!==id));setEdges(es=>es.filter(e=>e.source!==id&&e.target!==id));if(selectedId===id)setSelectedId(nodes.find(n=>n.id!==id)?.id||ROOT_ID);say('Knoten entfernt');};
+ const removeNode=(id:string)=>{const n=nodes.find(n=>n.id===id);if(!editMode||!canModify||!n)return;if(!confirm(n.data.analysis.kind==='container'?'Container auflösen? Die enthaltenen Elemente bleiben an ihrer Position; die gemeinsamen Containerfilter und -verbindungen entfallen.':'Knoten und seine Verbindungen entfernen?'))return;remember();setNodes(ns=>n.data.analysis.kind==='container'?removeContainer(ns,id):ns.filter(n=>n.id!==id));setEdges(es=>es.filter(e=>e.source!==id&&e.target!==id));setDashboards(ds=>Object.fromEntries(Object.entries(ds).filter(([key])=>key!==id)));setLocals(ls=>Object.fromEntries(Object.entries(ls).filter(([key])=>key!==id)));if(selectedId===id)setSelectedId(nodes.find(n=>n.id!==id)?.id||ROOT_ID);say('Knoten entfernt');};
  const applyFilter=(f:Filter)=>{if(canModify)setDirty(true);if(dialog?.kind==='global'){setGlobals(gs=>{try{return validateFilters([...gs,f])}catch(e){say((e as Error).message);return gs}})}else if(dialog?.id){setLocals(old=>{const current=old[dialog.id!]||[];try{return {...old,[dialog.id!]:validateFilters([...current,f])}}catch(e){say((e as Error).message);return old}})} };
  const removeGlobal=(id:string)=>{setGlobals(gs=>gs.filter(f=>f.id!==id));if(canModify)setDirty(true)};
  const share=async()=>{if(globals.some(f=>['cust_id','cust_name','cust_addr_code'].includes(f.field))||/:(cust_id|cust_name|cust_addr_code):/.test(selectedId)){say('Ansicht enthält Kundenkennungen. Bitte diese Filter entfernen und einen nicht personenbezogenen Knoten auswählen, bevor du den Link teilst.');return;}const data={v:1,g:globals.map(({field,op,value})=>({field,op,value})),selected:selectedId};const u=new URL(location.href);u.searchParams.set('view',btoa(unescape(encodeURIComponent(JSON.stringify(data)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''));try{await navigator.clipboard.writeText(u.toString());say('Link kopiert. Lokale Knotenfilter werden nicht mitgeteilt.')}catch{say('Zwischenablage nicht verfügbar. URL bitte manuell kopieren.')}};
@@ -517,8 +523,10 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
   const saved=localStorage.getItem(localKey);
   if(saved){
    try{
-    const draft=cleanDraft(JSON.parse(saved));
+    const raw=JSON.parse(saved),doc=validDocument(raw),draft=doc?.graph||cleanDraft(raw);
     if(draft){
+     if(doc){setDashboards(doc.dashboards);setGlobals(doc.globalFilters);setMetricNames(doc.metricNames||{})}
+     else{for(const n of draft.nodes)if(n.analysis.canvasWidgetId){n.analysis={...n.analysis,canvasWidgetId:undefined,canvasWidgetType:undefined}}}
      const graph=restoreDraft(draft);
      setNodes(graph.nodes.length?graph.nodes:base.nodes);setEdges(graph.nodes.length?graph.edges:[]);
      setSelectedId(resolveAssistantNodeId(graph.nodes.length?graph.nodes:base.nodes,ROOT_ID));
@@ -557,6 +565,7 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
  },[globals,reloadKey]);
  useEffect(()=>{
   if(!initializedRef.current||!loaded)return;
+  if(!rightVisible&&!fullDashboard&&view!=='builder')return;
   const selected=topology.nodes.find(n=>n.id===selectedId);
   if(selected?.kind==='note'||(selected?.kind==='root'&&!selected.metricId&&!dashboards[selectedId]?.widgets.length)){
    setDetail({...emptyDetail,pending:false,error:null});return;
@@ -565,7 +574,7 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
   try{filt=effective(selectedId)}
   catch(e){setDetail({...emptyDetail,error:e instanceof Error?e.message:'Ungültiger Analysezweig'});return}
   const idx=++detailRequest.current;
-  setDetail(prev=>({...prev,pending:true,error:null}));
+  setDetail({...emptyDetail,pending:true,error:null});
   const load=async()=>{
    const [metricsResult,trendResult,breakdownResult]=await Promise.allSettled([
     analysisApi.metrics(filt),analysisApi.trend(filt),analysisApi.breakdown('delivery_company',filt)
@@ -582,7 +591,7 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
   };
   void load();
   return()=>{detailRequest.current++};
- },[selectedId,globals,locals,loaded,graphFilterKey,!!dashboards[selectedId]?.widgets.length]);
+ },[selectedId,globals,runtimeLocals,loaded,graphFilterKey,!!dashboards[selectedId]?.widgets.length,rightVisible,fullDashboard,view,reloadKey]);
  const saveNodeSettings=(id:string,patch:Partial<AnalysisNode>,sourceId?:string)=>{
   if(!canModify)return;
   const current=nodes.find(n=>n.id===id);if(!current)return;
@@ -615,7 +624,7 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
      update(a.id,{orders:null,onTimeRate:null,primaryValue:null,primaryLabel:'KPI auswählen',error:undefined,filterSummary:'Unkonfigurierter Ausgangsknoten'});
      return;
     }
-    const filters=effectiveFilters(globals,topology.nodes,locals,a.id,topology.edges);
+    const filters=effectiveFilters(globals,topology.nodes,runtimeLocals,a.id,topology.edges);
     const contradictions=conflictingFields(filters);
     if(contradictions.length){
      update(a.id,{orders:0,onTimeRate:null,chartRows:[],trendRows:[],calculation:undefined,error:'Keine passenden Aufträge: widersprüchliche Filter ('+contradictions.map(f=>fieldNames[f]).join(', ')+').',filterSummary:'Filterkonflikt'});
@@ -629,7 +638,8 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
     const viz=a.visualization||'kpi';
     const chosen=(a.metricId==='otd'?'onTimeRate':a.metricId&&Object.prototype.hasOwnProperty.call(METRIC_LABELS,a.metricId)?a.metricId:'otifRate') as MetricKey;
     const patch:Partial<NNode['data']>={orders:metrics.orders,onTimeRate:metrics.onTimeRate,fullMetrics:metrics,appliedFilters:filters,primaryValue:metricValue(chosen,metrics,null),primaryLabel:METRIC_LABELS[chosen],filterSummary:filters.map(f=>formatFilter(f,fieldNames)).join(' · '),error:undefined,chartRows:undefined,calculation:undefined};
-    if(viz==='process_interval'){
+    if(a.canvasWidgetId){/* Shared widgets lazily request the data they render. */}
+    else if(viz==='process_interval'){
       let request=processPromises.get(key);
       if(!request){request=analysisApi.e02Summary(filters);processPromises.set(key,request)}
       const summary=await request;
@@ -652,7 +662,7 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
   const worker=async()=>{while(next<tasks.length&&run===graphRequest.current){const at=next++;await tasks[at]()}}
   void Promise.all(Array.from({length:Math.min(2,tasks.length)},()=>worker()));
   return()=>{graphRequest.current++};
- },[graphFilterKey,globals,locals,loaded]);
+ },[graphFilterKey,globals,runtimeLocals,loaded,reloadKey]);
  const split=async(id:string,field:FieldKey)=>{const f=effective(id);const rows=await analysisApi.breakdown(field,f);if(!rows.length)throw Error('Keine Teilgruppen für diese Filter verfügbar');
   remember();const next=splitGraph(nodes,edges,id,field,rows);setNodes(next.nodes);setEdges(next.edges);say(rows.length+' Teilgruppen geladen');};
  const pageSearch=(term:string)=>{setSearch(term);if(term.trim().length<2)return;const item=nodes.find(n=>n.data.analysis.label.toLowerCase().includes(term.toLowerCase()));if(item){setSelectedId(item.id);setView('analytics');void flow.fitView({nodes:[{id:item.id}],duration:250,padding:.6});}};
@@ -661,13 +671,19 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
  const assistantStamp=assistantFingerprint(assistantState,activeWorkspace?.id||null,activeWorkspace?.revision??null);
  const applyAi=(plan:AiPlan,stamp:string)=>{
   if(!canModify||saving||!loaded)throw Error('Keine Schreibberechtigung oder Workspace wird gerade gespeichert.');
+  if(Object.values(canvasCross).some(fs=>fs.length))throw Error('Bitte temporäre Canvas-Filter zuerst zurücksetzen. KI-Änderungen verwenden den gespeicherten Filterkontext.');
   if(stamp!==assistantStamp)throw Error('Workspace wurde verändert. Bitte Vorschlag neu erstellen.');
-  const next=applyAssistantPlan(assistantState,plan);remember();setNodes(next.nodes);setEdges(next.edges);setLocals(next.locals);setDashboards(next.dashboards);setDirty(true);setSelectedId(next.selectedId);setRightVisible(true);setView('analytics');setFullDashboard(false);say('KI-Vorschlag übernommen. Im Workspace speichern, um Änderungen dauerhaft zu sichern.');
+  const next=applyAssistantPlan(assistantState,plan);remember();setNodes(next.nodes);setEdges(next.edges);setLocals(next.locals);setDashboards(next.dashboards);setDirty(true);setSelectedId(next.selectedId);setRightVisible(false);setView('analytics');setFullDashboard(false);say('KI-Vorschlag übernommen. Im Workspace speichern, um Änderungen dauerhaft zu sichern.');
   if(next.nodes.length>nodes.length||next.nodes.some(n=>{const old=nodes.find(o=>o.id===n.id);return old&&(old.position.x!==n.position.x||old.position.y!==n.position.y||old.data.analysis.containerWidth!==n.data.analysis.containerWidth||old.data.analysis.containerHeight!==n.data.analysis.containerHeight)}))requestAnimationFrame(()=>void flow.fitView({duration:300,padding:.2}));
  };
  const branchFilter=(nodeId:string,field:FieldKey,value:string)=>{if(!canModify||!allowedFields.includes(field))return;try{if(!nodes.some(n=>n.id===nodeId))throw Error('Knoten fehlt.');const existing=effective(nodeId);if(existing.some(f=>f.field===field&&f.op==='eq'&&f.value===value)){say('Dieser Filter gilt bereits.');return;}const f=makeFilter(field,value,'local'),next=validateFilters([...existing,f]);if(conflictingFields(next).length)throw Error('Auswahl widerspricht vorhandenen Filtern.');const local=validateFilters([...(locals[nodeId]||[]),f]);remember();setLocals(old=>({...old,[nodeId]:local}));say('Zweigfilter angewendet · gilt auch für analytische Nachfolger.');}catch(e){say(e instanceof Error?e.message:'Zweigfilter fehlgeschlagen');}};
+ const areaFilter=(nodeId:string,field:FieldKey,value:string)=>{try{if(!allowedFields.includes(field))throw Error('Filter nicht freigegeben');const source=nodes.find(n=>n.id===nodeId);if(!source)throw Error('Knoten fehlt');const target=source.data.analysis.containerId||nodeId,base=effectiveFilters(globals,analysisNodes,locals,target,topology.edges),next=appendChartFilter(base,canvasCross[target]||[],field,value);const proposed={...canvasCross,[target]:next};combineLocals(locals,proposed);setCanvasCross(proposed);say('Temporärer Analysebereich-Filter gesetzt. Wird nicht gespeichert.');}catch(e){say(e instanceof Error?e.message:'Auswahl ungültig')}};
+ const createBranchFromSegment=(nodeId:string,field:FieldKey,value:string)=>{if(!canModify||!allowedFields.includes(field))return;try{const source=nodes.find(n=>n.id===nodeId);if(!source||nodes.length>=300||edges.length>=400)throw Error('Knoten- oder Kantenlimit erreicht');const base=effectiveFilters(globals,analysisNodes,locals,nodeId,topology.edges),current=effective(nodeId),sig=(f:Filter)=>JSON.stringify([f.field,f.op,f.value]),known=new Set(base.map(sig));const own=current.filter(f=>!known.has(sig(f))).map(f=>({...f,id:crypto.randomUUID(),scope:'local' as const}));const f=makeFilter(field,value,'local');if(![...base,...own].some(x=>sig(x)===sig(f)))own.push(f);const combined=validateFilters([...base,...own]);if(conflictingFields(combined).length)throw Error('Auswahl widerspricht bestehenden Filtern');const id='user:'+crypto.randomUUID(),label=['cust_id','cust_name','cust_addr_code'].includes(field)?'Kundendetail · '+fieldNames[field]:fieldNames[field]+' · '+value;const widget={...freshWidget('kpi'),title:label.slice(0,100)};const a:AnalysisNode={id,label:widget.title,kind:'metric',parentId:null,createdBy:'user',metricId:'otifRate',canvasWidgetId:widget.id,canvasWidgetType:widget.type,visualization:'kpi'};const pos=worldPosition(source,nodes),size=nodeLayoutSize(source),p=freeCanvasPosition(nodes,{x:pos.x,y:pos.y+size.height+70},cardDimensions(a));remember();setNodes(ns=>[...ns,nodeFor(a,p)]);setEdges(es=>[...es,referenceEdge(nodeId,id)]);setLocals(ls=>({...ls,[id]:validateFilters(own)}));setDashboards(ds=>({...ds,[id]:{question:'Wie unterscheidet sich dieses Segment?',widgets:[widget]}}));setSelectedId(id);setCanvasCross({});say('Neuer Analysezweig mit explizitem Filterkontext erstellt.');}catch(e){say(e instanceof Error?e.message:'Zweig konnte nicht erstellt werden')}};
+ const saveCanvasWidget=(nodeId:string,widget:DashboardWidget,containerId?:string)=>{if(!canModify)return;const n=nodes.find(x=>x.id===nodeId);if(!n)throw Error('Knoten fehlt');const previous=dashboards[nodeId]||{question:'',widgets:[]};const next={...previous,widgets:previous.widgets.some(w=>w.id===widget.id)?previous.widgets.map(w=>w.id===widget.id?widget:w):[...previous.widgets,widget]};if(!normalizeDashboard(next))throw Error('Ungültige Widget-Konfiguration');let ns=nodes;if(n.data.analysis.containerId!==containerId)ns=moveIntoContainer(ns,edges,nodeId,containerId);ns=changeContainerSettings(ns,nodeId,{label:widget.title,canvasWidgetId:widget.id,canvasWidgetType:widget.type,metricId:widget.metric||n.data.analysis.metricId||'otifRate',cardWidth:widget.type===n.data.analysis.canvasWidgetType?n.data.analysis.cardWidth:undefined,cardHeight:widget.type===n.data.analysis.canvasWidgetType?n.data.analysis.cardHeight:undefined});remember();setNodes(ns);setDashboards(ds=>({...ds,[nodeId]:next}));setDirty(true);say('Canvas-Element aktualisiert. Workspace speichern, um die Darstellung zu sichern.');};
+ const updateCanvasWidget=(nodeId:string,widgetId:string,patch:Partial<DashboardWidget>)=>{if(!canModify||!editMode)return;try{const n=nodes.find(x=>x.id===nodeId);if(!n)return;let w=canvasWidgetFor(n.data.analysis,dashboards);if(!w&&widgetId==='graph-chart:'+nodeId){const type=(n.data.analysis.visualization||'kpi') as WidgetType;if(!WIDGET_TYPES.includes(type))throw Error('Dieser Diagrammtyp kann nicht umgewandelt werden.');w={...freshWidget(type),title:n.data.analysis.label,dimension:n.data.analysis.chartDimension||'factory',metric:(n.data.analysis.chartMetric||n.data.analysis.metricId||'otifRate') as MetricKey};}if(!w)throw Error('Widget nicht mehr vorhanden');saveCanvasWidget(nodeId,{...w,...patch,id:w.id,type:w.type},n.data.analysis.containerId)}catch(e){say(e instanceof Error?e.message:'Darstellung konnte nicht gespeichert werden')}};
+ const pinWidget=(id:string)=>{try{const n=nodes.find(x=>x.id===selectedId),widget=currentDashboard.widgets.find(w=>w.id===id);if(!n||!widget||n.data.analysis.kind==='note'||n.data.analysis.kind==='container')throw Error('Bitte einen regulären Analyseblock wählen.');remember();setDashboards(ds=>({...ds,[selectedId]:currentDashboard}));setNodes(ns=>changeContainerSettings(ns,selectedId,{canvasWidgetId:widget.id,canvasWidgetType:widget.type,label:widget.title,metricId:widget.metric||'otifRate',cardWidth:undefined,cardHeight:undefined}));setView('analytics');setRightVisible(false);say('Dasselbe Widget wird jetzt direkt im Canvas angezeigt.');}catch(e){say(e instanceof Error?e.message:'Element konnte nicht angeheftet werden')}};
  const resizeCard=(id:string,size:CardSize|null)=>{if(!canModify||!editMode)return;const next=resizeGraphCard(nodes,id,size);if(next===nodes)return;remember();setNodes(next);setDirty(true);};
- const modeActions={nodes,edges,globals,locals,onResizeCard:resizeCard,onRemoveEdge:(id:string)=>{if(!editMode||!canModify)return;remember();setEdges(es=>es.filter(e=>e.id!==id));say('Verbindung entfernt');},onNodesChange:onNodeChanges,onEdgesChange:onEdgeChanges,onConnect:connect,onSelect:setSelectedId,onSelectionClear:()=>{},selectedId,editMode,onEditToggle:()=>{if(canModify)setEditMode(v=>!v)},onFilter:(id:string)=>setDialog({kind:'node',id}),onSplit:(id:string)=>setDialog({kind:'split',id}),onRemove:removeNode,onConfigure:(id:string)=>{setSelectedId(id);setConfigureNodeId(id)},onExplain:(id:string)=>{setSelectedId(id);setRightVisible(true);setSelectedTab('Berechnungslogik')},onAdd:addNode,onSave:saveDraft,onReset:resetDraft,onGraphMove:finishDrag,onGraphStart:remember,onToggleContainer:toggleContainer,onUndo:undo,onRedo:redo,fieldNames,onViewportChange:(v:Viewport)=>{viewportRef.current=v;},fullscreen,setFullscreen,canEdit:canModify,dirty,onHelp:()=>handleSetView('builder')};
+ const modeActions={nodes,edges,globals,locals:runtimeLocals,dashboards,onUpdateWidget:updateCanvasWidget,onAreaFilter:areaFilter,onCreateBranch:createBranchFromSegment,onOpenDetails:(id:string)=>{setSelectedId(id);setSelectedTab('Übersicht');setRightVisible(true)},onResizeCard:resizeCard,onRemoveEdge:(id:string)=>{if(!editMode||!canModify)return;remember();setEdges(es=>es.filter(e=>e.id!==id));say('Verbindung entfernt');},onNodesChange:onNodeChanges,onEdgesChange:onEdgeChanges,onConnect:connect,onSelect:setSelectedId,onSelectionClear:()=>{},selectedId,editMode,onEditToggle:()=>{if(canModify)setEditMode(v=>!v)},onFilter:(id:string)=>setDialog({kind:'node',id}),onSplit:(id:string)=>setDialog({kind:'split',id}),onRemove:removeNode,onConfigure:(id:string)=>{setSelectedId(id);setConfigureNodeId(id)},onExplain:(id:string)=>{setSelectedId(id);setRightVisible(true);setSelectedTab('Berechnungslogik')},onAdd:addNode,onSave:saveDraft,onReset:resetDraft,onGraphMove:finishDrag,onGraphStart:remember,onToggleContainer:toggleContainer,onUndo:undo,onRedo:redo,fieldNames,onViewportChange:(v:Viewport)=>{viewportRef.current=v;},fullscreen,setFullscreen,canEdit:canModify,dirty,onHelp:()=>handleSetView('builder')};
  return <ChartAccess.Provider value={{fields:allowedFields,branchFilter:canModify?branchFilter:undefined}}><div className={'app-shell '+(collapsed?'sidebar-collapsed':'')}><Header userEmail={email} onSignOut={onSignOut} onProfile={()=>handleSetView('profile')} onSearch={pageSearch} onHelp={()=>setHelp(true)}/>
   <Sidebar view={view} onNavigate={handleSetView} collapsed={collapsed} setCollapsed={setCollapsed} role={role}/>
   <main className="app-main">
@@ -677,8 +693,9 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
     <WorkspaceControls workspaces={workspaces} active={activeWorkspace} canEdit={canModify} role={role} saving={saving} onSelect={id=>void selectWorkspace(id)} onCreate={name=>void createWorkspace(name)} onSave={()=>void saveDraft()} onToggleShare={()=>void toggleShare()} onRemove={()=>void removeWorkspace()}/>
     <MetricRibbon ribbon={ribbon} trend={ribbonTrend} pending={busy} names={metricNames} onExplain={metric=>setLogicContext({metric,nodeId:null})}/>
     <FilterStrip globals={globals} fieldNames={fieldNames} onRemove={removeGlobal} onAdd={()=>setDialog({kind:'global'})} onReset={()=>{setGlobals([]);if(canModify)setDirty(true)}} onShare={share}/>
-    {view==='builder'?<DashboardBuilder nodeId={selectedId} nodeLabel={selectedNode?.data.analysis.label||'Knoten'} nodeOptions={nodes.filter(n=>n.data.analysis.kind!=='note').map(n=>({id:n.id,label:n.data.analysis.label}))} onSelectNode={setSelectedId} dashboard={currentDashboard} onChange={updateDashboard} detail={detail} filters={effective()} onBack={()=>handleSetView('analytics')} onSave={()=>void saveDraft()} canEdit={canModify} saving={saving} fieldNames={fieldNames} allowedFields={allowedFields}/>:
-      <><div className={'workspace-row '+(!rightVisible?'no-detail':'')}><CanvasWithFlow {...modeActions}/>{rightVisible&&<DetailPanel node={selectedNode} detail={detail} tab={selectedTab} setTab={setSelectedTab} onClose={()=>setRightVisible(false)} onExpand={()=>setFullDashboard(true)} onRename={()=>setNameDialog('node')} onFilter={()=>setDialog({kind:'node',id:selectedId})} dashboard={currentDashboard} filters={effective()} fieldNames={fieldNames} filterTrace={traceFilters(globals,analysisNodes,locals,selectedId,topology.edges)} onExplain={metric=>setLogicContext({metric,nodeId:selectedId})} onEdit={()=>handleSetView('builder')} canEdit={canModify} noteStatus={selectedNode?.data.analysis.kind==='note'?findingStatus(selectedNode.data.analysis,nodes,edges,globals,locals):undefined} onEditNote={()=>setConfigureNodeId(selectedId)} onOpenSource={()=>{const id=selectedNode?.data.analysis.finding?.sourceId;if(id&&nodes.some(n=>n.id===id)){setSelectedId(id);setSelectedTab('Übersicht');}else say('Analysequelle nicht mehr vorhanden.');}}/>}</div>
+    {Object.values(canvasCross).some(fs=>fs.length)&&<div className="nxt-canvas-crossbar"><strong>Temporäre Analysebereich-Filter · nicht gespeichert</strong>{Object.entries(canvasCross).flatMap(([id,fs])=>fs.map(f=><button type="button" key={f.id} onClick={()=>setCanvasCross(old=>({...old,[id]:(old[id]||[]).filter(x=>x.id!==f.id)}))}>{nodes.find(n=>n.id===id)?.data.analysis.label||'Bereich'}: {formatFilter(f,fieldNames)} ×</button>))}<button type="button" onClick={()=>setCanvasCross({})}>Alle zurücksetzen</button></div>}
+    {view==='builder'?<DashboardBuilder onPinWidget={pinWidget} nodeId={selectedId} nodeLabel={selectedNode?.data.analysis.label||'Knoten'} nodeOptions={nodes.filter(n=>n.data.analysis.kind!=='note').map(n=>({id:n.id,label:n.data.analysis.label}))} onSelectNode={setSelectedId} dashboard={currentDashboard} onChange={updateDashboard} detail={detail} filters={effective()} onBack={()=>handleSetView('analytics')} onSave={()=>void saveDraft()} canEdit={canModify} saving={saving} fieldNames={fieldNames} allowedFields={allowedFields}/>:
+      <><div className={'workspace-row '+(!rightVisible?'no-detail':'')}><CanvasWithFlow {...modeActions}/>{rightVisible&&<DetailPanel node={selectedNode} detail={detail} tab={selectedTab} setTab={setSelectedTab} onClose={()=>setRightVisible(false)} onExpand={()=>setFullDashboard(true)} onRename={()=>setNameDialog('node')} onFilter={()=>setDialog({kind:'node',id:selectedId})} dashboard={currentDashboard} filters={effective()} fieldNames={fieldNames} filterTrace={traceFilters(globals,analysisNodes,runtimeLocals,selectedId,topology.edges)} onExplain={metric=>setLogicContext({metric,nodeId:selectedId})} onEdit={()=>handleSetView('builder')} canEdit={canModify} noteStatus={selectedNode?.data.analysis.kind==='note'?findingStatus(selectedNode.data.analysis,nodes,edges,globals,runtimeLocals):undefined} onEditNote={()=>setConfigureNodeId(selectedId)} onOpenSource={()=>{const id=selectedNode?.data.analysis.finding?.sourceId;if(id&&nodes.some(n=>n.id===id)){setSelectedId(id);setSelectedTab('Übersicht');}else say('Analysequelle nicht mehr vorhanden.');}}/>}</div>
       {!rightVisible&&<button className="detail-reopen" onClick={()=>setRightVisible(true)}><Icon name="layers" size={17}/> Detaildashboard einblenden</button>}</>}
     <div className="bottom-disclaimer">Analyse-Ansicht · Datenbasis WoodCorp {PROJECT.years} · Das Referenzdesign enthält illustrative, nicht übernommene Beispielwerte. {isEditing(role)?'Private Entwürfe können in Supabase gespeichert und für das Team freigegeben werden.':''}</div>
    </>:view==='workspaces'?<WorkspaceOverview items={workspaces} userId={userId} role={role} busy={saving} onOpen={id=>{void selectWorkspace(id).then(ok=>{if(ok)handleSetView('analytics')})}} onCreate={title=>{void createWorkspace(title).then(ok=>{if(ok)handleSetView('analytics')})}} onDelete={deleteWorkspace} onRefresh={()=>void reloadWorkspaces()}/>:
@@ -691,7 +708,7 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
   {logicContext&&<Modal title={'Berechnungslogik · '+METRIC_LABELS[logicContext.metric]} onClose={()=>setLogicContext(null)}><CalculationLogic metric={logicContext.metric} metrics={logicContext.nodeId?detail.metrics:ribbon} trace={logicContext.nodeId?traceFilters(globals,analysisNodes,locals,logicContext.nodeId,topology.edges):globals.map(filter=>({nodeId:null,sourceLabel:'Global',filter,scope:'global' as const}))} fieldNames={fieldNames}/></Modal>}
    {nameDialog==='node'&&<RenameNodeDialog label={selectedNode?.data.analysis.label||'KPI'} onSave={renameSelectedNode} onClose={()=>setNameDialog(null)}/>}
   {nameDialog==='metrics'&&<KpiNameDialog names={metricNames} onSave={names=>{if(canModify){setMetricNames(names);setDirty(true);say('KPI-Titel aktualisiert. Im Workspace speichern.')}}} onClose={()=>setNameDialog(null)}/>}
-  {configureNodeId&&nodes.find(n=>n.id===configureNodeId)&&(nodes.find(n=>n.id===configureNodeId)!.data.analysis.kind==='container'?<ContainerSettings node={nodes.find(n=>n.id===configureNodeId)!.data.analysis} fieldNames={fieldNames} filters={locals[configureNodeId]||[]} onRemoveFilter={fid=>{if(!canModify)return;setLocals(old=>({...old,[configureNodeId]:(old[configureNodeId]||[]).filter(f=>f.id!==fid)}));setDirty(true)}} onSave={patch=>saveNodeSettings(configureNodeId,patch)} onClose={()=>setConfigureNodeId(null)}/>:<NodeSettings node={nodes.find(n=>n.id===configureNodeId)!.data.analysis} fieldNames={fieldNames} filters={locals[configureNodeId]||[]} onRemoveFilter={fid=>{if(!canModify)return;setLocals(old=>({...old,[configureNodeId]:(old[configureNodeId]||[]).filter(f=>f.id!==fid)}));setDirty(true)}} onSave={(patch,sourceId)=>saveNodeSettings(configureNodeId,patch,sourceId)} onClose={()=>setConfigureNodeId(null)} allowedFields={allowedFields} sources={nodes.filter(n=>n.data.analysis.kind!=='note'&&n.data.analysis.kind!=='container').map(n=>n.data.analysis)} containers={nodes.filter(n=>n.data.analysis.kind==='container').map(n=>n.data.analysis)}/>)}
+  {configureNodeId&&nodes.find(n=>n.id===configureNodeId)&&(nodes.find(n=>n.id===configureNodeId)!.data.analysis.kind==='container'?<ContainerSettings node={nodes.find(n=>n.id===configureNodeId)!.data.analysis} fieldNames={fieldNames} filters={locals[configureNodeId]||[]} onRemoveFilter={fid=>{if(!canModify)return;setLocals(old=>({...old,[configureNodeId]:(old[configureNodeId]||[]).filter(f=>f.id!==fid)}));setDirty(true)}} onSave={patch=>saveNodeSettings(configureNodeId,patch)} onClose={()=>setConfigureNodeId(null)}/>:canvasWidgetFor(nodes.find(n=>n.id===configureNodeId)!.data.analysis,dashboards)?<CanvasWidgetSettings key={configureNodeId} node={nodes.find(n=>n.id===configureNodeId)!.data.analysis} widget={canvasWidgetFor(nodes.find(n=>n.id===configureNodeId)!.data.analysis,dashboards)!} containers={nodes.filter(n=>n.data.analysis.kind==='container').map(n=>n.data.analysis)} allowedFields={allowedFields} fieldNames={fieldNames} filters={locals[configureNodeId]||[]} onRemoveFilter={fid=>{if(!canModify)return;setLocals(old=>({...old,[configureNodeId]:(old[configureNodeId]||[]).filter(f=>f.id!==fid)}));setDirty(true)}} onSave={(widget,containerId)=>saveCanvasWidget(configureNodeId,widget,containerId)} onClose={()=>setConfigureNodeId(null)}/>:<NodeSettings node={nodes.find(n=>n.id===configureNodeId)!.data.analysis} fieldNames={fieldNames} filters={locals[configureNodeId]||[]} onRemoveFilter={fid=>{if(!canModify)return;setLocals(old=>({...old,[configureNodeId]:(old[configureNodeId]||[]).filter(f=>f.id!==fid)}));setDirty(true)}} onSave={(patch,sourceId)=>saveNodeSettings(configureNodeId,patch,sourceId)} onClose={()=>setConfigureNodeId(null)} allowedFields={allowedFields} sources={nodes.filter(n=>n.data.analysis.kind!=='note'&&n.data.analysis.kind!=='container').map(n=>n.data.analysis)} containers={nodes.filter(n=>n.data.analysis.kind==='container').map(n=>n.data.analysis)}/>)}
   {aiPrep&&canModify&&<AiDashboardPrep nodeLabel={selectedNode?.data.analysis.label||'Knoten'} existingCount={currentDashboard.widgets.length} allowedFields={allowedFields} onApply={draft=>{updateDashboard(draft);setAiPrep(false);handleSetView('builder');say('Dashboard-Vorlage übernommen. Bitte prüfen und Workspace speichern.')}} onClose={()=>setAiPrep(false)}/>}
   {help&&<Modal title="NXT Analytics – Bedienung" onClose={()=>setHelp(false)}><div className="help-copy"><p><b>Analysieren:</b> Knoten auswählen, global filtern und im rechten Dashboard die Detaildaten ansehen.</p><p><b>Bearbeiten:</b> Im Bearbeitungsmodus Knoten frei verschieben, Notizen aus der Palette ziehen und Verbindungspunkte mit der Maus verbinden. Filterfluss-Linien übertragen Filter in Pfeilrichtung; gestrichelte Referenzen verknüpfen nur fachlich; Rückverbindungen, die einen Zyklus bilden würden, werden verhindert.</p><p><b>Split:</b> Über die Knoten-Aktion eine Dimension auswählen. Die Filter jedes Vorgängers werden entlang aller eingehenden Pfeile vererbt (UND). Im Canvas lassen sich außerdem Balken-, Donut- und Zeitreihendiagramme sowie sichere SQL-Kennzahlen hinzufügen.</p><p><b>Container:</b> Container aus der Palette hinzufügen, Blöcke hinein- oder herausziehen oder die Gruppierung im Zahnrad wählen. Ein Pfeil zum Container überträgt den gemeinsamen Filterkontext auf alle Mitglieder. Beim Auflösen bleiben die Blöcke erhalten.</p><p><b>Speichern:</b> Änderungen lassen sich in privaten Supabase-Workspaces speichern und später für alle Projektmitglieder veröffentlichen. Dashboard-Widgets werden pro Knoten gesichert.</p></div></Modal>}
   {loaded&&<IntelligencePanel state={assistantState} workspace={activeWorkspace} fingerprint={assistantStamp} canEdit={canModify} busy={saving} onApply={applyAi} onUndo={undo} onSelectNode={setSelectedId} onOpenDashboard={()=>{setIntelligenceOpen(false);setFullDashboard(true);setView('analytics')}} open={intelligenceOpen} onOpen={setIntelligenceOpen}/>}

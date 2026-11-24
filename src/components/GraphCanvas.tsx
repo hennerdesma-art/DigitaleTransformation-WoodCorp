@@ -1,7 +1,7 @@
 import React,{memo,useMemo,useRef} from 'react';
 import {ReactFlow,Background,BackgroundVariant,Controls,Handle,MiniMap,Position,useReactFlow,type EdgeChange,type NodeChange,type Connection,type NodeProps,type Viewport} from '@xyflow/react';
 import {DndContext,PointerSensor,KeyboardSensor,useSensor,useSensors,type DragEndEvent,useDraggable} from '@dnd-kit/core';
-import {orderedNodes,containerLayout,resizeGraphCard,type NNode,type NEdge} from '../core/graph';
+import {orderedNodes,containerLayout,resizeGraphCard,worldPosition,type NNode,type NEdge} from '../core/graph';
 import {ResizeGrip} from './ResizeGrip';
 import {cardDimensions,type CardSize} from '../core/cardLayout';
 import {findingStatus} from '../core/findings';
@@ -110,7 +110,7 @@ export function CanvasWithFlow({nodes,edges,onNodesChange,onEdgesChange,onConnec
  const collapsedGroups=new Set(nodes.filter(n=>n.data.analysis.kind==='container'&&n.data.analysis.containerCollapsed).map(n=>n.id));
  const hiddenIds=new Set(nodes.filter(n=>n.data.analysis.containerId&&collapsedGroups.has(n.data.analysis.containerId)).map(n=>n.id));
  const previewNodes=editMode&&resizePreview?resizeGraphCard(nodes,resizePreview.id,resizePreview.size):nodes;
- const slides=nodes.filter(n=>!hiddenIds.has(n.id)&&n.data.analysis.kind!=='container').sort((a,b)=>{const aa=flow.getNode(a.id)?.internals?.positionAbsolute,bb=flow.getNode(b.id)?.internals?.positionAbsolute;return (aa?.y??a.position.y)-(bb?.y??b.position.y)||(aa?.x??a.position.x)-(bb?.x??b.position.x)});
+ const slides=nodes.filter(n=>!hiddenIds.has(n.id)&&n.data.analysis.kind!=='container').sort((a,b)=>{const aa=worldPosition(a,nodes),bb=worldPosition(b,nodes);return aa.y-bb.y||aa.x-bb.x});
  const step=(i:number)=>{const idx=Math.max(0,Math.min(slides.length-1,i));setPresentIndex(idx);if(slides[idx])focus(slides[idx].id)};
  const enriched=orderedNodes(previewNodes).map(n=>({...containerLayout(n),hidden:hiddenIds.has(n.id),draggable:editMode,connectable:editMode,data:{...n.data,canvasWidget:canvasWidgetFor(n.data.analysis,dashboards),semanticOverview:semantic&&zoom<55&&n.id!==selectedId,onFocus:focus,onDetails:onOpenDetails,onAreaFilter,onCreateBranch:canEdit?onCreateBranch:undefined,onUpdateWidget,fieldNames,editMode,resizeZoom:()=>flow.getZoom(),onResizePreview:(id:string,size:CardSize|null)=>setResizePreview(size?{id,size}:null),onResizeCard,findingStatus:n.data.analysis.kind==='note'?findingStatus(n.data.analysis,nodes,edges,globals,locals):undefined,onFilter,onSplit,onRemove,onConfigure,onExplain,onToggleContainer,memberCount:n.data.analysis.kind==='container'?nodes.filter(x=>x.data.analysis.containerId===n.id).length:undefined}}));
  const visibleEdges=edges.map(e=>({...e,hidden:hiddenIds.has(e.source)||hiddenIds.has(e.target)}));
