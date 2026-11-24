@@ -20,7 +20,7 @@ export function contextForAssistant(s:AssistantState,workspace:{id:string;title:
  const strip=({field,op,value}:Filter)=>({field,op,value});
  const filters=effectiveFilters(s.globals,s.nodes.map(n=>n.data.analysis),s.locals,s.selectedId,s.edges).map(strip);
  return {graphFormat:AI_GRAPH_FORMAT,workspaceId:workspace?.id||null,revision:workspace?.revision??null,workspaceTitle:workspace?.title||'Lokaler Entwurf',selectedId:s.selectedId,canEdit,allowedFields:s.allowedFields,
- nodes:s.nodes.map(n=>{const a=n.data.analysis,d=s.dashboards[n.id];return {id:n.id,label:a.label,kind:a.kind,metric:a.metricId||null,visualization:a.visualization||null,chartDimension:a.chartDimension||null,intervalKey:a.intervalKey||null,containerId:a.containerId||null,containerCollapsed:!!a.containerCollapsed,containerTone:a.kind==='container'?(a.containerTone||'teal'):null,position:{x:Math.round(n.position.x),y:Math.round(n.position.y)},world:worldPosition(n,s.nodes),size:assistantBlockSize(n),description:a.description||null,question:d?.question||null,localFilters:[...(a.predicate?[a.predicate]:[]),...(s.locals[n.id]||[])].map(strip),widgets:(d?.widgets||[]).map(w=>({id:w.id,type:w.type,title:w.title,metric:w.metric||null,dimension:w.dimension||null,compareDimension:w.compareDimension||null,width:w.width,target:w.target??null,intervalKey:w.intervalKey||null,distributionMeasure:w.distributionMeasure||null}))}}),
+ nodes:s.nodes.map(n=>{const a=n.data.analysis,d=s.dashboards[n.id];return {id:n.id,label:a.label,kind:a.kind,metric:a.metricId||null,visualization:a.canvasWidgetType||a.visualization||null,chartDimension:a.chartDimension||null,intervalKey:a.intervalKey||null,containerId:a.containerId||null,containerCollapsed:!!a.containerCollapsed,containerTone:a.kind==='container'?(a.containerTone||'teal'):null,position:{x:Math.round(n.position.x),y:Math.round(n.position.y)},world:worldPosition(n,s.nodes),size:assistantBlockSize(n),description:a.description||null,question:d?.question||null,localFilters:[...(a.predicate?[a.predicate]:[]),...(s.locals[n.id]||[])].map(strip),widgets:(d?.widgets||[]).map(w=>({id:w.id,type:w.type,title:w.title,metric:w.metric||null,dimension:w.dimension||null,compareDimension:w.compareDimension||null,width:w.width,target:w.target??null,intervalKey:w.intervalKey||null,distributionMeasure:w.distributionMeasure||null}))}}),
  edges:s.edges.map(e=>({source:e.source,target:e.target,kind:e.data?.kind})),filters,globalFilters:s.globals.map(strip)};
 }
 function baseDashboard(n:NNode):NodeDashboard{
@@ -68,9 +68,10 @@ function layoutNewBlocks(nodes:NNode[],created:Map<string,string>):NNode[]{
  return out;
 }
 function visualPatch(op:AiAction):Partial<AnalysisNode>{
- const viz=(op.widgetType||'kpi') as GraphViz;
+ const type=op.widgetType||'kpi';
+ const viz=(sharedCanvasTypes.includes(type)?'bar':type) as GraphViz;
  const metric=op.metric||(['bar','line'].includes(viz)?'onTimeRate':['pareto','treemap','waterfall'].includes(viz)?'totalPenaltyEur':'otifRate');
- return {metricId:metric,chartMetric:['bar','line'].includes(viz)?metric:undefined,visualization:viz,chartDimension:op.dimension?op.dimension as FieldKey:undefined,intervalKey:viz==='process_interval'?op.value as E02IntervalKey:undefined,calculationTemplate:undefined,rateEurPerKg:undefined};
+ return {canvasWidgetId:undefined,canvasWidgetType:undefined,metricId:metric,chartMetric:['bar','line'].includes(viz)?metric:undefined,visualization:viz,chartDimension:op.dimension?op.dimension as FieldKey:undefined,intervalKey:viz==='process_interval'?op.value as E02IntervalKey:undefined,calculationTemplate:undefined,rateEurPerKg:undefined};
 }
 function intersects(a:{x:number;y:number;width:number;height:number},b:{x:number;y:number;width:number;height:number}){
  return a.x<b.x+b.width&&a.x+a.width>b.x&&a.y<b.y+b.height&&a.y+a.height>b.y;
@@ -86,8 +87,26 @@ function validateLayout(before:NNode[],after:NNode[]){
   throw Error('Layout würde „'+a.data.analysis.label+'“ und „'+b.data.analysis.label+'“ überlappen. Bitte andere Position wählen.');
  }
 }
-const dimensionTypes=['bar','table','bar_horizontal','bar_vertical','stacked','stacked100','heatmap','pareto','scatter','treemap'];
+const dimensionTypes=['comparison','bar','table','bar_horizontal','bar_vertical','stacked','stacked100','heatmap','pareto','scatter','treemap'];
 const selectableMetricTypes=['kpi','bar','line','bar_horizontal','bar_vertical','bullet'];
+const sharedCanvasTypes=['table','customer_table','comparison','status','scenario','bullet','bar_horizontal','bar_vertical','e02_overview','e02_compare','e02_quality','e02_distribution','text'];
+function makeSharedWidget(op:AiAction,title:string,allowed:FieldKey[]){
+ const type=op.widgetType as WidgetType,w=freshWidget(type);w.title=title;
+ if(op.metric&&selectableMetricTypes.includes(type))w.metric=op.metric as MetricKey;
+ if(op.dimension&&dimensionTypes.includes(type))w.dimension=op.dimension as FieldKey;
+ if(type==='heatmap'&&op.compareDimension)w.compareDimension=op.compareDimension as FieldKey;
+ if(type==='bullet')w.target=op.targetValue!;
+ if(type==='comparison'&&op.value)w.display={...w.display,comparison:op.value as 'rates'|'costs'|'mass'};
+ if(type==='line'&&op.value)w.display={...w.display,timeAnchor:op.value as 'delivered'|'ordered'|'promised'};
+ if((type==='scenario'||type==='customer_table')&&op.targetValue!==null)w.display={...w.display,targetOtd:op.targetValue};
+ if(type==='text'&&op.value)w.text=op.value;
+ if(type==='histogram'&&op.value)w.distributionMeasure=op.value as typeof w.distributionMeasure;
+ if(type==='e02_distribution'&&op.value)w.intervalKey=op.value as typeof w.intervalKey;
+ if(type==='customer_table'&&!allowed.includes('cust_id'))throw Error('Kunden-ID nicht freigegeben.');
+ if((w.dimension&&!allowed.includes(w.dimension))||(w.compareDimension&&!allowed.includes(w.compareDimension)))throw Error('Widget-Dimension nicht freigegeben.');
+ return w;
+}
+function isSharedCanvas(op:AiAction){return sharedCanvasTypes.includes(op.widgetType||'')||op.widgetType==='line'&&!!op.value;}
 export function applyAssistantPlan(state:AssistantState,raw:AiPlan):AssistantState{
  const plan=validatePlan(raw,state.nodes.map(n=>n.id),state.allowedFields);
  let nodes=[...state.nodes],edges=[...state.edges],locals={...state.locals},dashboards={...state.dashboards};
@@ -105,13 +124,15 @@ export function applyAssistantPlan(state:AssistantState,raw:AiPlan):AssistantSta
    case 'move_node':case 'set_container_style':case 'resize_container':case 'arrange_container':layoutOps.push(op);break;
    case 'set_node_visualization':{
     if(a.kind==='container'||a.kind==='note')throw Error('Container oder Textblöcke können nicht in Diagramme umgewandelt werden.');
-    patchNode(id,visualPatch(op));nodes=nodes.map(x=>x.id===id?{...x,measured:undefined,width:undefined,height:undefined}:x);
+    const shared=isSharedCanvas(op)?makeSharedWidget(op,a.label,state.allowedFields):null;
+    if(shared)updateDashboard(n,d=>({...d,widgets:[...d.widgets.filter(w=>w.id!==a.canvasWidgetId),shared]}));
+    patchNode(id,{...visualPatch(op),...(shared?{canvasWidgetId:shared.id,canvasWidgetType:shared.type}:{} )});nodes=nodes.map(x=>x.id===id?{...x,measured:undefined,width:undefined,height:undefined}:x);
     if(a.containerId)nodes=changeContainerSettings(nodes,a.containerId,{});break;
    }
-   case 'rename_node':patchNode(id,{label:op.label!});break;
+   case 'rename_node':patchNode(id,{label:op.label!});if(a.canvasWidgetId)updateDashboard(n,d=>({...d,widgets:d.widgets.map(w=>w.id===a.canvasWidgetId?{...w,title:op.label!}:w)}));break;
    case 'set_node_metric':
     if(a.kind==='note'||a.kind==='container')throw Error('Container und Textbausteine sind keine KPI-Karten.');
-    patchNode(id,{metricId:op.metric!,visualization:'kpi'});break;
+    patchNode(id,{metricId:op.metric!,visualization:'kpi',canvasWidgetId:undefined,canvasWidgetType:undefined});break;
    case 'add_finding':{
     if(a.kind==='note')throw Error('Finding benötigt eine Analysequelle.');if(nodes.length>=300||edges.length>=400)throw Error('Knoten- oder Kantenlimit erreicht.');
     const existing=nodes.find(x=>x.data.analysis.kind==='note'&&x.data.analysis.finding?.sourceId===id&&x.data.analysis.label===op.label&&x.data.analysis.description===op.value);
@@ -128,8 +149,7 @@ export function applyAssistantPlan(state:AssistantState,raw:AiPlan):AssistantSta
    }
    case 'set_question':updateDashboard(n,d=>({...d,question:op.label!}));break;
    case 'add_widget':{
-    const type=op.widgetType as WidgetType,w=freshWidget(type);
-    w.title=op.label!;
+    const type=op.widgetType as WidgetType,w=makeSharedWidget(op,op.label!,state.allowedFields);
     if(op.metric&&selectableMetricTypes.includes(type))w.metric=op.metric as MetricKey;
     if(op.dimension&&dimensionTypes.includes(type))w.dimension=op.dimension as FieldKey;
     if(type==='heatmap'&&op.compareDimension)w.compareDimension=op.compareDimension as FieldKey;
@@ -143,7 +163,7 @@ export function applyAssistantPlan(state:AssistantState,raw:AiPlan):AssistantSta
     updateDashboard(n,d=>({...d,widgets:[...d.widgets,w]}));break;
    }
    case 'remove_widget':
-   case 'rename_widget':updateDashboard(n,d=>{
+   case 'rename_widget':if(op.kind==='remove_widget'&&a.canvasWidgetId===op.widgetId)patchNode(id,{canvasWidgetId:undefined,canvasWidgetType:undefined,visualization:'kpi'});updateDashboard(n,d=>{
     if(!d.widgets.some(w=>w.id===op.widgetId))throw Error('Widget nicht mehr vorhanden.');
     return {...d,widgets:op.kind==='remove_widget'?d.widgets.filter(w=>w.id!==op.widgetId):d.widgets.map(w=>w.id===op.widgetId?{...w,title:op.label!}:w)};
    });break;
@@ -161,9 +181,10 @@ export function applyAssistantPlan(state:AssistantState,raw:AiPlan):AssistantSta
     // analytical dependency, not containment. Never discard the parent's filters.
     if(member&&a.containerCollapsed)throw Error('Container zuerst öffnen.');
     if(nodes.length>=300)throw Error('Maximal 300 Knoten.');
-    const newId='ai:'+crypto.randomUUID(),analysis:AnalysisNode={id:newId,parentId:null,label:op.label!,kind:isGroup?'container':'metric',createdBy:'user',...(isGroup?{containerTone:'teal' as const}:visualPatch(op))};
+    const shared=!isGroup&&isSharedCanvas(op)?makeSharedWidget(op,op.label!,state.allowedFields):null;
+    const newId='ai:'+crypto.randomUUID(),analysis:AnalysisNode={id:newId,parentId:null,label:op.label!,kind:isGroup?'container':'metric',createdBy:'user',...(isGroup?{containerTone:'teal' as const}:visualPatch(op)),...(shared?{canvasWidgetId:shared.id,canvasWidgetType:shared.type}:{})};
     nodes.push(nodeFor(analysis,nextPosition(nodes,n)));refs.set(op.ref!,newId);created.set(newId,id);
-    dashboards[newId]={question:'',widgets:[]};
+    dashboards[newId]={question:'',widgets:shared?[shared]:[]};
     if(standalone){/* Independent group: only workspace global filters apply. */}
     else if(member)nodes=moveIntoContainer(nodes,edges,newId,id);
     else{if(edges.length>=400||!isValidReference(id,newId,edges,nodes))throw Error('Ungültige Verbindung oder Kantenlimit.');edges.push(referenceEdge(id,newId));}
