@@ -1,9 +1,9 @@
 /** Shared, deliberately narrow NXT Intelligence contract. No executable SQL or arbitrary code. */
-export const ACTION_KINDS=['add_widget','rename_node','set_question','add_branch','add_container','add_filter','remove_widget','rename_widget','set_node_metric','move_node','set_container_style','resize_container','arrange_container','set_node_visualization'] as const;
+export const ACTION_KINDS=['add_widget','rename_node','set_question','add_branch','add_container','add_filter','remove_widget','rename_widget','set_node_metric','move_node','set_container_style','resize_container','arrange_container','set_node_visualization','add_finding','edit_finding','add_reference'] as const;
 export type ActionKind=typeof ACTION_KINDS[number];
 export type AiAction={kind:ActionKind;target:string;label:string|null;ref:string|null;widgetType:string|null;metric:string|null;dimension:string|null;compareDimension:string|null;field:string|null;value:string|null;widgetId:string|null;targetValue:number|null};
 export type AiPlan={answer:string;operations:AiAction[]};
-export const KNOWLEDGE_VERSION='nxt-ai-v1.3.0';
+export const KNOWLEDGE_VERSION='nxt-ai-v1.4.0';
 export const AI_GRAPH_FORMAT=3 as const;
 export const AI_CONTAINER_TONES=['teal','slate','sand'] as const;
 export const AI_LAYOUT_ACTIONS=['move_node','set_container_style','resize_container','arrange_container','set_node_visualization'] as const;
@@ -57,8 +57,13 @@ export function buildPlanProblem(intent:AiRequestIntent,plan:AiPlan):string|null
 }
 
 export const AI_WIDGET_TYPES=['kpi','line','bar','table','donut','text','bar_horizontal','bar_vertical','stacked','stacked100','heatmap','pareto','scatter','waterfall','bullet','histogram','treemap','funnel','e02_overview','e02_compare','e02_quality','e02_distribution'] as const;
-export const AI_METRICS=['orders','otifRate','onTimeRate','volumeConformanceRate','otifCases','lateOrders','avgDelayDays','affectedFactories','totalPenaltyEur','latePenaltyEur','shortfallPenaltyEur'] as const;
-export const AI_DIMENSIONS=['factory','product_type','delivery_company','warehouse_type','cust_country','delivery_year','cust_market','delivered_quantity_unit','order_tolerance_met','otif_status'] as const;
+export const AI_METRICS=['orders','otifRate','onTimeRate','volumeConformanceRate','otifCases','lateOrders','avgDelayDays','affectedFactories','totalPenaltyEur','latePenaltyEur','shortfallPenaltyEur','penaltyPerOrderEur','penaltyPerKgEur','penaltyOrderValueRate','underDeliveryRate','overDeliveryRate','overDeliveryKg','quantityDeviationPct','orderConfirmationDays','productionPreparationDays','shipmentBufferDays','quantityChangesAfterStart','quantityChangesAfterEnd','quantityChangesAfterShip','creditBlockRate','scheduleChangeRate','processVariantCount','dataQualityCoverageRate'] as const;
+export const AI_DIMENSIONS=['factory','product_type','delivery_company','warehouse_type','cust_country','delivery_year','cust_market','delivered_quantity_unit','order_tolerance_met','otif_status','factory_product','quantity_deviation_class','credit_block','quantity_change_phase','process_order_quality','order_size_class','quantity_change_group','delivery_month'] as const;
+export const AI_SEGMENT_METRICS=AI_METRICS.filter(k=>!['avgDelayDays','affectedFactories'].includes(k));
+export const AI_NUMERIC_FIELDS=['ordered_quantity','delivered_quantity','order_value','days_to_del_deadline','quantity_change_count','delivery_date_change_count','production_start_change_count','price_change_count','anomalous_event_count','quantity_deviation_pct','penalty_eur','order_confirmation_days','production_preparation_days','order_to_start_days','production_days','production_to_ship_days','ship_to_delivery_days','order_to_delivery_days','shipment_buffer_days','start_buffer_days','end_buffer_days','quantity_changes_after_start','quantity_changes_after_end','quantity_changes_after_ship','min_order_tolerance','max_order_tolerance','unit_price'] as const;
+export const AI_DATE_FIELDS=['delivered_date','promised_date','order_received_date'] as const;
+export const AI_FILTER_FIELDS=[...AI_DIMENSIONS,...AI_NUMERIC_FIELDS,...AI_DATE_FIELDS] as const;
+export function actionFilterValue(op:AiAction):string|string[]{if(op.widgetType==='in'||op.widgetType==='between'){let v:unknown;try{v=JSON.parse(op.value||'')}catch{throw Error('Filter benötigt ein JSON-Array von Textwerten.')}if(!Array.isArray(v)||v.some(x=>typeof x!=='string'||!x.trim()||x.length>200))throw Error('Ungültige Filterliste.');return v;}return op.value||'';}
 export const AI_CANVAS_TYPES=['kpi','bar','line','donut','stacked','stacked100','heatmap','pareto','scatter','waterfall','histogram','treemap','funnel','process_interval'] as const;
 export const AI_INTERVAL_KEYS=['order_to_production','production_duration','production_to_shipment','shipment_to_delivery','order_to_delivery'] as const;
 const CANVAS_GROUPED=['bar','stacked','stacked100','heatmap','pareto','scatter','treemap'];
@@ -81,7 +86,7 @@ function validateCanvasVisual(op:AiAction,allowed:Set<string>){
      const other=op.dimension==='factory'?'product_type':'factory';
      if(!allowed.has(other)||(op.compareDimension!==null&&op.compareDimension!==other))throw Error('Canvas-Heatmap benötigt Werk und Produkttyp.');
     }else if(op.compareDimension)throw Error('Zweite Canvas-Dimension nur für Heatmap.');
-    if(['bar','line'].includes(viz)&&op.metric&&op.metric!=='onTimeRate')throw Error('Canvas-Balken und Zeitreihe zeigen On-Time Delivery.');
+    if(['bar','line'].includes(viz)&&op.metric&&!isOne(AI_SEGMENT_METRICS,op.metric))throw Error('Kennzahl für Segmentvergleich nicht unterstützt.');
     if(viz==='donut'&&op.metric&&!['otifRate','onTimeRate'].includes(op.metric))throw Error('Canvas-Donut zeigt OTIF oder On-Time Delivery.');
     if(COST_VISUALS.includes(viz)&&op.metric&&op.metric!=='totalPenaltyEur')throw Error('Canvas-Kostendiagramm zeigt modellierte Gesamtkosten.');
     if(['stacked','stacked100','heatmap','scatter','funnel'].includes(viz)&&op.metric&&op.metric!=='otifRate')throw Error('Canvas-Diagramm verwendet die fest definierte OTIF-Auswertung.');
@@ -97,13 +102,20 @@ export function validatePlan(input:unknown,existingIds:string[],allowedFields:st
  const known=new Set(existingIds),allowed=new Set(allowedFields),out:AiAction[]=[];
  for(const raw of p.operations){
   if(!raw||!isOne(ACTION_KINDS,raw.kind)||!str(raw.target,180)||!known.has(raw.target))throw Error('Unbekannte Aktion oder Zielknoten.');
-  for(const k of slots)if(raw[k]!=null&&!str(raw[k],k==='label'?700:k==='value'?200:180))throw Error('Ungültiges Aktionsfeld: '+k);
+  for(const k of slots)if(raw[k]!=null&&!str(raw[k],k==='label'?700:k==='value'&&['add_finding','edit_finding'].includes(raw.kind)?1800:k==='value'?200:180))throw Error('Ungültiges Aktionsfeld: '+k);
   if(raw.targetValue!=null&&(!Number.isFinite(raw.targetValue)||raw.targetValue<0||raw.targetValue>100))throw Error('Zielwert ungültig.');
   const op=action(raw.kind,raw.target,Object.fromEntries([...slots,'targetValue'].map(k=>[k,(raw as unknown as Record<string,unknown>)[k]??null])) as Partial<AiAction>);
   if(op.metric&&!isOne(AI_METRICS,op.metric))throw Error('Unbekannte Kennzahl.');
   for(const dim of [op.dimension,op.compareDimension])if(dim&&(!allowed.has(dim)||!isOne(AI_DIMENSIONS,dim)))throw Error('Dimension nicht freigegeben.');
   if(op.compareDimension&&op.compareDimension===op.dimension)throw Error('Heatmap benötigt unterschiedliche Dimensionen.');
-  if(op.kind==='add_branch'||op.kind==='add_container'){
+  if(op.kind==='add_finding'){
+   if(!str(op.label,100)||!op.ref||!/^new:[a-zA-Z0-9_-]{1,40}$/.test(op.ref)||known.has(op.ref)||!str(op.value,1800)||op.widgetType||op.metric||op.dimension||op.compareDimension||op.field||op.widgetId||op.targetValue!==null)throw Error('Finding benötigt Titel, Text und eindeutigen neuen Verweis.');
+   known.add(op.ref);
+  }else if(op.kind==='edit_finding'){
+   if(!str(op.value,1800)||(op.label!==null&&!str(op.label,100))||op.ref||op.widgetType||op.metric||op.dimension||op.compareDimension||op.field||op.widgetId||op.targetValue!==null)throw Error('Ungültige Finding-Bearbeitung.');
+  }else if(op.kind==='add_reference'){
+   if(!op.value||!known.has(op.value)||op.value===op.target||op.label||op.ref||op.widgetType||op.metric||op.dimension||op.compareDimension||op.field||op.widgetId||op.targetValue!==null)throw Error('Referenz benötigt einen vorhandenen, anderen Zielknoten.');
+  }else if(op.kind==='add_branch'||op.kind==='add_container'){
    if(!str(op.label,100)||!op.ref||!/^new:[a-zA-Z0-9_-]{1,40}$/.test(op.ref)||known.has(op.ref))throw Error('Neue Knoten brauchen einen eindeutigen Verweis und Titel.');
    if(op.kind==='add_container'){
     if(op.field!==null)throw Error('Container-Platzierung wird über value festgelegt.');
@@ -131,14 +143,20 @@ export function validatePlan(input:unknown,existingIds:string[],allowedFields:st
    if(!isOne(AI_WIDGET_TYPES,op.widgetType)||!str(op.label,100))throw Error('Widgettyp oder Titel ungültig.');
    if(op.widgetType==='bullet'&&op.targetValue==null)throw Error('Zielwert ausdrücklich angeben.');
    if(op.widgetType==='bullet'&&op.metric&&!['otifRate','onTimeRate','volumeConformanceRate'].includes(op.metric))throw Error('Bullet benötigt eine Prozent-Kennzahl.');
-   if(['bar_horizontal','bar_vertical'].includes(op.widgetType||'')&&op.metric&&!['orders','otifCases','lateOrders','otifRate','onTimeRate','volumeConformanceRate','totalPenaltyEur','latePenaltyEur','shortfallPenaltyEur'].includes(op.metric))throw Error('Kennzahl für Segmentvergleich nicht unterstützt.');
-   if(['line','bar','donut'].includes(op.widgetType||'')&&op.metric&&op.metric!=='onTimeRate')throw Error('Dieses Dashboard-Diagramm zeigt On-Time Delivery.');
+   if(['bar','line','bar_horizontal','bar_vertical'].includes(op.widgetType||'')&&op.metric&&!isOne(AI_SEGMENT_METRICS,op.metric))throw Error('Kennzahl für Segmentvergleich nicht unterstützt.');
+   if(op.widgetType==='donut'&&op.metric&&op.metric!=='onTimeRate')throw Error('Dieses Dashboard-Diagramm zeigt On-Time Delivery.');
    if(COST_VISUALS.includes(op.widgetType||'')&&op.metric&&op.metric!=='totalPenaltyEur')throw Error('Dieses Dashboard-Diagramm zeigt modellierte Gesamtkosten.');
    if(['heatmap','scatter','stacked','stacked100'].includes(op.widgetType||'')&&op.metric&&op.metric!=='otifRate')throw Error('Dieses Dashboard-Diagramm nutzt die fest definierte OTIF-Auswertung.');
    if(op.widgetType==='e02_distribution'&&op.value&&!isOne(AI_INTERVAL_KEYS,op.value))throw Error('Prozessintervall ungültig.');
    if(op.widgetType==='histogram'&&op.value&&!['quantity_change_count','lateness_days'].includes(op.value))throw Error('Verteilung ungültig.');
   }else if(op.kind==='add_filter'){
-   if(!op.field||!allowed.has(op.field)||!str(op.value,200))throw Error('Filterfeld oder Filterwert ungültig.');
+   if(!op.field||!allowed.has(op.field)||!isOne(AI_FILTER_FIELDS,op.field)||!str(op.value,200))throw Error('Filterfeld oder Filterwert ungültig.');
+   const operator=op.widgetType||'eq',category=isOne(AI_DIMENSIONS,op.field),date=isOne(AI_DATE_FIELDS,op.field);
+   if(!(category?['eq','in']:['eq','between','gte','lte']).includes(operator))throw Error('Filteroperator passt nicht zum Feld.');
+   const value=actionFilterValue(op),values=Array.isArray(value)?value:[value];
+   if(operator==='in'&&(values.length<1||values.length>20)||operator==='between'&&values.length!==2)throw Error('Ungültige Anzahl Filterwerte.');
+   if(!category&&values.some(v=>date?!/^\d{4}-\d{2}-\d{2}$/.test(v)||Number.isNaN(Date.parse(v+'T00:00:00Z')):!/^[-]?\d{1,12}(?:\.\d{1,6})?$/.test(v)))throw Error('Ungültiges Datum oder ungültige Zahl.');
+   if(operator==='between'&&(date?values[0]>values[1]:Number(values[0])>Number(values[1])))throw Error('Filterbereich ist umgekehrt.');
   }else if(op.kind==='set_node_metric'&&!op.metric)throw Error('Kennzahl fehlt.');
   if(['remove_widget','rename_widget'].includes(op.kind)&&!str(op.widgetId,120))throw Error('Widget-ID fehlt.');
   out.push(op);

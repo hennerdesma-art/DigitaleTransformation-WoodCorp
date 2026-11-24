@@ -1,18 +1,19 @@
-import {action,validatePlan,AI_GRAPH_FORMAT,coordinatePair,type AiPlan,type AiAction} from './assistantProtocol';
+import {action,validatePlan,AI_GRAPH_FORMAT,AI_SEGMENT_METRICS,actionFilterValue,coordinatePair,type AiPlan,type AiAction} from './assistantProtocol';
 import {freshWidget,normalizeDashboard,standardDashboard,makeDocument,METRICS,WIDGET_LABELS,METRIC_LABELS,type NodeDashboard,type MetricKey,type WidgetType} from './dashboard';
-import {nodeFor,referenceEdge,isValidReference,moveIntoContainer,worldPosition,containerSize,changeContainerSettings,serializeDraft,type NNode,type NEdge} from './graph';
+import {findingStamp} from './findings';
+import {nodeFor,referenceEdge,annotationEdge,isValidAnnotation,isValidReference,moveIntoContainer,worldPosition,containerSize,changeContainerSettings,serializeDraft,type NNode,type NEdge} from './graph';
 import {effectiveFilters,validateFilters,conflictingFields,formatFilter} from './filters';
 import type {AnalysisNode,Filter,Metrics,GraphViz,ContainerTone} from './types';
 import type {FieldKey} from '../config';
 import {KPI_DEFINITIONS} from './kpiDefinitions';
 import type {E02IntervalKey} from './processIntervals';
 export type AssistantState={nodes:NNode[];edges:NEdge[];globals:Filter[];locals:Record<string,Filter[]>;dashboards:Record<string,NodeDashboard>;selectedId:string;allowedFields:FieldKey[]};
-export type AssistantContext={graphFormat:typeof AI_GRAPH_FORMAT;workspaceId:string|null;revision:number|null;workspaceTitle:string;selectedId:string;nodes:{id:string;label:string;kind:string;metric:string|null;visualization:string|null;chartDimension:string|null;intervalKey:string|null;containerId:string|null;containerCollapsed:boolean;containerTone:string|null;position:{x:number;y:number};world:{x:number;y:number};size:{width:number;height:number};description:string|null;question:string|null;localFilters:{field:string;op:string;value:string|string[]}[];widgets:{id:string;type:string;title:string;metric:string|null;dimension:string|null;compareDimension:string|null;width:string;target:number|null;intervalKey:string|null;distributionMeasure:string|null}[]}[];edges:{source:string;target:string}[];filters:{field:string;op:string;value:string|string[]}[];globalFilters:{field:string;op:string;value:string|string[]}[];allowedFields:string[];canEdit:boolean};
+export type AssistantContext={graphFormat:typeof AI_GRAPH_FORMAT;workspaceId:string|null;revision:number|null;workspaceTitle:string;selectedId:string;nodes:{id:string;label:string;kind:string;metric:string|null;visualization:string|null;chartDimension:string|null;intervalKey:string|null;containerId:string|null;containerCollapsed:boolean;containerTone:string|null;position:{x:number;y:number};world:{x:number;y:number};size:{width:number;height:number};description:string|null;question:string|null;localFilters:{field:string;op:string;value:string|string[]}[];widgets:{id:string;type:string;title:string;metric:string|null;dimension:string|null;compareDimension:string|null;width:string;target:number|null;intervalKey:string|null;distributionMeasure:string|null}[]}[];edges:{source:string;target:string;kind?:string}[];filters:{field:string;op:string;value:string|string[]}[];globalFilters:{field:string;op:string;value:string|string[]}[];allowedFields:string[];canEdit:boolean};
 export function resolveAssistantNodeId(nodes:NNode[],selectedId:string):string{
  return nodes.some(n=>n.id===selectedId)?selectedId:nodes.find(n=>n.data.analysis.kind==='root')?.id||nodes[0]?.id||'';
 }
 export function assistantFingerprint(s:AssistantState,workspaceId:string|null,revision:number|null){
- return JSON.stringify({workspaceId,revision,selectedId:s.selectedId,nodes:s.nodes.map(n=>[n.id,n.position,n.data.analysis]),edges:s.edges.map(e=>[e.id,e.source,e.target]),globals:s.globals,locals:s.locals,dashboards:s.dashboards,allowed:s.allowedFields});
+ return JSON.stringify({workspaceId,revision,selectedId:s.selectedId,nodes:s.nodes.map(n=>[n.id,n.position,n.data.analysis]),edges:s.edges.map(e=>[e.id,e.source,e.target,e.data?.kind]),globals:s.globals,locals:s.locals,dashboards:s.dashboards,allowed:s.allowedFields});
 }
 export function contextForAssistant(s:AssistantState,workspace:{id:string;title:string;revision:number}|null,canEdit:boolean):AssistantContext{
  if(!s.nodes.some(n=>n.id===s.selectedId))throw Error('Bitte zuerst einen Analyseblock auswählen.');
@@ -20,7 +21,7 @@ export function contextForAssistant(s:AssistantState,workspace:{id:string;title:
  const filters=effectiveFilters(s.globals,s.nodes.map(n=>n.data.analysis),s.locals,s.selectedId,s.edges).map(strip);
  return {graphFormat:AI_GRAPH_FORMAT,workspaceId:workspace?.id||null,revision:workspace?.revision??null,workspaceTitle:workspace?.title||'Lokaler Entwurf',selectedId:s.selectedId,canEdit,allowedFields:s.allowedFields,
  nodes:s.nodes.map(n=>{const a=n.data.analysis,d=s.dashboards[n.id];return {id:n.id,label:a.label,kind:a.kind,metric:a.metricId||null,visualization:a.visualization||null,chartDimension:a.chartDimension||null,intervalKey:a.intervalKey||null,containerId:a.containerId||null,containerCollapsed:!!a.containerCollapsed,containerTone:a.kind==='container'?(a.containerTone||'teal'):null,position:{x:Math.round(n.position.x),y:Math.round(n.position.y)},world:worldPosition(n,s.nodes),size:assistantBlockSize(n),description:a.description||null,question:d?.question||null,localFilters:[...(a.predicate?[a.predicate]:[]),...(s.locals[n.id]||[])].map(strip),widgets:(d?.widgets||[]).map(w=>({id:w.id,type:w.type,title:w.title,metric:w.metric||null,dimension:w.dimension||null,compareDimension:w.compareDimension||null,width:w.width,target:w.target??null,intervalKey:w.intervalKey||null,distributionMeasure:w.distributionMeasure||null}))}}),
- edges:s.edges.map(e=>({source:e.source,target:e.target})),filters,globalFilters:s.globals.map(strip)};
+ edges:s.edges.map(e=>({source:e.source,target:e.target,kind:e.data?.kind})),filters,globalFilters:s.globals.map(strip)};
 }
 function baseDashboard(n:NNode):NodeDashboard{
  if(n.data.analysis.kind==='note')throw Error('Textbaustein besitzt kein eigenes KPI-Dashboard.');
@@ -35,7 +36,7 @@ function nextPosition(nodes:NNode[],parent:NNode){
  return {x,y:p.y+220};
 }
 // New groups use compact columns by default. Existing positions only change through explicit layout actions.
-export function assistantBlockSize(n:NNode){const a=n.data.analysis;return a.kind==='container'?containerSize(a):{width:n.measured?.width??(a.visualization&&a.visualization!=='kpi'?460:260),height:n.measured?.height??(a.visualization&&a.visualization!=='kpi'?440:190)}}
+export function assistantBlockSize(n:NNode){const a=n.data.analysis;return a.kind==='container'?containerSize(a):a.kind==='note'?{width:n.measured?.width??320,height:n.measured?.height??280}:{width:n.measured?.width??(a.visualization&&a.visualization!=='kpi'?460:260),height:n.measured?.height??(a.visualization&&a.visualization!=='kpi'?440:190)}}
 /** Pack group members only. Never change membership, filters, or analytic edges. */
 function arrangeGroup(nodes:NNode[],id:string,columns:number):NNode[]{
  const group=nodes.find(n=>n.id===id);
@@ -69,7 +70,7 @@ function layoutNewBlocks(nodes:NNode[],created:Map<string,string>):NNode[]{
 function visualPatch(op:AiAction):Partial<AnalysisNode>{
  const viz=(op.widgetType||'kpi') as GraphViz;
  const metric=op.metric||(['bar','line'].includes(viz)?'onTimeRate':['pareto','treemap','waterfall'].includes(viz)?'totalPenaltyEur':'otifRate');
- return {metricId:metric,visualization:viz,chartDimension:op.dimension?op.dimension as FieldKey:undefined,intervalKey:viz==='process_interval'?op.value as E02IntervalKey:undefined,calculationTemplate:undefined,rateEurPerKg:undefined};
+ return {metricId:metric,chartMetric:['bar','line'].includes(viz)?metric:undefined,visualization:viz,chartDimension:op.dimension?op.dimension as FieldKey:undefined,intervalKey:viz==='process_interval'?op.value as E02IntervalKey:undefined,calculationTemplate:undefined,rateEurPerKg:undefined};
 }
 function intersects(a:{x:number;y:number;width:number;height:number},b:{x:number;y:number;width:number;height:number}){
  return a.x<b.x+b.width&&a.x+a.width>b.x&&a.y<b.y+b.height&&a.y+a.height>b.y;
@@ -86,11 +87,11 @@ function validateLayout(before:NNode[],after:NNode[]){
  }
 }
 const dimensionTypes=['bar','table','bar_horizontal','bar_vertical','stacked','stacked100','heatmap','pareto','scatter','treemap'];
-const selectableMetricTypes=['kpi','bar_horizontal','bar_vertical','bullet'];
+const selectableMetricTypes=['kpi','bar','line','bar_horizontal','bar_vertical','bullet'];
 export function applyAssistantPlan(state:AssistantState,raw:AiPlan):AssistantState{
  const plan=validatePlan(raw,state.nodes.map(n=>n.id),state.allowedFields);
  let nodes=[...state.nodes],edges=[...state.edges],locals={...state.locals},dashboards={...state.dashboards};
- const refs=new Map(nodes.map(n=>[n.id,n.id]));const changed=new Set<string>();const created=new Map<string,string>();const layoutOps:AiAction[]=[];
+ const refs=new Map(nodes.map(n=>[n.id,n.id]));const changed=new Set<string>();const created=new Map<string,string>();const layoutOps:AiAction[]=[];const findingSources=new Map<string,string>();
  const get=(target:string)=>{const id=refs.get(target);const n=nodes.find(n=>n.id===id);if(!n)throw Error('Zielknoten nicht vorhanden.');return n};
  const patchNode=(id:string,patch:Partial<AnalysisNode>)=>{nodes=nodes.map(n=>n.id===id?{...n,data:{...n.data,analysis:{...n.data.analysis,...patch}}}:n);changed.add(id)};
  const updateDashboard=(n:NNode,fn:(d:NodeDashboard)=>NodeDashboard)=>{
@@ -111,6 +112,20 @@ export function applyAssistantPlan(state:AssistantState,raw:AiPlan):AssistantSta
    case 'set_node_metric':
     if(a.kind==='note'||a.kind==='container')throw Error('Container und Textbausteine sind keine KPI-Karten.');
     patchNode(id,{metricId:op.metric!,visualization:'kpi'});break;
+   case 'add_finding':{
+    if(a.kind==='note')throw Error('Finding benötigt eine Analysequelle.');if(nodes.length>=300||edges.length>=400)throw Error('Knoten- oder Kantenlimit erreicht.');
+    const existing=nodes.find(x=>x.data.analysis.kind==='note'&&x.data.analysis.finding?.sourceId===id&&x.data.analysis.label===op.label&&x.data.analysis.description===op.value);
+    if(existing){refs.set(op.ref!,existing.id);break;}
+    const newId='ai:'+crypto.randomUUID(),analysis:AnalysisNode={id:newId,parentId:null,label:op.label!,kind:'note',createdBy:'user',description:op.value!};
+    nodes.push(nodeFor(analysis,nextPosition(nodes,n)));refs.set(op.ref!,newId);created.set(newId,id);edges.push(annotationEdge(id,newId));findingSources.set(newId,id);changed.add(newId);break;
+   }
+   case 'edit_finding':{
+    if(a.kind!=='note')throw Error('Nur Textbausteine können als Finding bearbeitet werden.');patchNode(id,{description:op.value!,...(op.label?{label:op.label}: {})});if(a.finding)findingSources.set(id,a.finding.sourceId);break;
+   }
+   case 'add_reference':{
+    const dest=get(op.value!);if(edges.some(e=>e.source===id&&e.target===dest.id&&e.data?.kind==='annotation'))break;
+    if(edges.length>=400||!isValidAnnotation(id,dest.id,edges,nodes))throw Error('Ungültige Referenz.');edges.push(annotationEdge(id,dest.id));break;
+   }
    case 'set_question':updateDashboard(n,d=>({...d,question:op.label!}));break;
    case 'add_widget':{
     const type=op.widgetType as WidgetType,w=freshWidget(type);
@@ -124,7 +139,7 @@ export function applyAssistantPlan(state:AssistantState,raw:AiPlan):AssistantSta
     if(type==='e02_distribution'&&op.value)w.intervalKey=op.value as typeof w.intervalKey;
     if((w.dimension&&!state.allowedFields.includes(w.dimension))||(w.compareDimension&&!state.allowedFields.includes(w.compareDimension))||(w.compareDimension&&w.compareDimension===w.dimension))throw Error('Widget verwendet nicht freigegebene oder widersprüchliche Dimensionen.');
     if(type==='bullet'&&!['otifRate','onTimeRate','volumeConformanceRate'].includes(w.metric||''))throw Error('Bullet benötigt eine Prozent-Kennzahl.');
-    if(['bar_horizontal','bar_vertical'].includes(type)&&!['otifRate','onTimeRate','volumeConformanceRate','orders','otifCases','lateOrders','totalPenaltyEur','latePenaltyEur','shortfallPenaltyEur'].includes(w.metric||''))throw Error('Kennzahl für Segmentvergleich nicht unterstützt.');
+    if(['bar','line','bar_horizontal','bar_vertical'].includes(type)&&w.metric&&!AI_SEGMENT_METRICS.some(k=>k===w.metric))throw Error('Kennzahl für Segmentvergleich nicht unterstützt.');
     updateDashboard(n,d=>({...d,widgets:[...d.widgets,w]}));break;
    }
    case 'remove_widget':
@@ -133,7 +148,8 @@ export function applyAssistantPlan(state:AssistantState,raw:AiPlan):AssistantSta
     return {...d,widgets:op.kind==='remove_widget'?d.widgets.filter(w=>w.id!==op.widgetId):d.widgets.map(w=>w.id===op.widgetId?{...w,title:op.label!}:w)};
    });break;
    case 'add_filter':{
-    const f:Filter={id:crypto.randomUUID(),field:op.field as FieldKey,op:'eq',value:op.value!,scope:'local'};
+    const f:Filter={id:crypto.randomUUID(),field:op.field as FieldKey,op:(op.widgetType||'eq') as Filter['op'],value:actionFilterValue(op),scope:'local'};
+    if(effectiveFilters(state.globals,nodes.map(n=>n.data.analysis),locals,id,edges).some(x=>x.field===f.field&&x.op===f.op&&JSON.stringify(x.value)===JSON.stringify(f.value)))break;
     locals={...locals,[id]:validateFilters([...(locals[id]||[]),f])};changed.add(id);break;
    }
    case 'add_branch':
@@ -180,10 +196,11 @@ export function applyAssistantPlan(state:AssistantState,raw:AiPlan):AssistantSta
  if(plan.operations.some(o=>o.kind==='add_filter'||o.kind==='add_branch'||o.kind==='add_container')){
   for(const n of nodes){
    let affected=changed.has(n.id);
-   if(!affected){const queue=[n.id],seen=new Set<string>();while(queue.length&&!affected){const at=queue.pop()!;if(seen.has(at))continue;seen.add(at);if(changed.has(at)){affected=true;break}for(const e of edges)if(e.target===at)queue.push(e.source);const member=nodes.find(x=>x.id===at)?.data.analysis.containerId;if(member)queue.push(member)}}
+   if(!affected){const queue=[n.id],seen=new Set<string>();while(queue.length&&!affected){const at=queue.pop()!;if(seen.has(at))continue;seen.add(at);if(changed.has(at)){affected=true;break}for(const e of edges)if(e.target===at&&e.data?.kind!=='annotation')queue.push(e.source);const member=nodes.find(x=>x.id===at)?.data.analysis.containerId;if(member)queue.push(member)}}
    if(affected){const fs=effectiveFilters(state.globals,topology,locals,n.id,edges);if(conflictingFields(fs).length)throw Error('Filterkonflikt im Zielzweig: '+n.data.analysis.label);}
   }
  }
+ for(const [id,sourceId] of findingSources)patchNode(id,{finding:findingStamp(sourceId,nodes,edges,state.globals,locals)});
  const result={...state,nodes,edges,locals,dashboards};
  const document=makeDocument(serializeDraft(nodes,edges,locals,{x:0,y:0,zoom:1}),state.globals,dashboards);
  if(new TextEncoder().encode(JSON.stringify(document)).length>500000)throw Error('Workspace-Dokument zu groß.');
@@ -197,7 +214,10 @@ export function actionLabel(op:AiAction,labels:Record<string,string>){
   case 'add_widget':return 'Block „'+op.label+'“ in '+t+' hinzufügen';
   case 'rename_node':return t+' → „'+op.label+'“';
   case 'set_question':return 'Forschungsfrage in '+t+': '+op.label;
-  case 'add_filter':return 'Filter '+op.field+' = '+op.value+' auf '+t;
+  case 'add_filter':return 'Filter '+op.field+' '+(op.widgetType||'=')+' '+op.value+' auf '+t;
+  case 'add_finding':return 'Finding „'+op.label+'“ mit Bezug auf '+t+' erstellen';
+  case 'edit_finding':return 'Finding „'+t+'“ aktualisieren';
+  case 'add_reference':return 'Referenz von '+t+' zu '+(labels[op.value||'']||op.value)+' (ohne Filtervererbung)';
   case 'remove_widget':return 'Widget '+(labels[op.widgetId||'']||op.widgetId)+' aus '+t+' entfernen';
   case 'rename_widget':return 'Widget in '+t+' umbenennen: '+op.label;
   case 'move_node':return t+' verschieben · Position '+op.value;
