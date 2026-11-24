@@ -1,6 +1,6 @@
 import React,{useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import {ReactFlowProvider,useEdgesState,useNodesState,useReactFlow,type Connection,type EdgeChange,type NodeChange,type Viewport} from '@xyflow/react';
-import {FIELD_LABELS,FIELDS,PROJECT,FILTER_KIND,OTIF_STATUS_LABELS,type FieldKey} from './config';
+import {FIELD_LABELS,FIELDS,PROJECT,FILTER_KIND,OTIF_STATUS_LABELS,FILTER_GROUPS,filterGroup,CHART_SEGMENT_FIELDS,PROCESS_VARIANT_LEGEND,type FieldKey} from './config';
 import {analysisApi,memberApi,supabase,clearAnalyticsCache} from './lib/supabase';
 import {effectiveFilters,labels,makeFilter,toBackend,validateFilters,formatFilter,traceFilters} from './core/filters';
 import {ROOT_ID,rootAnalysis,createInitialGraph,createBlankWorkspaceGraph,splitGraph,nodeFor,referenceEdge,isValidReference,cleanDraft,serializeDraft,restoreDraft,containerAt,worldPosition,moveIntoContainer,removeContainer,changeContainerSettings,type NNode,type NEdge} from './core/graph';
@@ -54,13 +54,16 @@ const isEditing=(role:Role|null)=>role==='admin'||role==='analyst';
 function FilterDialog({target,dimensions,allowedFields,fieldNames,onApply,onClose}:{target:{kind:'global'|'node';id?:string};dimensions:Record<string,string[]>;allowedFields:FieldKey[];fieldNames:Record<FieldKey,string>;onApply:(f:Filter)=>void;onClose:()=>void}){
  const [field,setField]=useState<FieldKey>(allowedFields[0]||'factory');
  const kind=FILTER_KIND(field), options=dimensions[field]||[];
+ const [valueSearch,setValueSearch]=useState('');
+ const visibleOptions=options.filter(v=>(OTIF_STATUS_LABELS[v]||v).toLowerCase().includes(valueSearch.trim().toLowerCase()));
  const [op,setOp]=useState<Filter['op']>('eq'),[value,setValue]=useState(''),[multi,setMulti]=useState<string[]>([]);
  const [from,setFrom]=useState(''),[to,setTo]=useState(''),[error,setError]=useState('');
- useEffect(()=>{setOp(FILTER_KIND(field)==='category'?'eq':'between');setValue((dimensions[field]||[])[0]||'');setMulti([]);setFrom('');setTo('');setError('');},[field,dimensions]);
+ useEffect(()=>{setOp(FILTER_KIND(field)==='category'?'eq':'between');setValue((dimensions[field]||[])[0]||'');setMulti([]);setFrom('');setTo('');setError('');setValueSearch('');},[field,dimensions]);
  const categorical=kind==='category', numeric=kind==='number';
  const submit=(e:React.FormEvent)=>{
   e.preventDefault();setError('');
   try{
+   if(!allowedFields.includes(field))throw Error('Filter noch nicht verfügbar oder deaktiviert.');
    const payload:string|string[]=categorical?(op==='in'?multi:value):op==='between'?[from,to]:from;
    onApply(makeFilter(field,payload,target.kind==='global'?'global':'local',op));onClose();
   }catch(err){setError(err instanceof Error?err.message:'Ungültiger Filter');}
@@ -68,26 +71,32 @@ function FilterDialog({target,dimensions,allowedFields,fieldNames,onApply,onClos
  return <Modal title={target.kind==='global'?'Globalen Filter hinzufügen':'Lokalen Filter für den Knoten'} onClose={onClose}>
   <p className="muted">{target.kind==='global'?'Dieser Filter gilt für alle Knoten, Diagramme und Dashboards.':'Der Filter gilt für diesen Knoten und alle über Pfeile erreichbaren Nachfolger, nicht für unabhängige Zweige.'}</p>
   <form onSubmit={submit} className="nxt-typed-filter">
-   <label className="field">Dimension<select value={field} onChange={e=>setField(e.target.value as FieldKey)}>{allowedFields.map(f=><option key={f} value={f}>{fieldNames[f]}</option>)}</select></label>
+   <label className="field">Dimension<select value={field} onChange={e=>setField(e.target.value as FieldKey)}>{FILTER_GROUPS.map(group=>{const fields=allowedFields.filter(f=>filterGroup(f)===group);return fields.length?<optgroup key={group} label={group}>{fields.map(f=><option key={f} value={f}>{fieldNames[f]}</option>)}</optgroup>:null})}</select></label>
    <label className="field">Vergleich<select value={op} onChange={e=>{setOp(e.target.value as Filter['op']);setError('')}}>{categorical?<><option value="eq">Ist gleich</option><option value="in">Ist einer von (Mehrfachauswahl)</option></>:<><option value="between">Zwischen / Zeitraum</option><option value="gte">Ab (≥)</option><option value="lte">Bis (≤)</option><option value="eq">Gleich (=)</option></>}</select></label>
-   {categorical&&(op==='eq'?<label className="field">Wert<select value={value} onChange={e=>setValue(e.target.value)}><option value="">Bitte wählen</option>{options.map(v=><option value={v} key={v}>{OTIF_STATUS_LABELS[v]||v}</option>)}</select></label>:
-    <fieldset className="nxt-multiselect"><legend>Mehrere Werte auswählen (max. 20)</legend>{options.map(v=><label key={v}><input type="checkbox" checked={multi.includes(v)} onChange={e=>setMulti(old=>e.target.checked?[...old,v].slice(0,20):old.filter(x=>x!==v))}/>{OTIF_STATUS_LABELS[v]||v}</label>)}</fieldset>)}
+   {categorical&&options.length>12&&<label className="field">Werte suchen<input type="search" value={valueSearch} onChange={e=>setValueSearch(e.target.value)} placeholder="Suchbegriff …"/><small className="muted">{visibleOptions.length} von {options.length} Werten</small></label>}
+   {field==='process_variant'&&<details className="nxt-filter-legend"><summary>Aktivitätskürzel anzeigen</summary><p>{PROCESS_VARIANT_LEGEND}</p></details>}
+   {field==='quantity_change_phase'&&<p className="muted">Phase der letzten Mengenänderung. Änderungen am selben Kalendertag wie ein Meilenstein oder unplausible Abfolgen gelten als nicht eindeutig.</p>}
+   {field==='order_size_class'&&<p className="muted">Klassen bis 1.000, 5.000, 10.000 und über 10.000 kg. Andere Einheiten bleiben separat.</p>}
+   {categorical&&!options.length&&<Notice kind="warning">Für diese Dimension sind noch keine Werte geladen.</Notice>}
+   {categorical&&(op==='eq'?<label className="field">Wert<select value={value} onChange={e=>setValue(e.target.value)}><option value="">Bitte wählen</option>{[...new Set([...(value&&options.includes(value)?[value]:[]),...visibleOptions])].map(v=><option value={v} key={v}>{OTIF_STATUS_LABELS[v]||v}</option>)}</select></label>:
+    <fieldset className="nxt-multiselect"><legend>Mehrere Werte auswählen ({multi.length}/20)</legend>{visibleOptions.map(v=><label key={v}><input type="checkbox" checked={multi.includes(v)} onChange={e=>setMulti(old=>e.target.checked?[...old,v].slice(0,20):old.filter(x=>x!==v))}/>{OTIF_STATUS_LABELS[v]||v}</label>)}</fieldset>)}
    {!categorical&&<div className="nxt-filter-range">
     <label className="field">{op==='between'?'Von':op==='gte'?'Ab':op==='lte'?'Bis':'Wert'}<input type={numeric?'number':'date'} step={numeric?'any':undefined} required value={from} onChange={e=>setFrom(e.target.value)}/></label>
     {op==='between'&&<label className="field">Bis<input type={numeric?'number':'date'} step={numeric?'any':undefined} required value={to} onChange={e=>setTo(e.target.value)}/></label>}
    </div>}
    {error&&<Notice kind="error">{error}</Notice>}
-   <div className="modal-actions"><Button onClick={onClose}>Abbrechen</Button><Button kind="primary" icon="check" type="submit">Filter anwenden</Button></div>
+   <div className="modal-actions"><Button onClick={onClose}>Abbrechen</Button><Button kind="primary" icon="check" type="submit" disabled={!allowedFields.includes(field)||(categorical&&(op==='in'?!multi.length:!value))}>Filter anwenden</Button></div>
   </form>
  </Modal>;
 }
 function SplitDialog({nodeName,dimensions,allowedFields,fieldNames,onSplit,onClose}:{nodeName:string;dimensions:Record<string,string[]>;allowedFields:FieldKey[];fieldNames:Record<FieldKey,string>;onSplit:(f:FieldKey)=>Promise<void>;onClose:()=>void}){
- const [field,setField]=useState<FieldKey>('product_type');const [busy,setBusy]=useState(false);const [error,setError]=useState('');
+ const splitFields=allowedFields.filter(f=>CHART_SEGMENT_FIELDS.includes(f)&&dimensions[f]?.length);
+ const [field,setField]=useState<FieldKey>(splitFields.includes('product_type')?'product_type':splitFields[0]||'factory');const [busy,setBusy]=useState(false);const [error,setError]=useState('');
  return <Modal title="Knoten aufgliedern" onClose={onClose}><p className="muted"><b>{nodeName}</b> wird nach einer zugelassenen Dimension in analytische Teilgruppen zerlegt. Diese Teilgruppen erben automatisch die Knotenfilter.</p>
  <form onSubmit={async e=>{e.preventDefault();setBusy(true);setError('');try{await onSplit(field);onClose();}catch(e){setError(e instanceof Error?e.message:'Aufgliederung nicht möglich');}finally{setBusy(false)}}}>
-  <label className="field">Split-Dimension<select value={field} onChange={e=>setField(e.target.value as FieldKey)}>{allowedFields.filter(f=>dimensions[f]?.length).map(f=><option key={f} value={f}>{fieldNames[f]}</option>)}</select></label>
+  <label className="field">Split-Dimension<select value={field} onChange={e=>setField(e.target.value as FieldKey)}>{FILTER_GROUPS.map(group=>{const fields=splitFields.filter(f=>filterGroup(f)===group);return fields.length?<optgroup key={group} label={group}>{fields.map(f=><option key={f} value={f}>{fieldNames[f]}</option>)}</optgroup>:null})}</select></label>
   {error&&<Notice kind="error">{error}</Notice>}
-  <div className="modal-actions"><Button onClick={onClose}>Abbrechen</Button><Button type="submit" kind="primary" icon="split" disabled={busy}>Aufgliedern</Button></div>
+  <div className="modal-actions"><Button onClick={onClose}>Abbrechen</Button><Button type="submit" kind="primary" icon="split" disabled={busy||!splitFields.includes(field)}>Aufgliedern</Button></div>
  </form></Modal>;
 }
 function Header({userEmail,onSignOut,onProfile,onSearch,onHelp}:{userEmail:string;onSignOut:()=>void;onProfile:()=>void;onSearch:(value:string)=>void;onHelp:()=>void}){
@@ -313,7 +322,7 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
  const say=useCallback((s:string)=>{setToast(s);},[]);
  const canModify=isEditing(role)&&(!activeWorkspace||activeWorkspace.owner_id===userId||role==='admin');
  useEffect(()=>{if(!canModify)setEditMode(false)},[canModify]);
- const allowedFields=useMemo(()=>catalog.length?catalog.filter(c=>c.enabled).map(c=>c.field_key):FIELDS,[catalog]);
+ const allowedFields=useMemo(()=>catalog.filter(c=>c.enabled&&FIELDS.includes(c.field_key)).map(c=>c.field_key),[catalog]);
  const fieldNames=useMemo(()=>({...FIELD_LABELS,...Object.fromEntries(catalog.map(c=>[c.field_key,c.display_name]))}) as Record<FieldKey,string>,[catalog]);
  const currentDashboard=useMemo(()=>{
   if(dashboards[selectedId])return dashboards[selectedId];
@@ -488,7 +497,7 @@ function AnalyticsWorkspace({userId,role,email,onSignOut}:{userId:string;role:Ro
  const removeNode=(id:string)=>{const n=nodes.find(n=>n.id===id);if(!editMode||!canModify||!n)return;if(!confirm(n.data.analysis.kind==='container'?'Container auflösen? Die enthaltenen Elemente bleiben an ihrer Position; die gemeinsamen Containerfilter und -verbindungen entfallen.':'Knoten und seine Verbindungen entfernen?'))return;remember();setNodes(ns=>n.data.analysis.kind==='container'?removeContainer(ns,id):ns.filter(n=>n.id!==id));setEdges(es=>es.filter(e=>e.source!==id&&e.target!==id));if(selectedId===id)setSelectedId(nodes.find(n=>n.id!==id)?.id||ROOT_ID);say('Knoten entfernt');};
  const applyFilter=(f:Filter)=>{if(canModify)setDirty(true);if(dialog?.kind==='global'){setGlobals(gs=>{try{return validateFilters([...gs,f])}catch(e){say((e as Error).message);return gs}})}else if(dialog?.id){setLocals(old=>{const current=old[dialog.id!]||[];try{return {...old,[dialog.id!]:validateFilters([...current,f])}}catch(e){say((e as Error).message);return old}})} };
  const removeGlobal=(id:string)=>{setGlobals(gs=>gs.filter(f=>f.id!==id));if(canModify)setDirty(true)};
- const share=async()=>{const data={v:1,g:globals.map(({field,op,value})=>({field,op,value})),selected:selectedId};const u=new URL(location.href);u.searchParams.set('view',btoa(unescape(encodeURIComponent(JSON.stringify(data)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''));try{await navigator.clipboard.writeText(u.toString());say('Link kopiert. Lokale Knotenfilter werden nicht mitgeteilt.')}catch{say('Zwischenablage nicht verfügbar. URL bitte manuell kopieren.')}};
+ const share=async()=>{if(globals.some(f=>['cust_id','cust_addr_code'].includes(f.field))||/:(cust_id|cust_addr_code):/.test(selectedId)){say('Ansicht enthält Kundenkennungen. Bitte diese Filter entfernen und einen nicht personenbezogenen Knoten auswählen, bevor du den Link teilst.');return;}const data={v:1,g:globals.map(({field,op,value})=>({field,op,value})),selected:selectedId};const u=new URL(location.href);u.searchParams.set('view',btoa(unescape(encodeURIComponent(JSON.stringify(data)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''));try{await navigator.clipboard.writeText(u.toString());say('Link kopiert. Lokale Knotenfilter werden nicht mitgeteilt.')}catch{say('Zwischenablage nicht verfügbar. URL bitte manuell kopieren.')}};
  const triggerReload=()=>{clearAnalyticsCache();setReloadKey(v=>v+1)};
  useEffect(()=>{const query=new URLSearchParams(location.search).get('view');if(!query)return;try{const raw=JSON.parse(decodeURIComponent(escape(atob(query.replace(/-/g,'+').replace(/_/g,'/')))));if(raw.v!==1)return;const gs=validateFilters((raw.g||[]).map((f:Filter)=>({...f,id:crypto.randomUUID()})));setGlobals(gs);if(typeof raw.selected==='string')setSelectedId(raw.selected);}catch{say('Ungültiger Ansichtslink ignoriert.')}},[]);
  useEffect(()=>{analysisApi.dimensions().then(setDimensions).catch(e=>setWarning('Filterkatalog konnte nicht geladen werden: '+e.message));},[]);

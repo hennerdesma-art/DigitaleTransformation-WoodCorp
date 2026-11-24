@@ -17,4 +17,7 @@ export function filterGroup(field:FieldKey):typeof FILTER_GROUPS[number]{
  return FILTER_GROUPS[4];
 }
 export const SEGMENT_FIELDS=FIELDS.filter(f=>FILTER_KIND(f)==='category');
+// High-cardinality identifiers and process sequences remain searchable filters, not automatic chart/split dimensions.
+export const CHART_SEGMENT_FIELDS=SEGMENT_FIELDS.filter(f=>!['cust_id','process_variant'].includes(f));
+export const HEATMAP_FIELDS:FieldKey[]=['factory','product_type','delivery_company','cust_market','cust_country','warehouse_type'];
 export const PROCESS_VARIANT_LEGEND='OR Auftrag · CC Kreditprüfung · CB Kreditsperre · CS Bestätigung · CQ Mengenänderung · CD Lieferterminänderung · CP Produktionsstartänderung · PR Preisänderung · SP Produktionsstart · FP Produktionsende · LS Verladung · GD Lieferereignis';

@@ -2,7 +2,7 @@ import React,{useState} from 'react';
 import type {AnalysisNode,GraphViz,CalculationTemplate,Filter} from '../core/types';
 import type {FieldKey} from '../config';
 import {CALCULATION_TEMPLATES,TEMPLATES,validateRate} from '../core/calculations';
-import {FIELD_LABELS} from '../config';
+import {FIELD_LABELS,CHART_SEGMENT_FIELDS} from '../config';
 import {Button,Modal,Notice} from './Ui';
 import {METRICS,METRIC_LABELS,type MetricKey} from '../core/dashboard';
 import {formatFilter} from '../core/filters';
@@ -51,7 +51,7 @@ export function NodeSettings({node,allowedFields,fieldNames,filters,containers=[
    {!!containers.length&&<label className="field">Container / Gruppierung<select value={containerId} onChange={e=>setContainerId(e.target.value)}><option value="">Kein Container</option>{containers.map(c=><option key={c.id} value={c.id} disabled={!!c.containerCollapsed&&c.id!==node.containerId}>{c.label}{c.containerCollapsed?' (eingeklappt)':''}</option>)}</select><small className="muted">Die Gruppe vererbt ihren Filterkontext. Bestehende Pfeile bleiben erhalten.</small></label>}
    <label className="field">Anzeigeart<select value={viz} onChange={e=>changeVisual(e.target.value as GraphViz)}>{TYPES.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}</select></label>
    {viz==='kpi'&&<label className="field">Kennzahl<select value={selectedMetric} onChange={e=>setSelectedMetric(e.target.value as MetricKey)}>{METRICS.map(m=><option key={m} value={m}>{METRIC_LABELS[m]}</option>)}</select></label>}
-   {(['bar','stacked','stacked100','heatmap','pareto','scatter','treemap'].includes(viz))&&<label className="field">Gruppierung<select value={field} onChange={e=>setField(e.target.value as FieldKey)}>{[...new Set([...allowedFields,field])].map(key=><option key={key} value={key}>{fieldNames[key]||FIELD_LABELS[key]}</option>)}</select></label>}
+   {(['bar','stacked','stacked100','heatmap','pareto','scatter','treemap'].includes(viz))&&<label className="field">Gruppierung<select value={field} onChange={e=>setField(e.target.value as FieldKey)}>{[...new Set([...allowedFields.filter(f=>viz==='heatmap'?['factory','product_type'].includes(f):CHART_SEGMENT_FIELDS.includes(f)),field])].map(key=><option key={key} value={key}>{fieldNames[key]||FIELD_LABELS[key]}</option>)}</select></label>}
    {viz==='process_interval'&&<label className="field">Intervall<select value={interval} onChange={e=>setInterval(e.target.value as E02IntervalKey)}>{E02_KEYS.map(k=><option key={k} value={k}>{E02_INTERVALS[k].title}</option>)}</select></label>}
    {viz==='calculation'&&<>
     <label className="field">Geprüfte SQL-Vorlage<select value={template} onChange={e=>changeTemplate(e.target.value as CalculationTemplate)}>{TEMPLATES.map(key=><option key={key} value={key}>{CALCULATION_TEMPLATES[key].label}</option>)}</select></label>
