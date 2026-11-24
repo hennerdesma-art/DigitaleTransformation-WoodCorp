@@ -54,6 +54,7 @@ export function cleanDraft(value:unknown):SavedDraft|null{
  const groups=new Set(d.nodes.filter(n=>n.analysis.kind==='container').map(n=>n.id));
  for(const n of d.nodes){
   const a=n.analysis;
+  if(a.canvasWidgetId!==undefined&&(typeof a.canvasWidgetId!=='string'||a.canvasWidgetId.length<1||a.canvasWidgetId.length>120||a.kind==='container'||a.kind==='note'))return null;
   if(!isValidCardDimension(a.cardWidth)||!isValidCardDimension(a.cardHeight))return null;
   if(a.containerId&&(!groups.has(a.containerId)||a.kind==='container'||a.containerId===n.id))return null;
   if(a.kind==='container'&&((a.containerWidth!==undefined&&(!Number.isFinite(a.containerWidth)||a.containerWidth<320||a.containerWidth>4000))||(a.containerHeight!==undefined&&(!Number.isFinite(a.containerHeight)||a.containerHeight<160||a.containerHeight>4000))||(a.containerTone!==undefined&&!['teal','slate','sand'].includes(a.containerTone))||(a.containerCollapsed!==undefined&&typeof a.containerCollapsed!=='boolean')))return null;

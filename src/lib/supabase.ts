@@ -1,3 +1,4 @@
+import {TIME_DIMENSIONS,type TimeAnchor,type SegmentDimension} from '../core/analyticsCanvas';
 import {SEGMENT_METRIC_KEYS,segmentMetric,type RootCauseMetric} from '../core/rootCauseMetrics';
 import {createClient} from '@supabase/supabase-js';
 import {PROJECT,type FieldKey} from '../config';
@@ -6,7 +7,7 @@ import type {Filter,Metrics,Ribbon,BreakdownRow,TrendRow,CalculationTemplate,Cal
 import {validateRate} from '../core/calculations';
 import type {E02Summary,E02IntervalKey,E02DistributionBucket} from '../core/processIntervals';
 export type SegmentStats=Partial<Record<RootCauseMetric,number|null>> & {
- label:string|null;orders:number;otif_cases:number;on_time_not_full_cases:number;
+ label:string|null;customer_name?:string|null;customer_country?:string|null;customer_id_count?:number|null;date_coverage?:number;ordered_kg_cases?:number;delivered_kg_cases?:number;orders:number;otif_cases:number;on_time_not_full_cases:number;
  late_in_full_cases:number;late_not_full_cases:number;unknown_cases:number;late_orders:number;
  otif_rate:number|null;on_time_rate:number|null;volume_rate:number|null;
  late_penalty_eur:number;shortfall_penalty_eur:number;total_penalty_eur:number;
@@ -66,11 +67,11 @@ export const analysisApi={
   return {...m,deliveryDateCount:m.dateCoverage??0} as Ribbon;
  },
  breakdown:(field:FieldKey,filters:Filter[])=>request<BreakdownRow[]>('nxt_breakdown',{p_field:field,...normalized(filters)}),
- trend:async(filters:Filter[]):Promise<TrendRow[]>=>{const rows=await request<SegmentStats[]>('nxt_chart_segments',{p_field:'delivery_month',...normalized(filters)});return rows.filter(r=>r.label!=null).map(r=>({month:r.label!,orders:r.orders,on_time_rate:r.on_time_rate,values:Object.fromEntries(SEGMENT_METRIC_KEYS.map(k=>[k,segmentMetric(r,k)]))})).sort((a,b)=>a.month.localeCompare(b.month));},
+ trend:async(filters:Filter[],anchor:TimeAnchor='delivered'):Promise<TrendRow[]>=>{const rows=await request<SegmentStats[]>('nxt_chart_segments',{p_field:TIME_DIMENSIONS[anchor],...normalized(filters)});return rows.filter(r=>r.label!=null).map(r=>({month:r.label!,orders:r.orders,on_time_rate:r.on_time_rate,values:Object.fromEntries(SEGMENT_METRIC_KEYS.map(k=>[k,segmentMetric(r,k)]))})).sort((a,b)=>a.month.localeCompare(b.month));},
  dimensions:()=>request<Record<FieldKey,string[]>>('nxt_dimensions',{},10*60_000),
  calculated:(template:CalculationTemplate,filters:Filter[],rate?:number)=>request<CalculatedMetric>('nxt_calculated_metric',
    {p_template:template,...normalized(filters),p_rate_eur_per_kg:validateRate(template,rate)}),
- segments:(field:FieldKey,filters:Filter[])=>request<SegmentStats[]>('nxt_chart_segments',{p_field:field,...normalized(filters)}),
+ segments:(field:SegmentDimension,filters:Filter[])=>request<SegmentStats[]>('nxt_chart_segments',{p_field:field,...normalized(filters)}),
  heatmap:(x:FieldKey,y:FieldKey,filters:Filter[])=>request<HeatmapCell[]>('nxt_chart_heatmap',{p_x_field:x,p_y_field:y,...normalized(filters)}),
  distribution:(measure:'quantity_change_count'|'lateness_days',filters:Filter[])=>request<DistributionBucket[]>('nxt_chart_distribution',{p_measure:measure,...normalized(filters)}),
  e02Summary:(filters:Filter[])=>request<E02Summary>('nxt_e02_interval_summary',normalized(filters)),

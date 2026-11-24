@@ -1,5 +1,8 @@
 // Derived metrics computed by the existing case-grain Supabase RPCs.
 export const ROOT_CAUSE_METRICS={
+  orderedKg:['Bestellte Menge (kg)','kg','Summe nichtnegativer Bestellmengen ausschließlich in kg; fehlende Werte ausgeschlossen.'],
+  deliveredKg:['Gelieferte Menge (kg)','kg','Summe nichtnegativer Liefermengen ausschließlich in kg; fehlende Werte ausgeschlossen.'],
+  avgOrderedKg:['Ø Bestellgewicht je kg-Auftrag','kg/Auftrag','Durchschnitt der nichtnegativen Bestellmenge je auswertbarem kg-Auftrag; andere Einheiten ausgeschlossen.'],
   "penaltyPerOrderEur": [
     "Strafkosten je bewertbarem Auftrag",
     "€/Auftrag",
@@ -95,7 +98,7 @@ export function segmentMetric(row:object,metric:string):number|null{
  const value=(row as Record<string,unknown>)[legacy[metric]||metric];return typeof value==='number'&&Number.isFinite(value)?value:null;
 }
 export function formatRootCauseMetric(metric:RootCauseMetric,value:number){
- const unit=ROOT_CAUSE_METRICS[metric][1];const digits=unit==='€/kg'?4:unit==='€/Auftrag'||unit==='%'||unit==='Tage'?2:0;
+ const unit=ROOT_CAUSE_METRICS[metric][1];const digits=unit==='€/kg'?4:unit==='€/Auftrag'||unit==='kg/Auftrag'||unit==='%'||unit==='Tage'?2:0;
  return value.toLocaleString('de-DE',{minimumFractionDigits:digits,maximumFractionDigits:digits})+' '+unit;
 }
 export function scenarioSavings(late:number,shortfall:number,lateReduction:number,shortfallReduction:number){
