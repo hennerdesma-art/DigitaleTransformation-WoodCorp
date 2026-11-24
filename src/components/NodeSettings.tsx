@@ -22,10 +22,11 @@ const TYPES:{value:GraphViz;label:string}[]=[
  {value:'funnel',label:'OTIF-Funnel'},
  {value:'process_interval',label:'E02 · Prozessintervall (Median/P90)'}
 ];
-export function NodeSettings({node,allowedFields,fieldNames,filters,onRemoveFilter,onSave,onClose}:{
- node:AnalysisNode;allowedFields:FieldKey[];fieldNames:Record<FieldKey,string>;filters:Filter[];onRemoveFilter:(id:string)=>void;
+export function NodeSettings({node,allowedFields,fieldNames,filters,containers=[],onRemoveFilter,onSave,onClose}:{
+ node:AnalysisNode;containers?:AnalysisNode[];allowedFields:FieldKey[];fieldNames:Record<FieldKey,string>;filters:Filter[];onRemoveFilter:(id:string)=>void;
  onSave:(patch:Partial<AnalysisNode>)=>void;onClose:()=>void;
 }){
+ const [containerId,setContainerId]=useState(node.containerId||'');
  const [name,setName]=useState(node.label),[viz,setViz]=useState<GraphViz>(node.visualization||'kpi');
  const [selectedMetric,setSelectedMetric]=useState<MetricKey>((node.metricId==='otd'?'onTimeRate':node.metricId&&METRICS.includes(node.metricId as MetricKey)?node.metricId:'otifRate') as MetricKey);
  const [field,setField]=useState<FieldKey>(node.chartDimension||'delivery_company');
@@ -41,12 +42,13 @@ export function NodeSettings({node,allowedFields,fieldNames,filters,onRemoveFilt
  const submit=(e:React.FormEvent)=>{e.preventDefault();try{
   if(!name.trim()||name.length>100)throw Error('Bitte einen Namen mit maximal 100 Zeichen eingeben.');
   const parsed=viz==='calculation'?validateRate(template,rate):null;
-  onSave({label:name.trim(),visualization:viz,metricId:selectedMetric,chartDimension:field,calculationTemplate:template,rateEurPerKg:parsed??undefined,intervalKey:interval});
+  onSave({label:name.trim(),containerId:containerId||undefined,visualization:viz,metricId:selectedMetric,chartDimension:field,calculationTemplate:template,rateEurPerKg:parsed??undefined,intervalKey:interval});
   onClose();
  }catch(e){setError(e instanceof Error?e.message:'Konfiguration ungültig')}};
  return <Modal title="Knoten und Visualisierung konfigurieren" onClose={onClose}>
   <form className="node-settings" onSubmit={submit}>
    <label className="field">Knotenname<input autoFocus maxLength={100} minLength={2} required value={name} onChange={e=>setName(e.target.value)}/></label>
+   {!!containers.length&&<label className="field">Container / Gruppierung<select value={containerId} onChange={e=>setContainerId(e.target.value)}><option value="">Kein Container</option>{containers.map(c=><option key={c.id} value={c.id} disabled={!!c.containerCollapsed&&c.id!==node.containerId}>{c.label}{c.containerCollapsed?' (eingeklappt)':''}</option>)}</select><small className="muted">Die Gruppe vererbt ihren Filterkontext. Bestehende Pfeile bleiben erhalten.</small></label>}
    <label className="field">Anzeigeart<select value={viz} onChange={e=>changeVisual(e.target.value as GraphViz)}>{TYPES.map(t=><option key={t.value} value={t.value}>{t.label}</option>)}</select></label>
    {viz==='kpi'&&<label className="field">Kennzahl<select value={selectedMetric} onChange={e=>setSelectedMetric(e.target.value as MetricKey)}>{METRICS.map(m=><option key={m} value={m}>{METRIC_LABELS[m]}</option>)}</select></label>}
    {(['bar','stacked','stacked100','heatmap','pareto','scatter','treemap'].includes(viz))&&<label className="field">Gruppierung<select value={field} onChange={e=>setField(e.target.value as FieldKey)}>{[...new Set([...allowedFields,field])].map(key=><option key={key} value={key}>{fieldNames[key]||FIELD_LABELS[key]}</option>)}</select></label>}

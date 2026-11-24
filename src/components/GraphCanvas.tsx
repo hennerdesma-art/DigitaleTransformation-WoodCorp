@@ -1,7 +1,7 @@
 import React,{memo,useMemo,useRef} from 'react';
 import {ReactFlow,Background,BackgroundVariant,Controls,Handle,MiniMap,Position,useReactFlow,type EdgeChange,type NodeChange,type Connection,type NodeProps,type Viewport} from '@xyflow/react';
 import {DndContext,PointerSensor,KeyboardSensor,useSensor,useSensors,type DragEndEvent,useDraggable} from '@dnd-kit/core';
-import type {NNode,NEdge} from '../core/graph';
+import {orderedNodes,containerLayout,type NNode,type NEdge} from '../core/graph';
 import type {PaletteType} from '../core/types';
 import Icon from './Icon';
 import {GraphNodeVisual} from './GraphNodeVisual';
@@ -14,6 +14,23 @@ function AnalyticNode({id,data,selected}:NodeProps<NNode>){
  const chosen=(analysis.metricId==='otd'?'onTimeRate':analysis.metricId||'otifRate') as MetricKey;
  const mainValue=data.primaryValue===undefined?onTimeRate:data.primaryValue;
  const fieldNames=data.fieldNames as Record<FieldKey,string>|undefined;
+ if(analysis.kind==='container'){
+  const count=Number(data.memberCount||0);
+  const onToggle=data.onToggleContainer as ((id:string)=>void)|undefined;
+  return <div className={'nxt-container-node tone-'+(analysis.containerTone||'teal')+(selected?' selected-container':'')+(analysis.containerCollapsed?' collapsed-container':'')} role="group" aria-label={analysis.label+' – '+count+' Elemente'}>
+   <Handle type="target" position={Position.Top} id="target" isConnectable={!!editMode} className="port" aria-label="Container-Eingang"/>
+   <div className="nxt-container-header"><Icon name="layers" size={20}/><div className="nxt-container-title"><strong title={analysis.label}>{analysis.label}</strong><small>{count} {count===1?'Element':'Elemente'} · gemeinsamer Filterkontext</small></div>
+    <div className="nxt-container-actions nodrag">
+     <button className="node-action nodrag" type="button" title="Containerfilter" aria-label={'Filter für '+analysis.label} onClick={e=>{e.stopPropagation();onFilter?.(id)}}><Icon name="filter" size={16}/>{!!localCount&&<em>{localCount}</em>}</button>
+     {editMode&&<><button className="node-action nodrag" type="button" title="Container konfigurieren" aria-label={'Container '+analysis.label+' konfigurieren'} onClick={e=>{e.stopPropagation();onConfigure?.(id)}}><Icon name="settings" size={16}/></button><button className="node-action nodrag" type="button" title={analysis.containerCollapsed?'Container öffnen':'Container einklappen'} aria-expanded={!analysis.containerCollapsed} aria-label={analysis.containerCollapsed?'Container öffnen':'Container einklappen'} onClick={e=>{e.stopPropagation();onToggle?.(id)}}><Icon name={analysis.containerCollapsed?'maximize':'minimize'} size={16}/></button><button className="node-action nodrag" type="button" title="Container auflösen (Elemente bleiben)" aria-label="Container auflösen" onClick={e=>{e.stopPropagation();onRemove?.(id)}}><Icon name="trash-2" size={16}/></button></>}
+    </div>
+   </div>
+   {analysis.description&&<p className="nxt-container-description">{analysis.description}</p>}
+   {!analysis.containerCollapsed&&!count&&<div className="nxt-container-empty"><Icon name="square-dashed" size={32}/><strong>Elemente hier hineinziehen</strong><small>Ein Eingang · ein gemeinsamer Filterfluss</small></div>}
+   {analysis.containerCollapsed&&<div className="nxt-container-folded">Inhalte eingeklappt · Filter bleiben aktiv</div>}
+   <Handle type="source" position={Position.Bottom} id="source" isConnectable={!!editMode} className="port" aria-label="Container-Ausgang"/>
+  </div>;
+ }
  const dark=analysis.kind==='root';
  const isNote=analysis.kind==='note';const graphChart=!!analysis.visualization&&analysis.visualization!=='kpi';
  return <div className={'graph-node '+(dark?'root-node ':'')+(isNote?'note-node ':'')+(graphChart?'chart-node ':'')+(['stacked','stacked100','heatmap','pareto','scatter','waterfall','histogram','treemap','funnel'].includes(analysis.visualization||'')?'advanced-node ':'')+(selected?'selected-node ':'')} tabIndex={0} role="group" aria-label={analysis.label+' – '+(orders==null?'Noch keine Kennzahl':number(orders)+' Aufträge')}>
@@ -34,6 +51,7 @@ function AnalyticNode({id,data,selected}:NodeProps<NNode>){
 }
 const nodeTypes={analytics:memo(AnalyticNode)};
 export const paletteEntries=[
+ {label:'Container',icon:'layers',type:'container' as PaletteType,enabled:true},
  {label:'Neuer Ausgangsknoten',icon:'circle-plus',type:'root' as PaletteType,enabled:true},
  {label:'KPI-Karte',icon:'chart-column',type:'metric' as PaletteType,enabled:true},
  {label:'Balkendiagramm',icon:'chart-bar',type:'bar' as PaletteType,enabled:true},
@@ -65,16 +83,16 @@ function PaletteTile({item,onAdd,onUnsupported}:{item:typeof paletteEntries[numb
 }
 export function Palette({onAdd,onUnsupported,tab,setTab,enabled}:{onAdd:(type:PaletteType)=>void;onUnsupported:()=>void;tab:'builder'|'filter';setTab:(s:'builder'|'filter')=>void;enabled:boolean}){
  return <aside className="workspace-palette"><div className="palette-tabs"><button className={tab==='builder'?'active':''} onClick={()=>setTab('builder')}>Builder</button><button className={tab==='filter'?'active':''} onClick={()=>setTab('filter')}>Filter</button></div>
- {tab==='builder'?<><div className="palette-section-title">Komponenten <span>(Drag & Drop)</span><Icon name="info" size={14}/></div><div className="palette-tiles">{paletteEntries.map(item=><PaletteTile key={item.label} item={item} onAdd={enabled?onAdd:onUnsupported} onUnsupported={onUnsupported}/>)}</div><div className="palette-foot">{enabled?'Bearbeitungsmodus aktiv · Ziehe eine Komponente in den Baum.':'Analysemodus · Zum Bearbeiten Modus wechseln.'}</div></>:<div className="palette-filter"><p>Alle Pfeile führen Filter in Richtung der Zielknoten weiter. Auf mehreren eingehenden Verbindungen werden die Bedingungen mit UND kombiniert.</p><p>Dimensionen für globale und lokale Filter können über die Filterleiste oder den Filter-Button eines Knotens gewählt werden.</p><p className="muted">Zusätzlich verfügbar: OTIF-Status, Lieferzeitraum, Auftragswert, Mengenbereiche und Anzahl der Prozessänderungen.</p></div>}
+ {tab==='builder'?<><div className="palette-section-title">Komponenten <span>(Drag & Drop)</span><Icon name="info" size={14}/></div><div className="palette-tiles">{paletteEntries.map(item=><PaletteTile key={item.label} item={item} onAdd={enabled?onAdd:onUnsupported} onUnsupported={onUnsupported}/>)}</div><div className="palette-foot">{enabled?'Bearbeitungsmodus aktiv · Ziehe Komponenten in den Baum oder in einen Container.':'Analysemodus · Zum Bearbeiten Modus wechseln.'}</div></>:<div className="palette-filter"><p>Alle Pfeile führen Filter in Richtung der Zielknoten weiter. Auf mehreren eingehenden Verbindungen werden die Bedingungen mit UND kombiniert.</p><p>Dimensionen für globale und lokale Filter können über die Filterleiste oder den Filter-Button eines Knotens gewählt werden.</p><p className="muted">Zusätzlich verfügbar: OTIF-Status, Lieferzeitraum, Auftragswert, Mengenbereiche und Anzahl der Prozessänderungen.</p></div>}
  </aside>;
 }
 export interface CanvasProps{
  nodes:NNode[];edges:NEdge[];onNodesChange:(changes:NodeChange<NNode>[])=>void;onEdgesChange:(changes:EdgeChange<NEdge>[])=>void;onConnect:(connection:Connection)=>void;
  onSelect:(id:string)=>void;onSelectionClear:()=>void;selectedId:string;editMode:boolean;onEditToggle:()=>void;onFilter:(id:string)=>void;onSplit:(id:string)=>void;onRemove:(id:string)=>void;onConfigure:(id:string)=>void;onExplain:(id:string)=>void;
- onAdd:(type:PaletteType,pos:{x:number;y:number})=>void;onSave:()=>void;onReset:()=>void;onGraphMove:()=>void;onGraphStart:()=>void;onUndo:()=>void;onRedo:()=>void;
+ onAdd:(type:PaletteType,pos:{x:number;y:number})=>void;onSave:()=>void;onReset:()=>void;onGraphMove:(node:NNode)=>void;onGraphStart:()=>void;onToggleContainer:(id:string)=>void;onUndo:()=>void;onRedo:()=>void;
  onViewportChange:(v:Viewport)=>void;fieldNames:Record<FieldKey,string>;fullscreen:boolean;setFullscreen:(v:boolean)=>void;canEdit:boolean;dirty:boolean;onHelp:()=>void;
 }
-export function CanvasWithFlow({nodes,edges,onNodesChange,onEdgesChange,onConnect,onSelect,onSelectionClear,selectedId,editMode,onEditToggle,onFilter,onSplit,onRemove,onConfigure,onExplain,onAdd,onSave,onReset,onGraphMove,onGraphStart,onUndo,onRedo,onViewportChange,fieldNames,fullscreen,setFullscreen,canEdit,dirty,onHelp}:CanvasProps){
+export function CanvasWithFlow({nodes,edges,onNodesChange,onEdgesChange,onConnect,onSelect,onSelectionClear,selectedId,editMode,onEditToggle,onFilter,onSplit,onRemove,onConfigure,onExplain,onAdd,onSave,onReset,onGraphMove,onGraphStart,onToggleContainer,onUndo,onRedo,onViewportChange,fieldNames,fullscreen,setFullscreen,canEdit,dirty,onHelp}:CanvasProps){
  const flow=useReactFlow<NNode,NEdge>();const canvasRef=useRef<HTMLDivElement>(null);const [tab,setTab]=React.useState<'builder'|'filter'>('builder');const [showPalette,setShowPalette]=React.useState(true);const [showMap,setShowMap]=React.useState(false);const [zoom,setZoom]=React.useState(100);const [tool,setTool]=React.useState<'select'|'pan'|'connect'>('select');
  const sensors=useSensors(useSensor(PointerSensor,{activationConstraint:{distance:8}}),useSensor(KeyboardSensor));
  const addNearCenter=(type:PaletteType)=>{const bounds=canvasRef.current?.getBoundingClientRect();if(!bounds)return;const pos=flow.screenToFlowPosition({x:bounds.left+bounds.width*.68,y:bounds.top+bounds.height*.2});onAdd(type,pos);};
@@ -89,12 +107,15 @@ export function CanvasWithFlow({nodes,edges,onNodesChange,onEdgesChange,onConnec
  React.useEffect(()=>{const key=(e:KeyboardEvent)=>{if(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement)return;
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?onRedo():onUndo()}else if(e.key==='Escape'&&fullscreen){setFullscreen(false)};
  };document.addEventListener('keydown',key);return()=>document.removeEventListener('keydown',key);},[fullscreen,onUndo,onRedo,setFullscreen]);
- const enriched=useMemo(()=>nodes.map(n=>({...n,draggable:editMode,connectable:editMode,data:{...n.data,fieldNames,editMode,onFilter,onSplit,onRemove,onConfigure,onExplain}})),[nodes,fieldNames,editMode,onFilter,onSplit,onRemove,onConfigure,onExplain]);
+ const collapsedGroups=new Set(nodes.filter(n=>n.data.analysis.kind==='container'&&n.data.analysis.containerCollapsed).map(n=>n.id));
+ const hiddenIds=new Set(nodes.filter(n=>n.data.analysis.containerId&&collapsedGroups.has(n.data.analysis.containerId)).map(n=>n.id));
+ const enriched=orderedNodes(nodes).map(n=>({...containerLayout(n),hidden:hiddenIds.has(n.id),draggable:editMode,connectable:editMode,data:{...n.data,fieldNames,editMode,onFilter,onSplit,onRemove,onConfigure,onExplain,onToggleContainer,memberCount:n.data.analysis.kind==='container'?nodes.filter(x=>x.data.analysis.containerId===n.id).length:undefined}}));
+ const visibleEdges=edges.map(e=>({...e,hidden:hiddenIds.has(e.source)||hiddenIds.has(e.target)}));
  return <DndContext sensors={sensors} onDragEnd={onDragEnd}><div className={'canvas-stack '+(fullscreen?'fullscreen-active':'')}>
   {showPalette&&!fullscreen&&<Palette tab={tab} setTab={setTab} enabled={editMode} onAdd={addNearCenter} onUnsupported={onHelp}/>}
   <section className="canvas-panel" ref={canvasRef} aria-label="Interaktiver Decision Tree Canvas"><div className="canvas-title"><div><Icon name="network" size={20}/><strong>Decision Tree</strong><span className="canvas-status">{dirty?'● Nicht gespeichert':'● Lokaler Entwurf'}</span></div>
   <div><IconButton name={showPalette?'panel-left-close':'panel-left-open'} title={showPalette?'Builder ausblenden':'Builder einblenden'} onClick={()=>setShowPalette(v=>!v)}/><button className="nxt-button secondary small" onClick={toggleFullscreen}><Icon name={fullscreen?'minimize':'maximize'} size={17}/>{fullscreen?'Schließen':'Fullscreen'}</button></div></div>
-  <div className="flow-area"><ReactFlow<NNode,NEdge> nodes={enriched} edges={edges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} onNodeClick={(_,n)=>onSelect(n.id)} onPaneClick={onSelectionClear} onNodeDragStart={onGraphStart} onNodeDragStop={onGraphMove}
+  <div className="flow-area"><ReactFlow<NNode,NEdge> nodes={enriched} edges={visibleEdges} nodeTypes={nodeTypes} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} onNodeClick={(_,n)=>onSelect(n.id)} onPaneClick={onSelectionClear} onNodeDragStart={onGraphStart} onNodeDragStop={(_,node)=>onGraphMove(node)}
    onMoveEnd={(_,v)=>onViewportChange(v)} fitView fitViewOptions={{padding:.18,minZoom:.32,maxZoom:1}} minZoom={.25} maxZoom={2.5} snapToGrid={editMode} snapGrid={[10,10]} nodesConnectable={editMode} nodesDraggable={editMode} edgesFocusable={true} elementsSelectable={true} proOptions={{hideAttribution:false}} onlyRenderVisibleElements deleteKeyCode={null}
    panOnDrag={tool==='pan'?[0,1]:[1]}  zoomOnScroll zoomOnPinch zoomOnDoubleClick={false} selectionOnDrag={false} colorMode="light">
    <Background variant={BackgroundVariant.Dots} gap={19} size={1.2} color="#E0E9EB"/>

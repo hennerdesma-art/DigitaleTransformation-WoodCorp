@@ -1,12 +1,13 @@
 import type {Node,Edge,XYPosition} from '@xyflow/react';
 import type {AnalysisNode,GraphNodeData,BreakdownRow,SavedDraft,Filter} from './types';
 import type {FieldKey} from '../config';
+import {filterLinks} from './filters';
 export type NNode=Node<GraphNodeData,'analytics'>;
 export type NEdge=Edge<{kind:'analytic'|'reference'}>;
 export const ROOT_ID='root:otd';
 export function rootAnalysis():AnalysisNode{return {id:ROOT_ID,parentId:null,label:'OTIF · Ausgangsanalyse',kind:'root',createdBy:'system',metricId:'otifRate'};}
 export function nodeFor(analysis:AnalysisNode,position:XYPosition,metrics?:{orders?:number|null;onTimeRate?:number|null}):NNode{
- return {id:analysis.id,type:'analytics',position,data:{analysis,orders:metrics?.orders,onTimeRate:metrics?.onTimeRate},draggable:true};
+ return containerLayout({id:analysis.id,type:'analytics',position,data:{analysis,orders:metrics?.orders,onTimeRate:metrics?.onTimeRate},draggable:true});
 }
 export function semanticEdge(parent:string,child:string):NEdge{
  return {id:'analytic:'+parent+'=>'+child,source:parent,target:child,type:'smoothstep',animated:false,style:{stroke:'#008B92',strokeWidth:2},data:{kind:'analytic'}};
@@ -33,7 +34,7 @@ export function splitGraph(nodes:NNode[],edges:NEdge[],parentId:string,field:Fie
   const id='split:'+parentId+':'+field+':'+encodeURIComponent(String(r.label));
   if(existing.has(id))return;
   const a:AnalysisNode={id,parentId,label:String(r.label),kind:'segment',createdBy:'system',predicate:{id:'p:'+id,field,op:'eq',value:String(r.label),scope:'local'}};
-  const x=parent.position.x+(i-(count-1)/2)*218,y=parent.position.y+235;
+  const pos=worldPosition(parent,nodes);const x=pos.x+(i-(count-1)/2)*218,y=pos.y+235;
   outNodes.push(nodeFor(a,{x,y},{orders:Number(r.orders),onTimeRate:r.on_time_rate===null?null:Number(r.on_time_rate)}));
   outEdges.push(semanticEdge(parentId,id));
  });
@@ -44,6 +45,14 @@ export function cleanDraft(value:unknown):SavedDraft|null{
  if(d.version!==2||!Array.isArray(d.nodes)||!Array.isArray(d.edges)||d.nodes.length>300||d.edges.length>400)return null;
  if(!d.viewport||!Number.isFinite(d.viewport.x)||!Number.isFinite(d.viewport.y)||!Number.isFinite(d.viewport.zoom))return null;
  if(d.nodes.some(n=>!n||typeof n.id!=='string'||!n.position||!Number.isFinite(n.position.x)||!Number.isFinite(n.position.y)||!n.analysis))return null;
+ const ids=new Set(d.nodes.map(n=>n.id));
+ if(ids.size!==d.nodes.length)return null;
+ const groups=new Set(d.nodes.filter(n=>n.analysis.kind==='container').map(n=>n.id));
+ for(const n of d.nodes){
+  const a=n.analysis;
+  if(a.containerId&&(!groups.has(a.containerId)||a.kind==='container'||a.containerId===n.id))return null;
+  if(a.kind==='container'&&((a.containerWidth!==undefined&&(!Number.isFinite(a.containerWidth)||a.containerWidth<320||a.containerWidth>4000))||(a.containerHeight!==undefined&&(!Number.isFinite(a.containerHeight)||a.containerHeight<160||a.containerHeight>4000))||(a.containerTone!==undefined&&!['teal','slate','sand'].includes(a.containerTone))||(a.containerCollapsed!==undefined&&typeof a.containerCollapsed!=='boolean')))return null;
+ }
  return d;
 }
 export function serializeDraft(nodes:NNode[],edges:NEdge[],locals:Record<string,Filter[]>,viewport:{x:number;y:number;zoom:number}):SavedDraft{
@@ -61,7 +70,7 @@ export function isValidReference(source:string,target:string,edges:NEdge[],nodes
  if(nodes.length&&(!nodes.some(n=>n.id===source)||!nodes.some(n=>n.id===target)))return false;
  if(edges.some(e=>e.source===source&&e.target===target))return false;
  const next=new Map<string,Set<string>>();
- for(const edge of edges){const set=next.get(edge.source)||new Set<string>();set.add(edge.target);next.set(edge.source,set);}
+ for(const edge of filterLinks(nodes.map(n=>n.data.analysis),edges)){const set=next.get(edge.source)||new Set<string>();set.add(edge.target);next.set(edge.source,set);}
  const pending=[target],visited=new Set<string>();
  while(pending.length){const id=pending.pop()!;if(id===source)return false;if(visited.has(id))continue;visited.add(id);for(const child of next.get(id)||[])pending.push(child);}
  return true;
@@ -69,4 +78,84 @@ export function isValidReference(source:string,target:string,edges:NEdge[],nodes
 export function hasAnalyticCycle(nodes:NNode[]):boolean{
  const byId=new Map(nodes.map(n=>[n.id,n.data.analysis]));
  return nodes.some(n=>{let id=n.id;const seen=new Set<string>();while(id&&byId.has(id)){if(seen.has(id))return true;seen.add(id);id=byId.get(id)?.parentId||'';}return false;});
+}
+
+/** The React Flow parentId is layout only; AnalysisNode.parentId remains the legacy analytical parent. */
+export const CONTAINER_DEFAULT={width:720,height:440};
+export function containerSize(a:AnalysisNode){
+ return a.containerCollapsed?{width:340,height:116}:{width:a.containerWidth??CONTAINER_DEFAULT.width,height:a.containerHeight??CONTAINER_DEFAULT.height};
+}
+export function containerLayout(n:NNode):NNode{
+ const a=n.data.analysis;
+ if(a.kind==='container'){
+  const size=containerSize(a);
+  return {...n,parentId:undefined,style:{...n.style,width:size.width,height:size.height},zIndex:-1,dragHandle:'.nxt-container-header'};
+ }
+ return {...n,parentId:a.containerId};
+}
+export function orderedNodes(nodes:NNode[]):NNode[]{
+ return [...nodes.filter(n=>n.data.analysis.kind==='container'),...nodes.filter(n=>n.data.analysis.kind!=='container')];
+}
+export function worldPosition(n:NNode,nodes:NNode[]):XYPosition{
+ const group=nodes.find(g=>g.id===n.data.analysis.containerId);
+ return group?{x:n.position.x+group.position.x,y:n.position.y+group.position.y}:{...n.position};
+}
+export function containerAt(nodes:NNode[],point:XYPosition,exclude?:string):NNode|undefined{
+ return [...nodes].reverse().find(n=>{
+  const a=n.data.analysis;if(n.id===exclude||a.kind!=='container'||a.containerCollapsed)return false;
+  const s=containerSize(a);
+  return point.x>=n.position.x&&point.x<n.position.x+s.width&&point.y>=n.position.y&&point.y<n.position.y+s.height;
+ });
+}
+function childSize(n:NNode){
+ const viz=n.data.analysis.visualization;
+ return {width:n.measured?.width??(viz&&viz!=='kpi'?460:260),height:n.measured?.height??(viz&&viz!=='kpi'?440:190)};
+}
+export function minimumContainerSize(nodes:NNode[],id:string){
+ return nodes.filter(n=>n.data.analysis.containerId===id).reduce((size,n)=>{
+  const c=childSize(n);return {width:Math.max(size.width,Math.ceil(n.position.x+c.width+18)),height:Math.max(size.height,Math.ceil(n.position.y+c.height+18))};
+ },{width:320,height:160});
+}
+export function changeContainerSettings(nodes:NNode[],id:string,patch:Partial<AnalysisNode>):NNode[]{
+ const min=minimumContainerSize(nodes,id);
+ return nodes.map(n=>{
+  if(n.id!==id)return n;
+  const a={...n.data.analysis,...patch,id:n.id};
+  if(a.kind==='container'){
+   a.containerWidth=Math.max(min.width,a.containerWidth??CONTAINER_DEFAULT.width);
+   a.containerHeight=Math.max(min.height,a.containerHeight??CONTAINER_DEFAULT.height);
+   if(a.containerWidth>4000||a.containerHeight>4000)throw Error('Container überschreitet die maximale Größe von 4000 × 4000.');
+  }
+  return containerLayout({...n,data:{...n.data,analysis:a}});
+ });
+}
+export function moveIntoContainer(nodes:NNode[],edges:NEdge[],id:string,groupId?:string,world?:XYPosition):NNode[]{
+ const n=nodes.find(x=>x.id===id);
+ if(!n||n.data.analysis.kind==='container')throw Error('Container können nicht ineinander verschachtelt werden.');
+ const old=n.data.analysis.containerId;
+ if(old===groupId&&!world)return nodes;
+ const absolute=world??worldPosition(n,nodes);
+ const group=groupId?nodes.find(x=>x.id===groupId&&x.data.analysis.kind==='container'):undefined;
+ if(groupId&&!group)throw Error('Container nicht vorhanden.');
+ if(group?.data.analysis.containerCollapsed)throw Error('Container zuerst öffnen.');
+ // Check the candidate hidden edge after detaching the old membership. An existing explicit
+ // edge is equivalent, so ignore that duplicate only for the cycle check.
+ if(group&&old!==groupId){
+  const detached=nodes.map(x=>x.id===id?containerLayout({...x,data:{...x.data,analysis:{...x.data.analysis,containerId:undefined}}}):x);
+  if(!isValidReference(group.id,id,edges.filter(e=>!(e.source===group.id&&e.target===id)),detached))throw Error('Gruppierung würde einen Filterkreis erzeugen.');
+ }
+ let position=absolute;
+ if(group){
+  if(!world){
+   const bottom=nodes.filter(x=>x.id!==id&&x.data.analysis.containerId===group.id).reduce((y,x)=>Math.max(y,x.position.y+childSize(x).height+18),86);
+   position={x:18,y:bottom};
+  }else{
+   position={x:Math.max(18,absolute.x-group.position.x),y:Math.max(86,absolute.y-group.position.y)};
+  }
+ }
+ const moved=nodes.map(x=>x.id===id?containerLayout({...x,position,data:{...x.data,analysis:{...x.data.analysis,containerId:group?.id}}}):x);
+ return group?changeContainerSettings(moved,group.id,{}):moved;
+}
+export function removeContainer(nodes:NNode[],id:string):NNode[]{
+ return nodes.filter(n=>n.id!==id).map(n=>n.data.analysis.containerId===id?containerLayout({...n,position:worldPosition(n,nodes),data:{...n.data,analysis:{...n.data.analysis,containerId:undefined}}}):n);
 }
