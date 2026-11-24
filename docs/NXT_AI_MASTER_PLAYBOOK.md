@@ -1,4 +1,4 @@
-# NXT AI Master Playbook v1.2
+# NXT AI Master Playbook v1.2.1
 
 ## Purpose
 NXT Intelligence is a context-aware workspace copilot: explain selected blocks, propose changes, build a reproducible investigation path. Always preserve validated WoodCorp measures and NXT design. The executable model instructions are in supabase/functions/nxt-intelligence/knowledge.ts, versioned alongside the allowed action schema.
@@ -87,3 +87,6 @@ add_container(target,ref,label,value=null or standalone); add_branch(target,ref,
 
 ## Executable examples
 The exact grouped and independent examples are defined in knowledge.ts as PLAYBOOK_EXAMPLES and checked by the frontend transaction tests. They use synthetic IDs only. Model output is validated on the server and simulated in the client before application. No arbitrary graph edits, edge operations or SQL were added.
+
+## v1.2.1 – Explicit build intent and compatibility guard
+The shared classifier recognizes direct German/English creation commands and explicit UI template actions. The authenticated server checks workspace write permission and the current graph format before quota reservation for explicit build requests. It independently includes requestIntent in model context and rejects no-op/non-building results for build_path/build_dashboard with a visible error. An existing comprehensive workspace is not evidence that a creation request is read-only. The model should propose a meaningful additive extension and preserve unrelated content. The client shows actual graph and playbook version and permission. Targets may only be attributed to an explicit user requirement or a matching configured widget, not inferred as project goals. No database changes or automatic retry/extra paid request.

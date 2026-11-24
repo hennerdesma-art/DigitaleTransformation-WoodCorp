@@ -1,4 +1,4 @@
-import {action,validatePlan,type AiPlan,type AiAction} from './assistantProtocol';
+import {action,validatePlan,AI_GRAPH_FORMAT,type AiPlan,type AiAction} from './assistantProtocol';
 import {freshWidget,normalizeDashboard,standardDashboard,makeDocument,METRICS,WIDGET_LABELS,METRIC_LABELS,type NodeDashboard,type MetricKey,type WidgetType} from './dashboard';
 import {nodeFor,referenceEdge,isValidReference,moveIntoContainer,worldPosition,containerSize,changeContainerSettings,serializeDraft,type NNode,type NEdge} from './graph';
 import {effectiveFilters,validateFilters,conflictingFields,formatFilter} from './filters';
@@ -7,7 +7,7 @@ import type {FieldKey} from '../config';
 import {KPI_DEFINITIONS} from './kpiDefinitions';
 import type {E02IntervalKey} from './processIntervals';
 export type AssistantState={nodes:NNode[];edges:NEdge[];globals:Filter[];locals:Record<string,Filter[]>;dashboards:Record<string,NodeDashboard>;selectedId:string;allowedFields:FieldKey[]};
-export type AssistantContext={graphFormat:2;workspaceId:string|null;revision:number|null;workspaceTitle:string;selectedId:string;nodes:{id:string;label:string;kind:string;metric:string|null;visualization:string|null;chartDimension:string|null;intervalKey:string|null;containerId:string|null;containerCollapsed:boolean;description:string|null;question:string|null;localFilters:{field:string;op:string;value:string|string[]}[];widgets:{id:string;type:string;title:string;metric:string|null;dimension:string|null;compareDimension:string|null;width:string;target:number|null;intervalKey:string|null;distributionMeasure:string|null}[]}[];edges:{source:string;target:string}[];filters:{field:string;op:string;value:string|string[]}[];globalFilters:{field:string;op:string;value:string|string[]}[];allowedFields:string[];canEdit:boolean};
+export type AssistantContext={graphFormat:typeof AI_GRAPH_FORMAT;workspaceId:string|null;revision:number|null;workspaceTitle:string;selectedId:string;nodes:{id:string;label:string;kind:string;metric:string|null;visualization:string|null;chartDimension:string|null;intervalKey:string|null;containerId:string|null;containerCollapsed:boolean;description:string|null;question:string|null;localFilters:{field:string;op:string;value:string|string[]}[];widgets:{id:string;type:string;title:string;metric:string|null;dimension:string|null;compareDimension:string|null;width:string;target:number|null;intervalKey:string|null;distributionMeasure:string|null}[]}[];edges:{source:string;target:string}[];filters:{field:string;op:string;value:string|string[]}[];globalFilters:{field:string;op:string;value:string|string[]}[];allowedFields:string[];canEdit:boolean};
 export function resolveAssistantNodeId(nodes:NNode[],selectedId:string):string{
  return nodes.some(n=>n.id===selectedId)?selectedId:nodes.find(n=>n.data.analysis.kind==='root')?.id||nodes[0]?.id||'';
 }
@@ -18,7 +18,7 @@ export function contextForAssistant(s:AssistantState,workspace:{id:string;title:
  if(!s.nodes.some(n=>n.id===s.selectedId))throw Error('Bitte zuerst einen Analyseblock auswählen.');
  const strip=({field,op,value}:Filter)=>({field,op,value});
  const filters=effectiveFilters(s.globals,s.nodes.map(n=>n.data.analysis),s.locals,s.selectedId,s.edges).map(strip);
- return {graphFormat:2,workspaceId:workspace?.id||null,revision:workspace?.revision??null,workspaceTitle:workspace?.title||'Lokaler Entwurf',selectedId:s.selectedId,canEdit,allowedFields:s.allowedFields,
+ return {graphFormat:AI_GRAPH_FORMAT,workspaceId:workspace?.id||null,revision:workspace?.revision??null,workspaceTitle:workspace?.title||'Lokaler Entwurf',selectedId:s.selectedId,canEdit,allowedFields:s.allowedFields,
  nodes:s.nodes.map(n=>{const a=n.data.analysis,d=s.dashboards[n.id];return {id:n.id,label:a.label,kind:a.kind,metric:a.metricId||null,visualization:a.visualization||null,chartDimension:a.chartDimension||null,intervalKey:a.intervalKey||null,containerId:a.containerId||null,containerCollapsed:!!a.containerCollapsed,description:a.description||null,question:d?.question||null,localFilters:[...(a.predicate?[a.predicate]:[]),...(s.locals[n.id]||[])].map(strip),widgets:(d?.widgets||[]).map(w=>({id:w.id,type:w.type,title:w.title,metric:w.metric||null,dimension:w.dimension||null,compareDimension:w.compareDimension||null,width:w.width,target:w.target??null,intervalKey:w.intervalKey||null,distributionMeasure:w.distributionMeasure||null}))}}),
  edges:s.edges.map(e=>({source:e.source,target:e.target})),filters,globalFilters:s.globals.map(strip)};
 }
