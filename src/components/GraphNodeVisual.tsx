@@ -43,7 +43,7 @@ export function GraphNodeVisual({data}:{data:GraphNodeData}){
   const preferred=(analysis.metricId||'otifRate')==='onTimeRate'?onTimeRate:data.primaryValue;
   const rate=preferred==null?null:Math.max(0,Math.min(100,Number(preferred)));
   const label=(analysis.metricId||'otifRate')==='onTimeRate'?'On-Time':'OTIF';
-  return <div className="node-viz-donut"><div className="node-viz-ring" role="img" aria-label={rate===null?'Keine Werte':percent(rate)+' '+label} style={{background:rate===null?'#d8e7e8':`conic-gradient(#008b92 ${rate}%, #dce8e9 0)`}}><div><b>{percent(rate)}</b><small>{label}</small></div></div><span>{number(orders)} Aufträge</span></div>;
+  return <div className="node-viz-donut"><div className="node-viz-ring" role="img" aria-label={rate===null?'Keine Werte':percent(rate)+' '+label} style={{background:rate===null?'#d8e7e8':`conic-gradient(#008b92 ${rate}%, #dce8e9 0)`}}><div><b>{percent(rate)}</b><small>{label}</small></div></div><span>{number(orders)} Aufträge im Filterkontext</span><details className="nxt-chart-data-table"><summary>Werte anzeigen</summary><p>{label}: {percent(rate)}</p></details></div>;
  }
  if(kind==='line')return <InteractiveTrend values={trendRows||[]} initialMetric={(analysis.chartMetric||'onTimeRate') as MetricKey}/>;
  return null;

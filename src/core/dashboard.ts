@@ -1,3 +1,4 @@
+import {WIDGET_HEIGHT_MIN,WIDGET_HEIGHT_MAX} from './cardLayout';
 import {ROOT_CAUSE_LABELS,ROOT_CAUSE_METRICS,formatRootCauseMetric,type RootCauseMetric} from './rootCauseMetrics';
 import {FIELDS,type FieldKey} from '../config';
 import {validE02Key,type E02IntervalKey} from './processIntervals';
@@ -8,7 +9,7 @@ export type WidgetType='kpi'|'line'|'bar'|'table'|'donut'|'text'|'bar_horizontal
 export type MetricKey='orders'|'otifRate'|'onTimeRate'|'volumeConformanceRate'|'otifCases'|'lateOrders'|'avgDelayDays'|'affectedFactories'|'totalPenaltyEur'|'latePenaltyEur'|'shortfallPenaltyEur'|RootCauseMetric;
 export type Width='half'|'full';
 export type DashboardWidget={
- id:string;type:WidgetType;title:string;width:Width;
+ id:string;type:WidgetType;title:string;width:Width;displayHeight?:number;
  metric?:MetricKey;dimension?:FieldKey;compareDimension?:FieldKey;target?:number;distributionMeasure?:'quantity_change_count'|'lateness_days';intervalKey?:E02IntervalKey;text?:string;
 };
 export type NodeDashboard={question:string;widgets:DashboardWidget[]};
@@ -91,6 +92,7 @@ export function normalizeDashboard(value:unknown):NodeDashboard|null{
  for(const w of d.widgets){
   if(!w||typeof w.id!=='string'||w.id.length>120||ids.has(w.id)||!WIDGET_TYPES.includes(w.type)
     ||typeof w.title!=='string'||w.title.length>100||!['full','half'].includes(w.width))return null;
+  if(w.displayHeight!==undefined&&(!Number.isFinite(w.displayHeight)||w.displayHeight<WIDGET_HEIGHT_MIN||w.displayHeight>WIDGET_HEIGHT_MAX))return null;
   if(w.metric&&!METRICS.includes(w.metric))return null;
   if(w.dimension&&!FIELDS.includes(w.dimension))return null;
   if(w.text&&(typeof w.text!=='string'||w.text.length>3000))return null;

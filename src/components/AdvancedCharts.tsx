@@ -43,7 +43,7 @@ function chosenMetric(w:DashboardWidget):MetricKey{
 }
 function isPct(m:MetricKey){return ['otifRate','onTimeRate','volumeConformanceRate'].includes(m)}
 function TableFallback({rows,headers}:{rows:Array<Array<string|number>>;headers:string[]}){
- return <details className="nxt-chart-data-table"><summary>Werte als Datentabelle anzeigen</summary>
+ return <details className="nxt-chart-data-table"><summary>Werte als Tabelle</summary>
   <div className="table-overflow"><table><thead><tr>{headers.map((h,i)=><th key={i}>{h}</th>)}</tr></thead>
    <tbody>{rows.map((r,i)=><tr key={i}>{r.map((v,j)=><td key={j}>{v}</td>)}</tr>)}</tbody></table></div>
  </details>;

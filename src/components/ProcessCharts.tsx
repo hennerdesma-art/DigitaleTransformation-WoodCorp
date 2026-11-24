@@ -9,7 +9,7 @@ export const PROCESS_TYPES=['e02_overview','e02_compare','e02_quality','e02_dist
 const fmt=(v:number|null|undefined,digits=0)=>v==null?'–':Number(v).toLocaleString('de-DE',{maximumFractionDigits:digits});
 const max=(rows:number[])=>Math.max(1,...rows.filter(x=>Number.isFinite(x)));
 function TableValues({headers,rows}:{headers:string[];rows:(string|number)[][]}){
- return <details className="nxt-chart-data-table"><summary>Berechnete Werte als Tabelle anzeigen</summary>
+ return <details className="nxt-chart-data-table"><summary>Werte als Tabelle</summary>
   <div className="table-overflow"><table><thead><tr>{headers.map((h,i)=><th key={i}>{h}</th>)}</tr></thead>
   <tbody>{rows.map((row,i)=><tr key={i}>{row.map((v,j)=><td key={j}>{v}</td>)}</tr>)}</tbody></table></div>
  </details>;

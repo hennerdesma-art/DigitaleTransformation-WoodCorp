@@ -66,3 +66,41 @@
  .nxt-card-body .nxt-ranked-row,.nxt-card-body .nxt-ranked-row.nxt-segment-button,.nxt-card-body .nxt-stacked-row{grid-template-columns:minmax(45px,1fr) minmax(20px,1fr) minmax(48px,.9fr);gap:5px;font-size:11px}
 }
 @media(prefers-reduced-motion:reduce){.nxt-card-shell,.nxt-resize-grip{transition:none}}
+
+/* One chart shell in the canvas, dashboard builder, full view and detail panel. */
+.nxt-widget.nxt-card-shell,.dashboard-edit-widget.nxt-card-shell{display:flex;flex-direction:column;position:relative;box-sizing:border-box;min-width:0;max-width:100%;border-radius:12px;overflow:hidden;gap:0}
+.nxt-widget.nxt-card-shell{padding:14px}
+.nxt-widget.nxt-card-shell>header{justify-content:flex-start;border-bottom:1px solid #e4eeee;margin-bottom:10px;padding-bottom:10px;min-height:34px;flex-wrap:nowrap}
+.nxt-widget.nxt-card-shell>header>svg{flex-shrink:0}
+.nxt-widget.nxt-card-shell h4{font-size:13px;line-height:1.35;flex:1;min-width:0;overflow-wrap:anywhere}
+.dashboard-edit-widget.nxt-card-shell .dashboard-edit-widget-top{flex-wrap:wrap;gap:5px;justify-content:flex-start}
+.dashboard-edit-widget.nxt-card-shell .dashboard-widget-title{min-width:70px;flex:1 1 100px;white-space:normal;overflow-wrap:anywhere}
+.dashboard-edit-widget.nxt-card-shell .dashboard-widget-title svg{flex-shrink:0}
+.dashboard-edit-widget.nxt-card-shell .dashboard-edit-widget-content{padding:14px 14px 30px;min-width:0;min-height:0}
+.nxt-widget.sized-tile .dashboard-widget-body,.dashboard-edit-widget.sized-tile .dashboard-widget-body{flex:1 1 0;min-height:0;overflow:auto;scrollbar-gutter:stable}
+.nxt-widget .dashboard-widget-body,.dashboard-edit-widget .dashboard-widget-body{overflow-wrap:anywhere}
+.nxt-card-body .nxt-widget-kpi strong{font-size:clamp(22px,9cqw,38px);overflow-wrap:anywhere}
+.nxt-card-body .nxt-widget-donut>p{white-space:normal;overflow-wrap:anywhere}
+.nxt-card-body .nxt-widget-donut .nxt-chart-data-table,.nxt-card-body .node-viz-donut .nxt-chart-data-table{width:100%}
+.nxt-card-body .nxt-chart-svg{max-height:var(--nxt-plot-height,460px)}
+.nxt-card-body .nxt-vertical-column,.nxt-card-body .nxt-histo-bar{height:clamp(110px,var(--nxt-plot-height,200px),380px)}
+.nxt-card-body .nxt-chart-data-table{width:100%;margin-top:3px;border-top:1px solid #e4eeee;padding-top:8px}
+.nxt-card-body .nxt-chart-data-table table{width:100%;border-collapse:collapse;font-size:11px}
+.nxt-card-body .nxt-chart-data-table th,.nxt-card-body .nxt-chart-data-table td{padding:7px;text-align:left;white-space:nowrap;border-bottom:1px solid #e4eeee}
+.nxt-card-body .nxt-chart-data-table th{background:#f3f9f8;color:#315c62}
+.nxt-card-body .nxt-chart-settings .field{min-width:0;margin-top:8px}
+.nxt-card-body .nxt-chart-settings input,.nxt-card-body .nxt-chart-settings select{box-sizing:border-box;max-width:100%}
+.nxt-card-body .nxt-chart-settings .nxt-chart-controls button,.nxt-card-body .nxt-chart-selection button{max-width:100%;overflow-wrap:anywhere}
+.nxt-card-body .e02-panel,.nxt-card-body .e02-visual,.nxt-card-body .e02-interval-list,.nxt-card-body .e02-summary-strip{min-width:0;max-width:100%}
+.nxt-card-body .e02-summary-strip{flex-wrap:wrap}
+.nxt-card-body .e02-histogram{max-width:100%;overflow-x:auto}
+.dashboard-design-canvas,.node-dashboard-renderer{container-type:inline-size}
+@container (max-width:859px){
+ .nxt-widget.chart-tile.half,.dashboard-edit-widget.chart-tile.half{grid-column:1/-1}
+}
+@container (max-width:439px){
+ .node-dashboard-widgets,.dashboard-edit-grid{grid-template-columns:minmax(0,1fr)}
+ .nxt-widget.half,.dashboard-edit-widget.half{grid-column:1/-1}
+ .nxt-widget.nxt-card-shell{padding:10px}
+ .dashboard-edit-widget.nxt-card-shell .dashboard-edit-widget-content{padding:10px 10px 30px}
+}

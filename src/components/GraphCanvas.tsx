@@ -3,7 +3,7 @@ import {ReactFlow,Background,BackgroundVariant,Controls,Handle,MiniMap,Position,
 import {DndContext,PointerSensor,KeyboardSensor,useSensor,useSensors,type DragEndEvent,useDraggable} from '@dnd-kit/core';
 import {orderedNodes,containerLayout,resizeGraphCard,type NNode,type NEdge} from '../core/graph';
 import {ResizeGrip} from './ResizeGrip';
-import type {CardSize} from '../core/cardLayout';
+import {cardDimensions,type CardSize} from '../core/cardLayout';
 import {findingStatus} from '../core/findings';
 import type {Filter,PaletteType} from '../core/types';
 import Icon from './Icon';
@@ -38,7 +38,7 @@ function AnalyticNode({id,data,selected}:NodeProps<NNode>){
   </div>;
  }
  const isNote=analysis.kind==='note',graphChart=!!analysis.visualization&&analysis.visualization!=='kpi',dark=analysis.kind==='root'&&!graphChart;
- return <div data-resizable-card className={'graph-node nxt-card-shell '+(dark?'root-node ':'')+(isNote?'note-node ':'')+(graphChart?'chart-node ':'')+(selected?'selected-node ':'')} tabIndex={0} role="group" aria-label={analysis.label+' – '+(orders==null?'Noch keine Kennzahl':number(orders)+' Aufträge')}>
+ return <div data-resizable-card style={{'--nxt-plot-height':Math.max(120,cardDimensions(analysis).height-165)+'px'} as React.CSSProperties} className={'graph-node nxt-card-shell '+(dark?'root-node ':'')+(isNote?'note-node ':'')+(graphChart?'chart-node ':'')+(selected?'selected-node ':'')} tabIndex={0} role="group" aria-label={analysis.label+' – '+(orders==null?'Noch keine Kennzahl':number(orders)+' Aufträge')}>
   <Handle type="target" position={Position.Top} id="target" isConnectable={!!editMode} className="port" aria-label="Eingangsverbindung"/>
   <header className="nxt-card-header graph-node-header">
    <div className="nxt-card-title"><span className="node-grip" aria-hidden="true"><Icon name="grip-vertical" size={15}/></span><div><strong title={analysis.label}>{analysis.label}</strong>{dark&&<small className="root-subtitle">Ausgangspunkt</small>}</div></div>
