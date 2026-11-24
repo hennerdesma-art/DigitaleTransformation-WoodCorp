@@ -3,8 +3,20 @@ export const ACTION_KINDS=['add_widget','rename_node','set_question','add_branch
 export type ActionKind=typeof ACTION_KINDS[number];
 export type AiAction={kind:ActionKind;target:string;label:string|null;ref:string|null;widgetType:string|null;metric:string|null;dimension:string|null;compareDimension:string|null;field:string|null;value:string|null;widgetId:string|null;targetValue:number|null};
 export type AiPlan={answer:string;operations:AiAction[]};
-export const KNOWLEDGE_VERSION='nxt-ai-v1.2.2';
+export const KNOWLEDGE_VERSION='nxt-ai-v1.2.3';
 export const AI_GRAPH_FORMAT=2 as const;
+export const AI_PROMPT_LIMIT=6000;
+export const AI_HISTORY_LIMIT=6000;
+export function assistantPromptProblem(prompt:unknown):string|null{
+ if(typeof prompt!=='string'||!prompt.trim())return 'Bitte eine Frage oder einen Änderungswunsch eingeben.';
+ if(prompt.length>AI_PROMPT_LIMIT)return 'Die Anfrage überschreitet '+AI_PROMPT_LIMIT.toLocaleString('de-DE')+' Zeichen. Bitte kürzen; es wurde nichts abgeschnitten oder gesendet.';
+ return null;
+}
+export function boundedAssistantHistory(text:string,operationsSummary=''):string{
+ const joined=text+(operationsSummary?'\n'+operationsSummary:'');
+ const marker='\n[Älterer Chatkontext gekürzt]';
+ return joined.length<=AI_HISTORY_LIMIT?joined:joined.slice(0,AI_HISTORY_LIMIT-marker.length)+marker;
+}
 export type AiRequestIntent='auto'|'build_path'|'build_dashboard';
 // Explicit UI actions and unambiguous creation commands are not advisory requests.
 // Ambiguous conversational prompts are left to the model, rather than forced into mutation mode.

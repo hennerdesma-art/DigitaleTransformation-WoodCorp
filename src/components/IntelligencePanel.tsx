@@ -5,7 +5,7 @@ import {Button,Notice,IconButton} from './Ui';
 import {analysisApi} from '../lib/supabase';
 import {intelligenceApi,type AiMessage,type AiStatus} from '../lib/intelligence';
 import {actionLabel,applyAssistantPlan,contextForAssistant,localAssistantPlan,type AssistantState} from '../core/assistant';
-import {validatePlan,resolveAssistantIntent,buildRequestBlocker,buildPlanProblem,AI_GRAPH_FORMAT,KNOWLEDGE_VERSION,type AiPlan} from '../core/assistantProtocol';
+import {validatePlan,resolveAssistantIntent,buildRequestBlocker,buildPlanProblem,AI_GRAPH_FORMAT,KNOWLEDGE_VERSION,AI_PROMPT_LIMIT,assistantPromptProblem,boundedAssistantHistory,type AiPlan} from '../core/assistantProtocol';
 import {effectiveFilters} from '../core/filters';
 import {IntelligencePreview} from './IntelligencePreview';
 const AI_LOGO=import.meta.env.BASE_URL+'nxt-intelligence.webp';
@@ -30,6 +30,9 @@ export function IntelligencePanel({state,workspace,fingerprint,canEdit,busy,onAp
  const send=async(template?:Template)=>{
   const text=template==='dashboard'?'Ergänze das aktuelle Dashboard sinnvoll mit fehlenden relevanten KPIs, Segmentvergleichen und Datenqualität; vorhandene Widgets beibehalten.':template==='new_dashboard'?'Erstelle ein vollständiges neues Dashboard auf diesem Knoten. Bestehende Widgets dieses Knotens dürfen explizit ersetzt werden. Nutze die Aufbauanweisungen und passende Kennzahlen.':template==='path'?'Erstelle einen vollständigen nachvollziehbaren Thinking Path als Analysezweige mit Containern, Forschungsfragen und Dashboards. Bestehende Knoten beibehalten.':draft.trim();
   if(!text||pending||!selected)return;
+  const promptProblem=assistantPromptProblem(text);
+  if(promptProblem){setError(promptProblem);return}
+  if(consent&&!status?.enabled){setError('KI-Status noch nicht verfügbar oder KI-Zugang deaktiviert. Bitte Status prüfen. Keine automatische lokale Ersatzantwort.');return}
   const intent=resolveAssistantIntent(text,template==='path'?'build_path':template?'build_dashboard':null);
   const blocker=buildRequestBlocker(intent,canEdit,AI_GRAPH_FORMAT);
   if(blocker){setError(blocker.message);return}
@@ -41,8 +44,8 @@ export function IntelligencePanel({state,workspace,fingerprint,canEdit,busy,onAp
   try{
    let result:AiPlan;let source:'local'|'model'='local';
    if(status?.enabled&&consent){
-    source='model';result=await intelligenceApi.ask(text,contextForAssistant(state,workspace,canEdit),entries.slice(-8).map(e=>({role:e.role,text:(e.text+(e.plan?.operations.length?'\n'+(e.applied?'Applied':'Proposed')+': '+JSON.stringify(e.plan.operations.map(o=>({kind:o.kind,target:o.target,label:o.label,ref:o.ref,widgetType:o.widgetType,metric:o.metric,field:o.field,value:o.value}))):'')).slice(0,1600)})),c.signal,intent);
-    void intelligenceApi.status(c.signal).then(setStatus).catch(()=>{});
+    source='model';result=await intelligenceApi.ask(text,contextForAssistant(state,workspace,canEdit),entries.slice(-8).map(e=>({role:e.role,text:boundedAssistantHistory(e.text,e.plan?.operations.length?(e.applied?'Applied':'Proposed')+': '+JSON.stringify(e.plan.operations.map(o=>({kind:o.kind,target:o.target,label:o.label,ref:o.ref,widgetType:o.widgetType,metric:o.metric,field:o.field,value:o.value}))):'')})),c.signal,intent);
+
    }else{
     let metrics=null;
     if(!template){try{metrics=await analysisApi.metrics(effectiveFilters(state.globals,state.nodes.map(n=>n.data.analysis),state.locals,state.selectedId,state.edges))}catch{/* Explicit no-data reply. */}}
@@ -54,8 +57,8 @@ export function IntelligencePanel({state,workspace,fingerprint,canEdit,busy,onAp
    if(plan.operations.length)applyAssistantPlan(state,plan);
    const entry:Entry={id:crypto.randomUUID(),role:'assistant',text:plan.answer,plan,fingerprint:stamp,source};append(at,entry);
    if(plan.operations.length)setPreview({entry,state});
-  }catch(e){if(!c.signal.aborted&&scopeRef.current===at)setError(e instanceof Error?e.message:'Anfrage fehlgeschlagen.')}
-  finally{if(!c.signal.aborted&&scopeRef.current===at)setPending(false)}
+  }catch(e){if(!c.signal.aborted&&scopeRef.current===at){setError(e instanceof Error?e.message:'Anfrage fehlgeschlagen.');setDraft(current=>current.trim()?current:text)}}
+  finally{if(!c.signal.aborted&&scopeRef.current===at){setPending(false);if(consent)void intelligenceApi.status(c.signal).then(s=>{if(!c.signal.aborted&&scopeRef.current===at)setStatus(s)}).catch(()=>{})}}
  };
  const apply=(entry:Entry)=>{
   if(!entry.plan||entry.applied||!canEdit||busy||entry.fingerprint!==fingerprint)return;
@@ -76,7 +79,7 @@ export function IntelligencePanel({state,workspace,fingerprint,canEdit,busy,onAp
    </div>
    <footer className="nxt-intelligence-composer">
     {status?.enabled&&<label className="nxt-intelligence-consent"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/> Workspace-Kontext, Frage und aggregierte Kennzahlen an Amazon Bedrock (EU-Inferenzprofil) senden. Keine Rohdatensätze; keine personenbezogenen Inhalte in Fragen oder Bezeichnungen eingeben.</label>}
-    <form onSubmit={e=>{e.preventDefault();void send()}}><textarea ref={input} aria-label="Frage oder Änderungswunsch" rows={3} maxLength={1600} value={draft} onChange={e=>setDraft(e.target.value)} placeholder="Frage zu diesem Element oder Änderungswunsch …" onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();void send()}}}/><div><button type="button" className="nxt-intelligence-reset" disabled={pending} onClick={()=>{setThreads(old=>({...old,[scope]:[]}));setError('')}}>Neuer Chat</button><button type="submit" className="nxt-button primary" disabled={!draft.trim()||pending||!selected}><Icon name="arrow-right" size={17}/> Senden</button></div></form>
+    <form onSubmit={e=>{e.preventDefault();void send()}}><textarea ref={input} aria-label="Frage oder Änderungswunsch" rows={3} value={draft} aria-invalid={draft.length>AI_PROMPT_LIMIT} aria-describedby="nxt-ai-prompt-length" onChange={e=>setDraft(e.target.value)} placeholder="Frage zu diesem Element oder Änderungswunsch …" onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();void send()}}}/><small id="nxt-ai-prompt-length" className={'nxt-ai-prompt-length'+(draft.length>AI_PROMPT_LIMIT?' over-limit':'')}>{draft.length.toLocaleString('de-DE')} / {AI_PROMPT_LIMIT.toLocaleString('de-DE')} Zeichen{draft.length>AI_PROMPT_LIMIT?' · Bitte kürzen, keine Zeichen abgeschnitten':''}</small><div><button type="button" className="nxt-intelligence-reset" disabled={pending} onClick={()=>{setThreads(old=>({...old,[scope]:[]}));setError('')}}>Neuer Chat</button><button type="submit" className="nxt-button primary" disabled={!draft.trim()||draft.length>AI_PROMPT_LIMIT||pending||!selected}><Icon name="arrow-right" size={17}/> Senden</button></div></form>
     <small>Keine automatische Veröffentlichung. Übernommene Änderungen bleiben bis zum Speichern ein Entwurf.</small>{canEdit&&entries.some(e=>e.applied)&&<button type="button" className="nxt-intelligence-reset" disabled={busy||pending} onClick={()=>{onUndo();setError('')}}>Letzte Workspace-Änderung rückgängig</button>}
    </footer>
   </aside>}

@@ -1,5 +1,5 @@
 import {createClient} from "npm:@supabase/supabase-js@2.119.0";
-import {PLAN_SCHEMA,validatePlan,KNOWLEDGE_VERSION,AI_DIMENSIONS,AI_METRICS,AI_WIDGET_TYPES,AI_CANVAS_TYPES,AI_INTERVAL_KEYS,AI_GRAPH_FORMAT,resolveAssistantIntent,buildRequestBlocker,buildPlanProblem} from "./protocol.ts";
+import {PLAN_SCHEMA,validatePlan,KNOWLEDGE_VERSION,AI_DIMENSIONS,AI_METRICS,AI_WIDGET_TYPES,AI_CANVAS_TYPES,AI_INTERVAL_KEYS,AI_GRAPH_FORMAT,AI_PROMPT_LIMIT,AI_HISTORY_LIMIT,assistantPromptProblem,resolveAssistantIntent,buildRequestBlocker,buildPlanProblem} from "./protocol.ts";
 import {MASTER_PLAYBOOK} from "./knowledge.ts";
 import {costDriverCombinations,isCostDrilldown} from "./costEvidence.ts";
 import {bedrockConfig,requestBedrock,BedrockError,BEDROCK_MODEL,BEDROCK_REGION,BEDROCK_MODELS,MODEL_LABELS,validModel} from "./bedrock.ts";
@@ -68,7 +68,9 @@ Deno.serve(async(req)=>{
    if(!marked.allowed)return response({error:"Modelltest konnte nicht gespeichert werden."},503,origin);
    return response({ok:true,model:body.model,usage:result.usage},200,origin);
   }
-  if(body?.action!=="ask"||body.consent!==true||!isString(body.prompt,1600))return response({error:"Ungültige Anfrage oder fehlende Freigabe."},400,origin);
+  if(body?.action!=="ask"||body.consent!==true)return response({error:"Ungültige Anfrage oder fehlende Freigabe."},400,origin);
+  const promptProblem=assistantPromptProblem(body.prompt);
+  if(promptProblem)return response({error:promptProblem},typeof body.prompt==="string"&&body.prompt.length>AI_PROMPT_LIMIT?413:400,origin);
   if(forceDisabled()||!config())return response({error:"Amazon Bedrock ist nicht verfügbar. Lokale Vorlagen sind verfügbar."},503,origin);
   const context=body.context;
   if(!context||!isString(context.selectedId,180)||!Array.isArray(context.nodes)||context.nodes.length>300||!Array.isArray(context.edges)||context.edges.length>400||!Array.isArray(context.filters)||context.filters.length>12||!Array.isArray(context.allowedFields))return response({error:"Workspace-Kontext ungültig."},400,origin);
@@ -134,9 +136,9 @@ Deno.serve(async(req)=>{
     if(!p.error&&Array.isArray(p.data?.intervals))evidence.processIntervals=p.data.intervals.slice(0,5).map((x:any)=>({key:x.key,validCases:x.validCases,missingCases:x.missingCases,negativeCases:x.negativeCases,medianDays:x.validCases>=5?x.medianDays:null,p90Days:x.validCases>=5?x.p90Days:null,otifValidCases:x.otifValidCases,nonOtifValidCases:x.nonOtifValidCases,otifMedianDays:x.otifValidCases>=5?x.otifMedianDays:null,nonOtifMedianDays:x.nonOtifValidCases>=5?x.nonOtifMedianDays:null}));
    }
   }
-  const history=Array.isArray(body.history)?body.history.slice(-8).filter((x:any)=>["user","assistant"].includes(x?.role)&&isString(x.text,1600)).map((x:any)=>({role:x.role,text:x.text})):[];
+  const history=Array.isArray(body.history)?body.history.slice(-8).filter((x:any)=>["user","assistant"].includes(x?.role)&&isString(x.text,AI_HISTORY_LIMIT)).map((x:any)=>({role:x.role,text:x.text})):[];
   const graphFormat=context.graphFormat===2?2:1;
-  const modelContext={requestIntent:intent,workspaceTitle,selectedId:context.selectedId,nodes,edges,canEdit,allowedFields:fields,capabilities:{graphFormat,metrics:AI_METRICS,dashboardWidgets:AI_WIDGET_TYPES,canvasVisuals:graphFormat===2?AI_CANVAS_TYPES:['kpi'],intervalKeys:AI_INTERVAL_KEYS,maxActions:30,maxWidgetsPerNode:24,maxNodes:300,maxEdges:400},globalFilters:modelFilters(context.globalFilters),filters:modelFilters(filters),redactedEffectiveFilterCount:filters.length-modelFilters(filters).length,evidence,history,question:body.prompt};
+  const modelContext={requestIntent:intent,workspaceTitle,selectedId:context.selectedId,nodes,edges,canEdit,allowedFields:fields,capabilities:{graphFormat,metrics:AI_METRICS,dashboardWidgets:AI_WIDGET_TYPES,canvasVisuals:graphFormat===2?AI_CANVAS_TYPES:['kpi'],intervalKeys:AI_INTERVAL_KEYS,maxActions:30,recommendedActionsPerStage:18,maxWidgetsPerNode:24,maxNodes:300,maxEdges:400},globalFilters:modelFilters(context.globalFilters),filters:modelFilters(filters),redactedEffectiveFilterCount:filters.length-modelFilters(filters).length,evidence,history,question:body.prompt};
   const {plan:parsed}=await requestBedrock(provider,MASTER_PLAYBOOK,modelContext,PLAN_SCHEMA);
   const plan=validatePlan(parsed,ids,fields,canEdit);
   const problem=buildPlanProblem(intent,plan);
