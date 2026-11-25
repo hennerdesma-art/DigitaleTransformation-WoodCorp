@@ -1,0 +1,34 @@
+name: NXT Analytics - P1 browser regression
+on:
+  push:
+    branches: ['feat/nxt-smart-layout']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser-qa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - name: Isolated browser regression (synthetic fixtures only)
+        run: |
+          npm install --prefix "$RUNNER_TEMP/nxt-browser" --no-audit --no-fund playwright@1.57.0
+          export NXT_BROWSER="$(command -v google-chrome || command -v chromium || true)"
+          if [ -z "$NXT_BROWSER" ]; then "$RUNNER_TEMP/nxt-browser/node_modules/.bin/playwright" install chromium; fi
+          npm run dev -- --host 127.0.0.1 --port 4173 > "$RUNNER_TEMP/vite-p1.log" 2>&1 &
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:4173/DigitaleTransformation-WoodCorp/tests/browser/ >/dev/null && break; sleep 1; done
+          node tests/browser/run.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p1-browser-screenshots
+          path: tests/browser/*.png
+          retention-days: 7
