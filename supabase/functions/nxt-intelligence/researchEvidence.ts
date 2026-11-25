@@ -18,7 +18,7 @@ const label=(v:unknown)=>typeof v==='string'?v.slice(0,400):null;
 export function researchRequest(spec:SafeSpec){
  if(spec.tab==='cases'||spec.dimensions?.some(isPrivate)||isPrivate(spec.exposure))return null;
  if(!['groups','costs','compare','process','variants','quality','conformance','bottlenecks','rework','patterns'].includes(spec.tab))return null;
- const {tab,...rest}=spec;
+ const {tab,rankMetric,minCases,rankLimit,reworkSort,...rest}=spec;
  const mode=tab==='variants'&&spec.sequence==='source'?'groups':tab==='variants'?'variants':tab;
  return {mode,options:{...rest,dimensions:tab==='variants'?['process_variant']:spec.dimensions||[],pageSize:25,page:0,sort:spec.sort||'cost',sequence:spec.sequence||'chronological'}};
 }

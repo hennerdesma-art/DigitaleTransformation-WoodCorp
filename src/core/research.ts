@@ -23,7 +23,7 @@ export function patternLabel(p:ActivityPattern){return PATTERN_LABELS[p.kind]+':
 export const validActivityName=(v:unknown):v is string=>typeof v==='string'&&!!v.trim()&&v.length<=100;
 export function validActivityPattern(value:unknown):value is ActivityPattern{if(!value||typeof value!=='object'||Array.isArray(value))return false;const p=value as ActivityPattern;if(Object.keys(p).some(k=>!['kind','a','b','minOccurrences'].includes(k))||!Object.prototype.hasOwnProperty.call(PATTERN_LABELS,p.kind)||!validActivityName(p.a))return false;return (['direct','eventually'].includes(p.kind)?validActivityName(p.b):p.b===undefined)&&(p.minOccurrences===undefined||p.kind==='repeated'&&Number.isInteger(p.minOccurrences)&&p.minOccurrences>=2&&p.minOccurrences<=10);}
 export const validReference=(v:unknown):v is string[]=>Array.isArray(v)&&v.length>=2&&v.length<=8&&new Set(v).size===v.length&&v.every(validActivityName);
-export type ResearchSpec={tab:ResearchTab;dimensions?:ResearchDimension[];exposure?:ResearchDimension;a?:string;b?:string;outcome?:Outcome;minN?:number;sequence?:'chronological'|'source';sort?:ResearchSort;status?:string;variant?:string;chronoVariant?:string;pattern?:ActivityPattern;patternState?:PatternState;reference?:string[];referenceState?:PatternState;pageSize?:10|25|50|100};
+export type ResearchSpec={tab:ResearchTab;dimensions?:ResearchDimension[];exposure?:ResearchDimension;a?:string;b?:string;outcome?:Outcome;minN?:number;sequence?:'chronological'|'source';sort?:ResearchSort;status?:string;variant?:string;chronoVariant?:string;pattern?:ActivityPattern;patternState?:PatternState;reference?:string[];referenceState?:PatternState;rankMetric?:'total_days'|'p90_days'|'median_days'|'cases';minCases?:number;rankLimit?:number;reworkSort?:'repeated_cases'|'repeat_events'|'total_cost';pageSize?:10|25|50|100};
 export function defaultResearch(tab:ResearchTab='cases'):ResearchSpec{
  if(tab==='groups'||tab==='costs')return {tab,dimensions:[],sort:'cost',pageSize:25};
  if(tab==='compare')return {tab,dimensions:[],outcome:'otif',minN:10};
@@ -36,7 +36,7 @@ export function defaultResearch(tab:ResearchTab='cases'):ResearchSpec{
 }
 export function validResearchSpec(value:unknown):value is ResearchSpec{
  if(!value||typeof value!=='object'||Array.isArray(value))return false;
- const v=value as ResearchSpec,keys=['tab','dimensions','exposure','a','b','outcome','minN','sequence','sort','status','variant','chronoVariant','pattern','patternState','reference','referenceState','pageSize'];
+ const v=value as ResearchSpec,keys=['tab','dimensions','exposure','a','b','outcome','minN','sequence','sort','status','variant','chronoVariant','pattern','patternState','reference','referenceState','pageSize','rankMetric','minCases','rankLimit','reworkSort'];
  if(Object.keys(v).some(k=>!keys.includes(k))||!RESEARCH_TABS.includes(v.tab))return false;
  if(v.dimensions!==undefined&&(!Array.isArray(v.dimensions)||v.dimensions.length>3||new Set(v.dimensions).size!==v.dimensions.length||!v.dimensions.every(d=>RESEARCH_DIMENSIONS.includes(d))))return false;
  if(v.exposure!==undefined&&!EXPOSURES.includes(v.exposure))return false;
@@ -53,6 +53,7 @@ export function validResearchSpec(value:unknown):value is ResearchSpec{
  if(v.sequence!==undefined&&!['chronological','source'].includes(v.sequence))return false;
  if(v.sort!==undefined&&!['cost','late','short','weight','key','orders'].includes(v.sort))return false;
  if(v.status!==undefined&&!['on_time_in_full','on_time_not_full','late_in_full','late_not_full','unknown'].includes(v.status))return false;
+ if(v.rankMetric!==undefined&&(v.tab!=='bottlenecks'||!['total_days','p90_days','median_days','cases'].includes(v.rankMetric))||v.minCases!==undefined&&(v.tab!=='bottlenecks'||![1,5,10,20,50,100].includes(v.minCases))||v.rankLimit!==undefined&&(v.tab!=='bottlenecks'||![10,20,50,100,1000].includes(v.rankLimit))||v.reworkSort!==undefined&&(v.tab!=='rework'||!['repeated_cases','repeat_events','total_cost'].includes(v.reworkSort)))return false;
  if(v.pageSize!==undefined&&![10,25,50,100].includes(v.pageSize))return false;
  return true;
 }

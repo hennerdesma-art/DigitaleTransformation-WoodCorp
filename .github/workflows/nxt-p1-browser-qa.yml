@@ -15,7 +15,7 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      - run: deno check supabase/functions/nxt-intelligence/index.ts
+      - run: deno check --node-modules-dir=auto supabase/functions/nxt-intelligence/index.ts
   browser-qa:
     runs-on: ubuntu-latest
     steps:

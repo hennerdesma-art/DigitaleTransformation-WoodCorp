@@ -92,9 +92,9 @@ const objectValue=(value:string|null):Record<string,unknown>=>{
 };
 const enabledDimension=(d:unknown,allowed:readonly string[])=>typeof d==='string'&&(d==='all'||(d==='order_received_month'?allowed.includes('order_received_date'):d==='promised_month'?allowed.includes('promised_date'):d==='customer_product'?allowed.includes('cust_id')&&allowed.includes('product_type'):allowed.includes(d)));
 const oneOf=(v:unknown,values:readonly string[])=>typeof v==='string'&&values.includes(v);
-export function parseAiResearch(value:string|null,allowed:readonly string[]){
+export function parseAiResearch(value:string|null,allowed:readonly string[]):Record<string,unknown>&{tab?:unknown;dimensions:unknown[]}{
  const s=objectValue(value),tab=s.tab;
- const keys=['tab','dimensions','exposure','a','b','outcome','minN','sequence','sort','status','pageSize','pattern','patternState','reference','referenceState'];
+ const keys=['tab','dimensions','exposure','a','b','outcome','minN','sequence','sort','status','pageSize','pattern','patternState','reference','referenceState','rankMetric','minCases','rankLimit','reworkSort'];
  if(Object.keys(s).some(k=>!keys.includes(k))||!oneOf(tab,AI_RESEARCH_TABS))throw Error('Unbekannte Deep-Analysis-Konfiguration.');
  const dims=s.dimensions??[];
  if(!Array.isArray(dims)||dims.length>3||new Set(dims).size!==dims.length||dims.some(d=>!oneOf(d,AI_RESEARCH_DIMENSIONS)||!enabledDimension(d,allowed)))throw Error('Deep Analysis: maximal drei unterschiedliche freigegebene Dimensionen.');
@@ -111,6 +111,7 @@ export function parseAiResearch(value:string|null,allowed:readonly string[]){
  if(tab==='patterns'&&!s.pattern)throw Error('Aktivitätsmuster benötigt eine Regel.');
  if(s.reference!==undefined&&(!Array.isArray(s.reference)||s.reference.length<2||s.reference.length>8||new Set(s.reference).size!==s.reference.length||s.reference.some(a=>!str(a,100))||!['conformance','cases'].includes(String(tab))))throw Error('Referenzfolge benötigt 2–8 unterschiedliche Aktivitäten.');
  if(s.pattern&&s.reference||s.patternState!==undefined&&(!s.pattern||tab!=='cases'||!oneOf(s.patternState,['match','no_match','unknown']))||s.referenceState!==undefined&&(!s.reference||tab!=='cases'||!oneOf(s.referenceState,['match','no_match','unknown']))||tab==='cases'&&(s.pattern&&!s.patternState||s.reference&&!s.referenceState))throw Error('Ungültiger Muster- oder Referenzfilter.');
+ if(s.rankMetric!==undefined&&(tab!=='bottlenecks'||!oneOf(s.rankMetric,['total_days','p90_days','median_days','cases']))||s.minCases!==undefined&&(tab!=='bottlenecks'||![1,5,10,20,50,100].includes(s.minCases as number))||s.rankLimit!==undefined&&(tab!=='bottlenecks'||![10,20,50,100,1000].includes(s.rankLimit as number))||s.reworkSort!==undefined&&(tab!=='rework'||!oneOf(s.reworkSort,['repeated_cases','repeat_events','total_cost'])))throw Error('Ungültige Ranking-Konfiguration.');
  if(tab==='variants'&&!allowed.includes('process_variant'))throw Error('Prozessvarianten sind nicht freigegeben.');
  return {...(tab==='compare'?{outcome:'otif',minN:10}:{}),...(tab==='process'||tab==='variants'?{sequence:'chronological'}:{}),...s,dimensions:dims};
 }

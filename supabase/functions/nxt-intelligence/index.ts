@@ -198,6 +198,8 @@ Deno.serve(async(req)=>{
    const checks=plannedResearchChecks({selectedId:context.selectedId,nodes:context.nodes,edges,globalFilters:context.globalFilters,filters},plan.operations,v=>parseAiResearch(v,validationFields) as any);
    const verified=await Promise.all(checks.map(async c=>({target:c.target,label:c.label,spec:c.spec,e:await queryResearch(c.spec,c.filters)})));
    const good=verified.filter(x=>x.e.status==='available');
+   const statusNote='\n\nLive-Datenprüfung: '+good.length+' von '+verified.length+' ausgewählten Aggregatabfragen erfolgreich. Nicht geprüfte, unterdrückte oder fehlgeschlagene Analysen bleiben offene Prüfaufträge; personenbezogene Falllisten werden nicht an das Modell übermittelt.';
+   plan={...plan,answer:plan.answer.slice(0,Math.max(0,9950-statusNote.length))+statusNote};
    if(good.length){
     let interpretation=new Map<string,{hypothesis:string;nextStep:string}>();
     if(!repaired&&Date.now()<researchDeadline-22000&&(/ursach|root cause|finding|erkenntnis|hypothes|interpret|untersuch|analyse|prüf|vergleich/i.test(body.prompt)||intent==='build_path')){
