@@ -105,7 +105,7 @@ EXAMPLES: For graphFormat 3, a direct chart when no container is needed: ${JSON.
 ${JSON.stringify(PLAYBOOK_EXAMPLES.grouped)}
 Explicitly independent group (zero incoming edges, global filters remain):
 ${JSON.stringify(PLAYBOOK_EXAMPLES.independent)}
-`;
 
 
 Persist ranking preferences in the research JSON: bottlenecks rankMetric total_days|p90_days|median_days|cases, minCases 1|5|10|20|50|100, rankLimit 10|20|50|100|1000 (all); rework reworkSort repeated_cases|repeat_events|total_cost. Use the user's requested metric, minimum and limit rather than defaulting silently.
+`;
