@@ -81,7 +81,7 @@ const str=(v:unknown,max:number)=>typeof v==='string'&&v.trim().length>0&&v.leng
 const isOne=(a:readonly string[],v:unknown)=>typeof v==='string'&&a.includes(v);
 
 /** Shared frontend/edge config validation. A JSON value is data, never executable code. */
-export const AI_RESEARCH_TABS=['cases','process','variants','groups','compare','costs','quality'] as const;
+export const AI_RESEARCH_TABS=['cases','process','variants','groups','compare','costs','quality','conformance','bottlenecks','rework','patterns'] as const;
 export const AI_RESEARCH_DIMENSIONS=[...AI_DIMENSIONS,'cust_id','order_received_month','promised_month'] as const;
 export const AI_CONTROL_FIELDS=['factory','product_type','warehouse_type','cust_market','order_size_class','delivery_year','credit_block','delivery_company'] as const;
 export const AI_RESEARCH_EXPOSURES=AI_RESEARCH_DIMENSIONS.filter(d=>!['otif_status','order_tolerance_met','quantity_deviation_class','process_order_quality','cust_id'].includes(d));
@@ -94,7 +94,7 @@ const enabledDimension=(d:unknown,allowed:readonly string[])=>typeof d==='string
 const oneOf=(v:unknown,values:readonly string[])=>typeof v==='string'&&values.includes(v);
 export function parseAiResearch(value:string|null,allowed:readonly string[]){
  const s=objectValue(value),tab=s.tab;
- const keys=['tab','dimensions','exposure','a','b','outcome','minN','sequence','sort','status','pageSize'];
+ const keys=['tab','dimensions','exposure','a','b','outcome','minN','sequence','sort','status','pageSize','pattern','patternState','reference','referenceState'];
  if(Object.keys(s).some(k=>!keys.includes(k))||!oneOf(tab,AI_RESEARCH_TABS))throw Error('Unbekannte Deep-Analysis-Konfiguration.');
  const dims=s.dimensions??[];
  if(!Array.isArray(dims)||dims.length>3||new Set(dims).size!==dims.length||dims.some(d=>!oneOf(d,AI_RESEARCH_DIMENSIONS)||!enabledDimension(d,allowed)))throw Error('Deep Analysis: maximal drei unterschiedliche freigegebene Dimensionen.');
@@ -107,6 +107,10 @@ export function parseAiResearch(value:string|null,allowed:readonly string[]){
  if(s.sort!==undefined&&(!oneOf(s.sort,['cost','late','short','weight','key','orders'])||!['cases','groups','costs','variants'].includes(String(tab))))throw Error('Unzulässige Sortierung.');
  if(s.status!==undefined&&!oneOf(s.status,['on_time_in_full','on_time_not_full','late_in_full','late_not_full','unknown']))throw Error('Unbekannte OTIF-Klasse.');
  if(s.pageSize!==undefined&&(![10,25,50,100].includes(Number(s.pageSize))||typeof s.pageSize!=='number'))throw Error('Ungültige Seitengröße.');
+ if(s.pattern!==undefined){const p=s.pattern as Record<string,unknown>;if(!p||typeof p!=='object'||Array.isArray(p)||Object.keys(p).some(k=>!['kind','a','b','minOccurrences'].includes(k))||!oneOf(p.kind,['contains','missing','repeated','direct','eventually'])||!str(p.a,100)||(['direct','eventually'].includes(String(p.kind))?!str(p.b,100):p.b!==undefined)||p.minOccurrences!==undefined&&(p.kind!=='repeated'||!Number.isInteger(p.minOccurrences)||Number(p.minOccurrences)<2||Number(p.minOccurrences)>10)||!['patterns','cases'].includes(String(tab)))throw Error('Ungültiges Aktivitätsmuster.');}
+ if(tab==='patterns'&&!s.pattern)throw Error('Aktivitätsmuster benötigt eine Regel.');
+ if(s.reference!==undefined&&(!Array.isArray(s.reference)||s.reference.length<2||s.reference.length>8||new Set(s.reference).size!==s.reference.length||s.reference.some(a=>!str(a,100))||!['conformance','cases'].includes(String(tab))))throw Error('Referenzfolge benötigt 2–8 unterschiedliche Aktivitäten.');
+ if(s.pattern&&s.reference||s.patternState!==undefined&&(!s.pattern||tab!=='cases'||!oneOf(s.patternState,['match','no_match','unknown']))||s.referenceState!==undefined&&(!s.reference||tab!=='cases'||!oneOf(s.referenceState,['match','no_match','unknown']))||tab==='cases'&&(s.pattern&&!s.patternState||s.reference&&!s.referenceState))throw Error('Ungültiger Muster- oder Referenzfilter.');
  if(tab==='variants'&&!allowed.includes('process_variant'))throw Error('Prozessvarianten sind nicht freigegeben.');
  return {...(tab==='compare'?{outcome:'otif',minN:10}:{}),...(tab==='process'||tab==='variants'?{sequence:'chronological'}:{}),...s,dimensions:dims};
 }

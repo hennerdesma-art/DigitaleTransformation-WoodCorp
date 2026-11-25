@@ -7,3 +7,11 @@ test('cost factor decomposition is additive and exact before display rounding',(
 test('specs are strict and never send unsupported or duplicate control dimensions',()=>{assert.ok(validResearchSpec({tab:'compare',exposure:'quantity_change_group',a:'0',b:'1',dimensions:['factory','product_type'],minN:10}));assert.ok(!validResearchSpec({tab:'compare',exposure:'factory',a:'Essen',b:'Essen'}));assert.ok(!validResearchSpec({tab:'compare',exposure:'factory',dimensions:['factory']}));assert.ok(!validResearchSpec({tab:'groups',dimensions:['sql' as never]}));assert.deepEqual(researchQuery({tab:'variants'}).options.dimensions,['process_variant']);});
 
 test('chronological variants use a distinct sequence and a validated case drill token',()=>{assert.equal(researchQuery({tab:'variants',sequence:'chronological'}).mode,'variants');assert.equal(researchQuery({tab:'variants',sequence:'source'}).mode,'groups');assert.ok(validResearchSpec({tab:'cases',chronoVariant:'a'.repeat(32)}));assert.ok(!validResearchSpec({tab:'cases',chronoVariant:'sql'}));assert.ok(!validResearchSpec({tab:'groups',chronoVariant:'a'.repeat(32)}));});
+
+import {validActivityPattern,validReference,defaultResearch,patternLabel} from './research';
+test('process patterns, editable reference and filtered case lookup persist safely',()=>{
+ assert.ok(validActivityPattern({kind:'direct',a:'Start production',b:'Change quantity'}));assert.ok(!validActivityPattern({kind:'direct',a:'Start production'}));assert.ok(!validActivityPattern({kind:'contains',a:'x',b:'y'}));
+ assert.ok(!validActivityPattern({kind:'repeated',a:'x',minOccurrences:11}));assert.ok(validReference(['A','B']));assert.ok(!validReference(['A','A']));
+ assert.ok(validResearchSpec(defaultResearch('conformance')));assert.ok(validResearchSpec(defaultResearch('patterns')));
+ const s={tab:'cases' as const,pattern:{kind:'repeated' as const,a:'Change quantity',minOccurrences:3},patternState:'match' as const};assert.ok(validResearchSpec(s));assert.equal(researchQuery(s,0,'','test-case').options.patternState,'match');assert.equal(researchQuery(s,0,'','test-case').mode,'case');assert.match(patternLabel(s.pattern),/3/);assert.ok(!validResearchSpec({...s,reference:['A','B']}));
+});

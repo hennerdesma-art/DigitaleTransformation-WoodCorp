@@ -61,7 +61,7 @@ async function request<T>(name:string,params:Record<string,unknown>={},ttl=90_00
 const normalized=(filters:Filter[])=>({p_filters:toBackend(filters)});
 const metrics=(filters:Filter[])=>request<Metrics>('nxt_case_metrics',normalized(filters));
 export const analysisApi={
- research:(mode:string,filters:Filter[],options:Record<string,unknown>,fresh=false)=>request<ResearchResponse>('nxt_deep_analysis',{p_mode:mode,...normalized(filters),p_options:options},60_000,fresh),
+ research:(mode:string,filters:Filter[],options:Record<string,unknown>,fresh=false)=>request<ResearchResponse>(['catalog','conformance','bottlenecks','rework','patterns'].includes(mode)||((mode==='cases'||mode==='case')&&(options.pattern||options.reference))?'nxt_process_analysis':'nxt_deep_analysis',{p_mode:mode,...normalized(filters),p_options:options},60_000,fresh),
  metrics,
  // The ribbon is the SAME case-grain contract. Do not run a duplicate summary RPC.
  ribbon:async(filters:Filter[]):Promise<Ribbon>=>{
