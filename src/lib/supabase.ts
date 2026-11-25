@@ -33,10 +33,10 @@ async function permit<T>(work:()=>Promise<T>):Promise<T>{
  try{return await work()}
  finally{running--;const next=waiting.shift();next?.()}
 }
-async function request<T>(name:string,params:Record<string,unknown>={},ttl=90_000):Promise<T>{
+async function request<T>(name:string,params:Record<string,unknown>={},ttl=90_000,fresh=false):Promise<T>{
  const key=JSON.stringify([name,params]);
  const cached=cache.get(key);
- if(cached&&cached.until>Date.now())return cached.value as T;
+ if(!fresh&&cached&&cached.until>Date.now())return cached.value as T;
  const previous=inflight.get(key);if(previous)return previous as Promise<T>;
  const epoch=cacheGeneration;
  const promise=permit(async()=>{
@@ -61,7 +61,7 @@ async function request<T>(name:string,params:Record<string,unknown>={},ttl=90_00
 const normalized=(filters:Filter[])=>({p_filters:toBackend(filters)});
 const metrics=(filters:Filter[])=>request<Metrics>('nxt_case_metrics',normalized(filters));
 export const analysisApi={
- research:(mode:string,filters:Filter[],options:Record<string,unknown>)=>request<ResearchResponse>('nxt_deep_analysis',{p_mode:mode,...normalized(filters),p_options:options},60_000),
+ research:(mode:string,filters:Filter[],options:Record<string,unknown>,fresh=false)=>request<ResearchResponse>('nxt_deep_analysis',{p_mode:mode,...normalized(filters),p_options:options},60_000,fresh),
  metrics,
  // The ribbon is the SAME case-grain contract. Do not run a duplicate summary RPC.
  ribbon:async(filters:Filter[]):Promise<Ribbon>=>{
