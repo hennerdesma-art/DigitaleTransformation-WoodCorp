@@ -1,3 +1,4 @@
+import type {ResearchResponse} from '../core/research';
 import {TIME_DIMENSIONS,type TimeAnchor,type SegmentDimension} from '../core/analyticsCanvas';
 import {SEGMENT_METRIC_KEYS,segmentMetric,type RootCauseMetric} from '../core/rootCauseMetrics';
 import {createClient} from '@supabase/supabase-js';
@@ -60,6 +61,7 @@ async function request<T>(name:string,params:Record<string,unknown>={},ttl=90_00
 const normalized=(filters:Filter[])=>({p_filters:toBackend(filters)});
 const metrics=(filters:Filter[])=>request<Metrics>('nxt_case_metrics',normalized(filters));
 export const analysisApi={
+ research:(mode:string,filters:Filter[],options:Record<string,unknown>)=>request<ResearchResponse>('nxt_deep_analysis',{p_mode:mode,...normalized(filters),p_options:options},60_000),
  metrics,
  // The ribbon is the SAME case-grain contract. Do not run a duplicate summary RPC.
  ribbon:async(filters:Filter[]):Promise<Ribbon>=>{

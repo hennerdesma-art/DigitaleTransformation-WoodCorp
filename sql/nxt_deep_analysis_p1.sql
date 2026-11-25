@@ -47,7 +47,7 @@ begin
  matching as materialized (select b.* from base b where v_search='' or strpos(lower(b.case_key),lower(v_search))>0),
  page as (select case_key,factory,product_type,cust_id,cust_name,cust_country,ordered_quantity,delivered_quantity,delivered_quantity_unit,promised_date,delivered_date,status,round(delay_days,2) delay_days,quantity_change_count,process_variant,process_order_quality,round(late_cost,2) late_cost,round(short_cost,2) short_cost,round(late_cost+short_cost,2) total_cost
  from matching order by case when v_sort='cost' then late_cost+short_cost when v_sort='late' then late_cost when v_sort='short' then short_cost when v_sort='weight' and delivered_quantity_unit='kg' then ordered_quantity end desc nulls last,case_key offset v_page::bigint*v_size limit v_size)
- select jsonb_build_object('total',(select count(*) from matching),'rows',coalesce((select jsonb_agg(to_jsonb(p)) from page p),'[]'::jsonb),'page',v_page,'pageSize',v_size) into result;
+ select jsonb_build_object('total',(select count(*) from matching),'rows',coalesce((select jsonb_agg(to_jsonb(p) order by case when v_sort='cost' then p.total_cost when v_sort='late' then p.late_cost when v_sort='short' then p.short_cost when v_sort='weight' and p.delivered_quantity_unit='kg' then p.ordered_quantity end desc nulls last,p.case_key) from page p),'[]'::jsonb),'page',v_page,'pageSize',v_size) into result;
  elsif p_mode='case' then
  if nullif(p_options->>'caseKey','') is null or length(p_options->>'caseKey')>180 then raise exception 'INVALID_CASE_KEY' using errcode='22023';end if;
  with scope as materialized (
@@ -126,7 +126,7 @@ begin
  round(coalesce(sum(late_cost),0),2) late_cost,round(coalesce(sum(short_cost),0),2) short_cost,round(coalesce(sum(late_cost+short_cost),0),2) total_cost from labelled group by labels),
  matching as materialized(select * from grouped where v_search='' or strpos(lower(labels::text),lower(v_search))>0),
  page as (select * from matching order by case v_sort when 'orders' then orders::numeric when 'late' then late_cost when 'short' then short_cost when 'weight' then ordered_kg else total_cost end desc nulls last,labels::text offset v_page::bigint*v_size limit v_size)
- select jsonb_build_object('total',(select count(*) from matching),'rows',coalesce((select jsonb_agg(to_jsonb(p)) from page p),'[]'::jsonb),'baseline',(select to_jsonb(t) from (select count(*)::int orders,
+ select jsonb_build_object('total',(select count(*) from matching),'rows',coalesce((select jsonb_agg(to_jsonb(p) order by case v_sort when 'orders' then p.orders::numeric when 'late' then p.late_cost when 'short' then p.short_cost when 'weight' then p.ordered_kg else p.total_cost end desc nulls last,p.labels::text) from page p),'[]'::jsonb),'baseline',(select to_jsonb(t) from (select count(*)::int orders,
  count(on_time)::int date_n,count(*) filter(where on_time)::int on_time_n,
  count(in_full)::int volume_n,count(*) filter(where in_full)::int in_full_n,
  count(otif)::int otif_n,count(*) filter(where otif)::int otif_ok,

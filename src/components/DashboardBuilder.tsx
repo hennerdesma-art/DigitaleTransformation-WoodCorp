@@ -1,4 +1,5 @@
 import React,{useEffect,useMemo,useRef,useState} from 'react';
+import {ResearchWidget} from './ResearchExplorer';
 import {manualChartFields} from '../core/analyticsCanvas';
 import {SegmentTable,MultiComparison,StatusComposition,ScenarioWidget} from './DataWidgets';
 import {ResizeGrip} from './ResizeGrip';
@@ -23,6 +24,7 @@ const tileClass=(w:DashboardWidget)=>(w.width==='full'?'full':'half')+(isChartWi
 const tileStyle=(w:DashboardWidget):React.CSSProperties|undefined=>w.displayHeight===undefined?undefined:({height:w.displayHeight,'--nxt-plot-height':Math.max(120,w.displayHeight-175)+'px'} as React.CSSProperties);
 export function DashboardWidgetView({widget,detail,filters}:DataProps){
  const value=widget.metric?metricValue(widget.metric,detail.metrics,detail.ribbon):null;
+ if(widget.type==='research')return <ResearchWidget widget={widget} filters={filters}/>;
  if(PROCESS_TYPES.some(t=>t===widget.type))return <ProcessChart widget={widget} filters={filters}/>;
  if(widget.type==='text')return <div className="nxt-widget-notes"><Icon name="info" size={22}/><p>{widget.text||'Hier eine Forschungsfrage oder Interpretation formulieren.'}</p></div>;
  if(detail.error)return <Notice kind="error">{detail.error}</Notice>;
@@ -80,6 +82,7 @@ export function WidgetInspector({widget,onPatch,onRemove,disabled,fieldNames,all
   <label className="field">Breite<select value={widget.width} disabled={disabled} onChange={e=>onPatch({width:e.target.value as DashboardWidget['width']})}><option value="half">1/2 Breite</option><option value="full">Volle Breite</option></select><small className="muted">Auf schmalen Bildschirmen werden Diagramme automatisch breit dargestellt.</small></label>
   <label className="field">Höhe<select disabled={disabled} value={widget.displayHeight===undefined?'auto':String(widget.displayHeight)} onChange={e=>onPatch({displayHeight:e.target.value==='auto'?undefined:clampWidgetHeight(Number(e.target.value))})}><option value="auto">Automatisch</option><option value="240">Kompakt · 240 px</option><option value="400">Normal · 400 px</option><option value="600">Groß · 600 px</option>{widget.displayHeight!==undefined&&![240,400,600].includes(widget.displayHeight)&&<option value={widget.displayHeight}>Individuell · {widget.displayHeight} px</option>}</select></label>
   <p className="muted">Über die Ziehecke unten rechts kannst du die Höhe frei und die Breite im Raster verändern. Doppelklick setzt die Größe zurück.</p></>}
+  {widget.type==='research'&&<p className="muted">Analyseart, Gruppierung und Statistik direkt im Live-Element konfigurieren und speichern.</p>}
   {widget.type==='kpi'&&<label className="field">Kennzahl<select value={widget.metric||'onTimeRate'} disabled={disabled} onChange={e=>onPatch({metric:e.target.value as DashboardWidget['metric']})}>{METRICS.map(m=><option value={m} key={m}>{METRIC_LABELS[m]}</option>)}</select></label>}
   {(widget.type==='bar'||widget.type==='table'||widget.type==='customer_table'||widget.type==='comparison'||['bar_horizontal','bar_vertical','stacked','stacked100','heatmap','pareto','scatter','treemap'].includes(widget.type))&&<label className="field">Vergleichsdimension<select value={widget.dimension||'delivery_company'} disabled={disabled} onChange={e=>onPatch({dimension:e.target.value as FieldKey,display:{...widget.display,groupBy:undefined,selectedLabels:null}})}>{[...new Set([...allowedFields.filter(f=>widget.type==='heatmap'?HEATMAP_FIELDS.includes(f):manualChartFields(allowedFields).includes(f)),widget.dimension||'delivery_company'])].map(f=><option value={f} key={f}>{fieldNames[f]}</option>)}</select></label>}
   {['bar','line','bar_horizontal','bar_vertical'].includes(widget.type)&&<label className="field">Dargestellte Kennzahl<select value={widget.metric||'otifRate'} disabled={disabled} onChange={e=>onPatch({metric:e.target.value as DashboardWidget['metric']})}><SegmentMetricOptions/></select></label>}

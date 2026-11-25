@@ -1,3 +1,4 @@
+import {defaultResearch,validResearchSpec,type ResearchSpec} from './research';
 import {validChartDisplay,type ChartDisplay} from './analyticsCanvas';
 import {WIDGET_HEIGHT_MIN,WIDGET_HEIGHT_MAX} from './cardLayout';
 import {ROOT_CAUSE_LABELS,ROOT_CAUSE_METRICS,formatRootCauseMetric,type RootCauseMetric} from './rootCauseMetrics';
@@ -6,11 +7,11 @@ import {validE02Key,type E02IntervalKey} from './processIntervals';
 import {cleanDraft,type NNode,type NEdge} from './graph';
 import type {SavedDraft,Filter,Metrics,Ribbon} from './types';
 
-export type WidgetType='kpi'|'line'|'bar'|'table'|'donut'|'text'|'bar_horizontal'|'bar_vertical'|'stacked'|'stacked100'|'heatmap'|'pareto'|'scatter'|'waterfall'|'bullet'|'histogram'|'treemap'|'funnel'|'e02_overview'|'e02_compare'|'e02_quality'|'e02_distribution'|'customer_table'|'comparison'|'status'|'scenario';
+export type WidgetType='kpi'|'line'|'bar'|'table'|'donut'|'text'|'bar_horizontal'|'bar_vertical'|'stacked'|'stacked100'|'heatmap'|'pareto'|'scatter'|'waterfall'|'bullet'|'histogram'|'treemap'|'funnel'|'e02_overview'|'e02_compare'|'e02_quality'|'e02_distribution'|'customer_table'|'comparison'|'status'|'scenario'|'research';
 export type MetricKey='orders'|'otifRate'|'onTimeRate'|'volumeConformanceRate'|'otifCases'|'lateOrders'|'avgDelayDays'|'affectedFactories'|'totalPenaltyEur'|'latePenaltyEur'|'shortfallPenaltyEur'|RootCauseMetric;
 export type Width='half'|'full';
 export type DashboardWidget={
- id:string;type:WidgetType;title:string;width:Width;displayHeight?:number;display?:ChartDisplay;
+ id:string;type:WidgetType;title:string;width:Width;displayHeight?:number;display?:ChartDisplay;research?:ResearchSpec;
  metric?:MetricKey;dimension?:FieldKey;compareDimension?:FieldKey;target?:number;distributionMeasure?:'quantity_change_count'|'lateness_days';intervalKey?:E02IntervalKey;text?:string;
 };
 export type NodeDashboard={question:string;widgets:DashboardWidget[]};
@@ -21,13 +22,13 @@ export const METRIC_LABELS:Record<MetricKey,string>={
 };
 export const WIDGET_LABELS:Record<WidgetType,string>={
  kpi:'KPI-Karte',line:'Zeitreihe',bar:'Balkendiagramm',table:'Datentabelle',donut:'Donutdiagramm',text:'Text / Forschungsfrage',
- bar_horizontal:'Horizontales Ranking',bar_vertical:'Vertikale Säulen',stacked:'Gestapelte OTIF-Klassen',stacked100:'100%-gestapelte OTIF-Klassen',heatmap:'Werk × Produkt Heatmap',pareto:'Pareto-Kostenanalyse',scatter:'Streudiagramm',waterfall:'Kosten-Wasserfall',bullet:'Zielerreichung / Bullet',histogram:'Häufigkeitsverteilung',treemap:'Kosten-Treemap',funnel:'OTIF-Funnel',e02_overview:'E02 · Prozessintervalle / Median & P90',e02_compare:'E02 · OTIF vs. Nicht-OTIF',e02_quality:'E02 · Datenqualität / Abdeckung',e02_distribution:'E02 · Zeitverteilung',customer_table:'Kundenranking',comparison:'Kennzahlenvergleich',status:'OTIF-Gesamtverteilung',scenario:'Kostenszenario / OTD-Ziel'
+ bar_horizontal:'Horizontales Ranking',bar_vertical:'Vertikale Säulen',stacked:'Gestapelte OTIF-Klassen',stacked100:'100%-gestapelte OTIF-Klassen',heatmap:'Werk × Produkt Heatmap',pareto:'Pareto-Kostenanalyse',scatter:'Streudiagramm',waterfall:'Kosten-Wasserfall',bullet:'Zielerreichung / Bullet',histogram:'Häufigkeitsverteilung',treemap:'Kosten-Treemap',funnel:'OTIF-Funnel',e02_overview:'E02 · Prozessintervalle / Median & P90',e02_compare:'E02 · OTIF vs. Nicht-OTIF',e02_quality:'E02 · Datenqualität / Abdeckung',e02_distribution:'E02 · Zeitverteilung',customer_table:'Kundenranking',comparison:'Kennzahlenvergleich',status:'OTIF-Gesamtverteilung',scenario:'Kostenszenario / OTD-Ziel',research:'Deep Analysis'
 };
 export const WIDGET_ICONS:Record<WidgetType,string>={
  kpi:'chart-column',line:'chart-no-axes-combined',bar:'chart-column',table:'table-2',donut:'chart-pie',text:'type',
- bar_horizontal:'chart-bar',bar_vertical:'chart-column',stacked:'layers',stacked100:'chart-column',heatmap:'grid-3x3',pareto:'chart-no-axes-combined',scatter:'chart-spline',waterfall:'chart-column',bullet:'target',histogram:'chart-bar',treemap:'layout-dashboard',funnel:'list-filter',e02_overview:'clock-3',e02_compare:'network',e02_quality:'check-circle-2',e02_distribution:'chart-column',customer_table:'table-2',comparison:'chart-bar',status:'layers',scenario:'sliders-horizontal'
+ bar_horizontal:'chart-bar',bar_vertical:'chart-column',stacked:'layers',stacked100:'chart-column',heatmap:'grid-3x3',pareto:'chart-no-axes-combined',scatter:'chart-spline',waterfall:'chart-column',bullet:'target',histogram:'chart-bar',treemap:'layout-dashboard',funnel:'list-filter',e02_overview:'clock-3',e02_compare:'network',e02_quality:'check-circle-2',e02_distribution:'chart-column',customer_table:'table-2',comparison:'chart-bar',status:'layers',scenario:'sliders-horizontal',research:'search'
 };
-export const WIDGET_TYPES:WidgetType[]=['kpi','line','bar','table','donut','text','bar_horizontal','bar_vertical','stacked','stacked100','heatmap','pareto','scatter','waterfall','bullet','histogram','treemap','funnel','e02_overview','e02_compare','e02_quality','e02_distribution','customer_table','comparison','status','scenario'];
+export const WIDGET_TYPES:WidgetType[]=['kpi','line','bar','table','donut','text','bar_horizontal','bar_vertical','stacked','stacked100','heatmap','pareto','scatter','waterfall','bullet','histogram','treemap','funnel','e02_overview','e02_compare','e02_quality','e02_distribution','customer_table','comparison','status','scenario','research'];
 export const METRICS=Object.keys(METRIC_LABELS) as MetricKey[];
 
 export function freshWidget(type:WidgetType):DashboardWidget{
@@ -57,7 +58,8 @@ export function freshWidget(type:WidgetType):DashboardWidget{
   customer_table:{title:'Kundenranking · Modellkosten',dimension:'cust_id',width:'full',display:{sortMetric:'totalPenaltyEur',columns:['orders','otifRate','onTimeRate','volumeConformanceRate','orderedKg','deliveredKg','latePenaltyEur','totalPenaltyEur'],targetOtd:80}},
   comparison:{title:'OTIF, OTD und Mengenkonformität im Vergleich',dimension:'cust_market',width:'full',display:{comparison:'rates'}},
   status:{title:'OTIF-Fehlerklassen · Gesamt',width:'full'},
-  scenario:{title:'Was-wäre-wenn · OTD und Strafkosten',width:'full',display:{targetOtd:80,lateReduction:10,shortfallReduction:10}}
+  scenario:{title:'Was-wäre-wenn · OTD und Strafkosten',width:'full',display:{targetOtd:80,lateReduction:10,shortfallReduction:10}},
+  research:{title:'Deep Analysis · Einzelaufträge',width:'full',research:defaultResearch()}
  };
  return {id:crypto.randomUUID(),type,...standard[type]};
 }
@@ -99,6 +101,7 @@ export function normalizeDashboard(value:unknown):NodeDashboard|null{
     ||typeof w.title!=='string'||w.title.length>100||!['full','half'].includes(w.width))return null;
   if(w.displayHeight!==undefined&&(!Number.isFinite(w.displayHeight)||w.displayHeight<WIDGET_HEIGHT_MIN||w.displayHeight>WIDGET_HEIGHT_MAX))return null;
   if(!validChartDisplay(w.display))return null;
+  if(w.type==='research'?!validResearchSpec(w.research):w.research!==undefined)return null;
   if(w.metric&&!METRICS.includes(w.metric))return null;
   if(w.dimension&&!FIELDS.includes(w.dimension))return null;
   if(w.text&&(typeof w.text!=='string'||w.text.length>3000))return null;

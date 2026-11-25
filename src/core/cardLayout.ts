@@ -5,7 +5,7 @@ const bounds=(minW:number,minH:number,w:number,h:number,maxW=1400,maxH=1200):Car
 export function cardBounds(a:AnalysisNode):CardBounds{
  if(a.kind==='container')return bounds(320,160,720,440,4000,4000);
  if(a.kind==='note')return bounds(260,180,320,280);
- if(a.canvasWidgetId){switch(a.canvasWidgetType){case 'kpi':return bounds(200,156,250,190,800,700);case 'text':return bounds(260,180,350,280);case 'customer_table':case 'table':return bounds(480,320,720,440);case 'scenario':return bounds(380,360,520,480);case 'status':return bounds(360,210,520,280);case 'donut':case 'bullet':return bounds(280,240,360,320);default:return bounds(380,300,540,440);}}
+ if(a.canvasWidgetId){switch(a.canvasWidgetType){case 'kpi':return bounds(200,156,250,190,800,700);case 'text':return bounds(260,180,350,280);case 'research':return bounds(520,360,840,570);case 'customer_table':case 'table':return bounds(480,320,720,440);case 'scenario':return bounds(380,360,520,480);case 'status':return bounds(360,210,520,280);case 'donut':case 'bullet':return bounds(280,240,360,320);default:return bounds(380,300,540,440);}}
  switch(a.visualization||'kpi'){
  case 'kpi':return a.kind==='root'?bounds(200,146,240,174,800,700):bounds(180,132,210,160,800,700);
  case 'donut':return bounds(260,240,340,320);
