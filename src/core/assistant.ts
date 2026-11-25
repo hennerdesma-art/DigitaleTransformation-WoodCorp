@@ -106,7 +106,7 @@ function makeSharedWidget(op:AiAction,title:string,allowed:FieldKey[]){
  if(type==='histogram'&&op.value)w.distributionMeasure=op.value as typeof w.distributionMeasure;
  if(type==='e02_distribution'&&op.value)w.intervalKey=op.value as typeof w.intervalKey;
  if(type==='research'){const r=parseAiResearch(op.value,allowed) as unknown as ResearchSpec;if(!validResearchSpec(r))throw Error('Ungültige Deep-Analysis-Konfiguration.');w.research=r;}
- else if(hasJsonConfig(op.value)){const display=parseAiDisplay(type,op.value,allowed) as ChartDisplay;if(!validChartDisplay(display))throw Error('Ungültige Diagrammkonfiguration.');w.display={...w.display,...display};}
+ else if(hasJsonConfig(op.value)){const display=parseAiDisplay(type,op.value,allowed) as ChartDisplay;if(!validChartDisplay(display))throw Error('Ungültige Diagrammkonfiguration.');w.display={...w.display,...display};if(display.groupBy&&w.dimension&&!allowed.includes(w.dimension))w.dimension=undefined;}
  if(type==='customer_table'&&!allowed.includes('cust_id'))throw Error('Kunden-ID nicht freigegeben.');
  if((w.dimension&&!allowed.includes(w.dimension))||(w.compareDimension&&!allowed.includes(w.compareDimension)))throw Error('Widget-Dimension nicht freigegeben.');
  return w;
@@ -128,7 +128,7 @@ export function applyAssistantPlan(state:AssistantState,raw:AiPlan):AssistantSta
   switch(op.kind){
    case 'move_node':case 'set_container_style':case 'resize_container':case 'arrange_container':case 'optimize_layout':case 'resize_node':layoutOps.push(op);break;
    case 'configure_widget':{
-    updateDashboard(n,d=>{const w=d.widgets.find(w=>w.id===op.widgetId);if(!w||w.type!==op.widgetType)throw Error('Widget nicht vorhanden oder Typ stimmt nicht überein.');const patch=makeSharedWidget({...op,dimension:op.dimension||w.dimension||null,metric:op.metric||w.metric||null},w.title,state.allowedFields);return {...d,widgets:d.widgets.map(x=>x.id===w.id?{...w,...(op.metric?{metric:patch.metric}:{}),...(op.dimension?{dimension:patch.dimension}:{}),...(w.type==='research'?{research:patch.research}:{display:{...w.display,...patch.display}})}:x)};});break;
+    updateDashboard(n,d=>{const w=d.widgets.find(w=>w.id===op.widgetId);if(!w||w.type!==op.widgetType)throw Error('Widget nicht vorhanden oder Typ stimmt nicht überein.');const research=w.type==='research'?parseAiResearch(op.value,state.allowedFields) as unknown as ResearchSpec:undefined;const display=w.type==='research'?undefined:parseAiDisplay(w.type,op.value,state.allowedFields) as ChartDisplay;return {...d,widgets:d.widgets.map(x=>x.id===w.id?{...w,...(op.metric?{metric:op.metric as MetricKey}:{}),...(op.dimension?{dimension:op.dimension as FieldKey}:{}),...(research?{research}:{display:{...w.display,...display}})}:x)};});break;
    }
    case 'set_node_visualization':{
     if(a.kind==='container'||a.kind==='note')throw Error('Container oder Textblöcke können nicht in Diagramme umgewandelt werden.');
