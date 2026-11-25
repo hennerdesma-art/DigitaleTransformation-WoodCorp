@@ -1,0 +1,42 @@
+-- Read-only smoke checks. Execute after applying the migration, or within the same rollback transaction.
+do $check$
+declare x jsonb;y jsonb;z jsonb;k text;n int;vkey text;
+begin
+ x:=public.nxt_deep_analysis('groups','[]','{"dimensions":["factory","product_type"],"pageSize":100}');
+ y:=public.nxt_case_metrics('[]');
+ if (x->'baseline'->>'orders')::int<>(y->>'orders')::int or (x->'baseline'->>'total_cost')::numeric<>(y->>'totalPenaltyEur')::numeric or (select sum((r->>'orders')::int) from jsonb_array_elements(x->'rows') r)<>(y->>'orders')::int then raise exception 'BASELINE_MISMATCH';end if;
+ x:=public.nxt_deep_analysis('cases','[{"field":"factory","op":"eq","value":"Essen"}]','{"pageSize":10}');
+ if jsonb_array_length(x->'rows')<>10 or exists(select 1 from jsonb_array_elements(x->'rows') r where r->>'factory'<>'Essen') then raise exception 'CASE_SCOPE_MISMATCH';end if;
+ k:=x->'rows'->0->>'case_key';z:=public.nxt_deep_analysis('case','[{"field":"factory","op":"eq","value":"Essen"}]',jsonb_build_object('caseKey',k));
+ if z->'case'->>'case_key'<>k or jsonb_array_length(z->'events')=0 then raise exception 'CASE_TIMELINE_MISMATCH';end if;
+ z:=public.nxt_deep_analysis('case','[{"field":"factory","op":"eq","value":"Aachen"}]',jsonb_build_object('caseKey',k));
+ if z->'case'<>'null'::jsonb then raise exception 'CASE_SCOPE_LEAK';end if;
+ x:=public.nxt_deep_analysis('compare','[]','{"exposure":"quantity_change_group","a":"0","b":"1","dimensions":["factory","product_type","order_size_class"]}');
+ if jsonb_array_length(x->'rows')=0 then raise exception 'COMPARE_EMPTY';end if;
+ x:=public.nxt_deep_analysis('process','[]','{}');
+ if (x->>'events')::int<>(select count(*) from public.woodcorp_activities) or jsonb_array_length(x->'links')=0 then raise exception 'PROCESS_COUNT_MISMATCH';end if;
+ x:=public.nxt_deep_analysis('quality','[]','{}');
+ if (x->'checks'->>'orders')::int<>(y->>'orders')::int or (x->'checks'->>'distinct_keys')::int<>(y->>'orders')::int then raise exception 'QUALITY_COUNT_MISMATCH';end if;
+ x:=public.nxt_deep_analysis('groups','[]','{"dimensions":["process_variant"],"pageSize":10}');
+ if (x->>'total')::int<>(select count(distinct process_variant) from public.nxt_case_process_features) then raise exception 'SOURCE_VARIANTS_MISMATCH';end if;
+ x:=public.nxt_deep_analysis('variants','[]','{"sequence":"chronological","sort":"orders","pageSize":10}');
+ vkey:=x->'rows'->0->>'variant_key';n:=(x->'rows'->0->>'orders')::int;
+ if n<=0 or length(vkey)<>32 or (x->'baseline'->>'orders')::int<>(y->>'orders')::int then raise exception 'CHRONO_VARIANT_EMPTY';end if;
+ z:=public.nxt_deep_analysis('cases','[]',jsonb_build_object('chronoVariant',vkey,'pageSize',10));
+ if (z->>'total')::int<>n then raise exception 'CHRONO_VARIANT_DRILL_MISMATCH % <> %',z->>'total',n;end if;
+ k:=z->'rows'->0->>'case_key';z:=public.nxt_deep_analysis('case','[]',jsonb_build_object('caseKey',k,'chronoVariant',vkey));
+ if z->'case'->>'case_key'<>k then raise exception 'CHRONO_VARIANT_DETAIL_MISMATCH';end if;
+ x:=public.nxt_deep_analysis('costs','[]','{"dimensions":[]}');
+ if (x->'baseline'->>'late_kg')::numeric*0.75<>(y->>'latePenaltyEur')::numeric or (x->'baseline'->>'short_kg')::numeric*0.75<>(y->>'shortfallPenaltyEur')::numeric then raise exception 'DECOMPOSITION_MISMATCH';end if;
+ if has_function_privilege('anon','public.nxt_deep_analysis(text,jsonb,jsonb)','execute') then raise exception 'ANON_CAN_EXECUTE';end if;
+ begin perform public.nxt_deep_analysis('groups','[]','{"dimensions":["untrusted_field"]}');raise exception 'INVALID_DIMENSION_ACCEPTED';exception when sqlstate '22023' then null;end;
+ x:=public.nxt_deep_analysis('quality','[{"field":"factory","op":"eq","value":"__nonexistent__"}]','{}');if (x->'checks'->>'orders')::int<>0 then raise exception 'EMPTY_SCOPE_MISMATCH';end if;
+end $check$;
+select set_config('request.jwt.claim.sub',(select user_id::text from public.woodcorp_access limit 1),true);
+set local role authenticated;
+do $member$ declare x jsonb;begin x:=public.nxt_deep_analysis('cases','[]','{"pageSize":10}');if (x->>'total')::int<=0 then raise exception 'MEMBER_ACCESS_FAILED';end if;end $member$;
+reset role;
+select set_config('request.jwt.claim.sub','ffffffff-ffff-4fff-8fff-ffffffffffff',true);
+set local role authenticated;
+do $nonmember$ declare x jsonb;begin x:=public.nxt_deep_analysis('cases','[]','{"pageSize":10}');if (x->>'total')::int<>0 or jsonb_array_length(x->'rows')<>0 then raise exception 'NONMEMBER_DATA_LEAK';end if;end $nonmember$;
+reset role;

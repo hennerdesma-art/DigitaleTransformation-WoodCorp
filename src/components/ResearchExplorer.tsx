@@ -105,7 +105,7 @@ export function ResearchPanel({filters:base,allowedFields,initial,compact=false,
  const [choices,setChoices]=useState<{key:string;values:string[];error?:string}>({key:'',values:[]});
  const initialKey=JSON.stringify(initial||null);
  useEffect(()=>{if(initial){setDraft(initial);setApplied(initial);setPage(0);setQuery('');setSearch('');setCaseKey(undefined);setDrill(null);}},[initialKey]);
- useEffect(()=>{setDrill(null);setCaseKey(undefined);setPage(0);setNote('');setNoteTitle('')},[baseKey]);
+ useEffect(()=>{if(drill){setDraft(drill.previous);setApplied(drill.previous);}setDrill(null);setCaseKey(undefined);setPage(0);setNote('');setNoteTitle('')},[baseKey]);
  const exposure=draft.exposure,choiceKey=draft.tab==='compare'&&exposure?JSON.stringify([signature,exposure,retry]):'';
  useEffect(()=>{if(!choiceKey||!exposure)return;let active=true;analysisApi.segments(exposure,filters).then(rows=>{if(active)setChoices({key:choiceKey,values:rows.flatMap(r=>r.label==null?[]:[r.label]).sort((a,b)=>a.localeCompare(b,'de',{numeric:true}))})}).catch(e=>{if(active)setChoices({key:choiceKey,values:[],error:e instanceof Error?e.message:'Gruppenwerte nicht verfügbar'})});return()=>{active=false}},[choiceKey]);
  const unavailable=(s:ResearchSpec)=>[...(s.dimensions||[]),...(s.exposure?[s.exposure]:[]),...(s.tab==='variants'?['process_variant' as const]:[])].some(d=>!available.includes(d));
