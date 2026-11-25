@@ -23,7 +23,7 @@ const xy=(v:any)=>v&&typeof v==="object"?{x:geometry(v.x,-100000,100000),y:geome
 const boxSize=(v:any)=>v&&typeof v==="object"?{width:geometry(v.width,1,4000),height:geometry(v.height,1,4000)}:null;
 const safeFields=new Set<string>(AI_FILTER_FIELDS);
 const cleanText=(x:unknown,max:number)=>typeof x==="string"?x.slice(0,max):null;
-const modelFilters=(value:unknown)=>Array.isArray(value)?value.slice(0,12).flatMap((f:any)=>{if(!f||!safeFields.has(f.field)||!["eq","in","between","gte","lte"].includes(f.op))return [];const v=f.value;if(typeof v==="string"&&v.length<=200)return [{field:f.field,op:f.op,value:v}];if(Array.isArray(v)&&v.length<=20&&v.every(x=>typeof x==="string"&&x.length<=200))return [{field:f.field,op:f.op,value:v}];return []}):[];
+const modelFilters=(value:unknown)=>Array.isArray(value)?value.slice(0,12).flatMap<{field:string;op:string;value:string|string[]}>((f:any)=>{if(!f||!safeFields.has(f.field)||!["eq","in","between","gte","lte"].includes(f.op))return [];const v=f.value;if(typeof v==="string"&&v.length<=200)return [{field:f.field,op:f.op,value:v}];if(Array.isArray(v)&&v.length<=20&&v.every(x=>typeof x==="string"&&x.length<=200))return [{field:f.field,op:f.op,value:v}];return []}):[];
 Deno.serve(async(req)=>{
  const requestDeadline=Date.now()+132000;
  const origin=req.headers.get("origin")||"";
@@ -221,7 +221,7 @@ Deno.serve(async(req)=>{
      for(let i=0;i<good.length&&plan.operations.length<30;i++){
       const x=good[i];if(plan.operations.some(o=>o.kind==='add_finding'&&o.target===x.target))continue;
       const ref='new:verified_'+i;if(plan.operations.some(o=>o.ref===ref)||ids.includes(ref))continue;
-      plan.operations.push({kind:'add_finding',target:x.target,ref,label:('Datenprüfung · '+x.label).slice(0,100),widgetType:null,metric:null,dimension:null,compareDimension:null,field:null,widgetId:null,targetValue:null,value:('Beobachtung (Live-Aggregation vor Übernahme): '+evidenceSummary(x.e)+'\nMethode: '+String(x.e.method||'Filtergebundene Auftragsaggregation')+'\nWeitere Interpretation fachlich prüfen.'+follow(x.target)).slice(0,1800)});
+      plan.operations.push({kind:'add_finding',target:x.target,ref,label:('Datenprüfung · '+x.label).slice(0,100),widgetType:null,metric:null,dimension:null,compareDimension:null,field:null,widgetId:null,targetValue:null,value:('Beobachtung (Live-Aggregation vor Übernahme): '+evidenceSummary(x.e)+'\nMethode: '+String(('method' in x.e?x.e.method:null)||'Filtergebundene Auftragsaggregation')+'\nWeitere Interpretation fachlich prüfen.'+follow(x.target)).slice(0,1800)});
      }
     }
    }
