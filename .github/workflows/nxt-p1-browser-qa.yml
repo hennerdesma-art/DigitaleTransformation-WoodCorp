@@ -1,13 +1,21 @@
 name: NXT Analytics - P1 browser regression
 on:
   push:
-    branches: ['feat/nxt-smart-layout']
+    branches: ['feat/nxt-smart-layout','feat/nxt-research-intelligence']
   pull_request:
     branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
+  edge-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: deno check supabase/functions/nxt-intelligence/index.ts
   browser-qa:
     runs-on: ubuntu-latest
     steps:

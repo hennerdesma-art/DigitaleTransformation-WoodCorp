@@ -203,7 +203,7 @@ export function validatePlan(input:unknown,existingIds:string[],allowedFields:st
    if(op.kind==='optimize_layout'&&!['hybrid','tree'].includes(op.value||''))throw Error('Smart Layout: hybrid oder tree erforderlich.');
    if(op.kind==='resize_node'&&!coordinatePair(op.value,180,1400,132,1200))throw Error('Kachelgröße ungültig.');
   }else if(op.kind==='configure_widget'){
-   if(!isOne(AI_WIDGET_TYPES,op.widgetType)||!op.widgetId||op.ref||op.field||op.label||!validateWidgetConfig(op,allowed))throw Error('Widget-Konfiguration benötigt Widget-ID, Typ und gültige JSON-Parameter.');
+   if(!isOne(AI_WIDGET_TYPES,op.widgetType)||!op.widgetId||op.ref||op.field||op.label||op.compareDimension||op.targetValue!==null||op.metric&&!['bar','bar_horizontal','bar_vertical','line'].includes(op.widgetType||'')||op.dimension&&!['bar','bar_horizontal','bar_vertical','table','comparison','scatter','customer_table'].includes(op.widgetType||'')||!validateWidgetConfig(op,allowed))throw Error('Widget-Konfiguration benötigt Widget-ID, Typ und gültige JSON-Parameter.');
   }else if(op.kind==='move_node'||op.kind==='resize_container'||op.kind==='arrange_container'||op.kind==='set_container_style'){
    if(op.label||op.ref||op.widgetType||op.metric||op.dimension||op.compareDimension||op.field||op.widgetId||op.targetValue!==null)throw Error('Ungültige Parameter für Layout-Aktion.');
    if(op.kind==='move_node'&&!coordinatePair(op.value,-100000,100000,-100000,100000))throw Error('Position ungültig. Erwartet: x,y als ganze Zahlen.');
