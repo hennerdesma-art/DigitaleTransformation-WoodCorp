@@ -2,7 +2,7 @@ import {supabase} from './supabase';
 import {PROJECT} from '../config';
 import type {AssistantContext} from '../core/assistant';
 import type {AiPlan,AiRequestIntent} from '../core/assistantProtocol';
-export type AiStatus={enabled:boolean;configured?:boolean;forcedDisabled?:boolean;projectEnabled?:boolean;userEnabled?:boolean;provider?:string;model?:string;modelLabel?:string;region?:string;knowledgeVersion:string;graphFormat?:number;used?:number;limit?:number;projectUsed?:number;projectLimit?:number;remaining?:number;day?:string};
+export type AiStatus={enabled:boolean;configured?:boolean;forcedDisabled?:boolean;projectEnabled?:boolean;userEnabled?:boolean;provider?:string;model?:string;modelLabel?:string;region?:string;knowledgeVersion:string;graphFormat?:number;researchProtocol?:number;used?:number;limit?:number;projectUsed?:number;projectLimit?:number;remaining?:number;day?:string};
 export type AiProjectPolicy={enabled:boolean;defaultLimit:number;projectLimit:number;defaultModel:string;used:number;day:string};
 export type AiMemberPolicy={userId:string;role:string;enabled:boolean;enabledOverride:boolean|null;dailyLimit:number|null;bonus:number;modelOverride:string|null;model:string;limit:number;used:number;lastRequest:string|null};
 export type AiModel={id:string;label:string;verifiedAt:string|null};

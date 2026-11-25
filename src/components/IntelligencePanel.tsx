@@ -15,6 +15,7 @@ type Props={state:AssistantState;workspace:{id:string;title:string;revision:numb
 export function IntelligencePanel({state,workspace,fingerprint,canEdit,busy,onApply,onUndo,onSelectNode,onOpenDashboard,open,onOpen}:Props){
  const scope=workspace?.id||'local',scopeRef=useRef(scope),abortRef=useRef<AbortController|null>(null),end=useRef<HTMLDivElement>(null),launcher=useRef<HTMLButtonElement>(null),input=useRef<HTMLTextAreaElement>(null);
  const [threads,setThreads]=useState<Record<string,Entry[]>>({}),[draft,setDraft]=useState(''),[pending,setPending]=useState(false),[status,setStatus]=useState<AiStatus|null>(null),[statusError,setStatusError]=useState(false),[consent,setConsent]=useState(false),[error,setError]=useState('');
+ const [intentChoice,setIntentChoice]=useState<'auto'|'build_path'|'build_dashboard'|'edit_layout'|'edit_analysis'|'answer_only'>('auto');
  const [preview,setPreview]=useState<{entry:Entry;state:AssistantState}|null>(null);
  const [portalTarget,setPortalTarget]=useState<Element>(()=>document.fullscreenElement||document.body);
  useEffect(()=>{const update=()=>setPortalTarget(document.fullscreenElement||document.body);document.addEventListener('fullscreenchange',update);return()=>document.removeEventListener('fullscreenchange',update)},[]);
@@ -33,10 +34,10 @@ export function IntelligencePanel({state,workspace,fingerprint,canEdit,busy,onAp
   const promptProblem=assistantPromptProblem(text);
   if(promptProblem){setError(promptProblem);return}
   if(consent&&!status?.enabled){setError('KI-Status noch nicht verfügbar oder KI-Zugang deaktiviert. Bitte Status prüfen. Keine automatische lokale Ersatzantwort.');return}
-  const intent=resolveAssistantIntent(text,template==='path'?'build_path':template?'build_dashboard':null);
+  const intent=resolveAssistantIntent(text,template==='path'?'build_path':template?'build_dashboard':intentChoice==='auto'?null:intentChoice);
   const blocker=buildRequestBlocker(intent,canEdit,AI_GRAPH_FORMAT);
   if(blocker){setError(blocker.message);return}
-  if(status?.enabled&&consent&&status.graphFormat!==undefined&&status.graphFormat!==AI_GRAPH_FORMAT){setError('KI- und Browser-Version stimmen nicht überein. Bitte offene Änderungen speichern und mit Strg+F5 neu laden.');return}
+  if(status?.enabled&&consent&&(status.graphFormat!==undefined&&status.graphFormat!==AI_GRAPH_FORMAT||status.knowledgeVersion!==KNOWLEDGE_VERSION)){setError('KI- und Browser-Version stimmen nicht überein. Bitte offene Änderungen speichern und mit Strg+F5 neu laden.');return}
   if(status?.enabled&&consent&&status.remaining===0){setError('Dein KI-Tageskontingent oder das Projektlimit ist erreicht. Bitte Team & Zugänge prüfen oder die KI-Freigabe für lokale Vorlagen abwählen.');return}
   const at=scope,stamp=fingerprint,c=new AbortController();abortRef.current?.abort();abortRef.current=c;
   setPending(true);setError('');setDraft('');
@@ -49,11 +50,12 @@ export function IntelligencePanel({state,workspace,fingerprint,canEdit,busy,onAp
    }else{
     let metrics=null;
     if(!template){try{metrics=await analysisApi.metrics(effectiveFilters(state.globals,state.nodes.map(n=>n.data.analysis),state.locals,state.selectedId,state.edges))}catch{/* Explicit no-data reply. */}}
-    result=localAssistantPlan(text,state,metrics,canEdit,template);
+    if(intent==='answer_only')result=localAssistantPlan(text,state,metrics,false);
+    else result=localAssistantPlan(text,state,metrics,canEdit,template);
    }
    if(c.signal.aborted||scopeRef.current!==at)return;
    const plan=validatePlan(result,state.nodes.map(n=>n.id),state.allowedFields,canEdit);
-   if(source==='model'){const problem=buildPlanProblem(intent,plan);if(problem)throw Error(problem)}
+   if(source==='model'||intent==='answer_only'){const problem=buildPlanProblem(intent,plan);if(problem)throw Error(problem)}
    if(plan.operations.length)applyAssistantPlan(state,plan);
    const entry:Entry={id:crypto.randomUUID(),role:'assistant',text:plan.answer,plan,fingerprint:stamp,source};append(at,entry);
    if(plan.operations.length)setPreview({entry,state});
@@ -79,7 +81,7 @@ export function IntelligencePanel({state,workspace,fingerprint,canEdit,busy,onAp
    </div>
    <footer className="nxt-intelligence-composer">
     {status?.enabled&&<label className="nxt-intelligence-consent"><input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/> Workspace-Kontext, Frage und aggregierte Kennzahlen an Amazon Bedrock (EU-Inferenzprofil) senden. Keine Rohdatensätze; keine personenbezogenen Inhalte in Fragen oder Bezeichnungen eingeben.</label>}
-    <form onSubmit={e=>{e.preventDefault();void send()}}><textarea ref={input} aria-label="Frage oder Änderungswunsch" rows={3} value={draft} aria-invalid={draft.length>AI_PROMPT_LIMIT} aria-describedby="nxt-ai-prompt-length" onChange={e=>setDraft(e.target.value)} placeholder="Frage zu diesem Element oder Änderungswunsch …" onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();void send()}}}/><small id="nxt-ai-prompt-length" className={'nxt-ai-prompt-length'+(draft.length>AI_PROMPT_LIMIT?' over-limit':'')}>{draft.length.toLocaleString('de-DE')} / {AI_PROMPT_LIMIT.toLocaleString('de-DE')} Zeichen{draft.length>AI_PROMPT_LIMIT?' · Bitte kürzen, keine Zeichen abgeschnitten':''}</small><div><button type="button" className="nxt-intelligence-reset" disabled={pending} onClick={()=>{setThreads(old=>({...old,[scope]:[]}));setError('')}}>Neuer Chat</button><button type="submit" className="nxt-button primary" disabled={!draft.trim()||draft.length>AI_PROMPT_LIMIT||pending||!selected}><Icon name="arrow-right" size={17}/> Senden</button></div></form>
+    <form onSubmit={e=>{e.preventDefault();void send()}}><label className="field nxt-ai-intent">Auftragstyp<select aria-label="KI-Auftragstyp" value={intentChoice} disabled={pending} onChange={e=>setIntentChoice(e.target.value as typeof intentChoice)}><option value="auto">Automatisch erkennen</option><option value="build_path">Thinking Path erstellen / erweitern</option><option value="build_dashboard">Dashboard erstellen / ergänzen</option><option value="edit_analysis">Konkrete Analyse / Diagramm umsetzen</option><option value="edit_layout">Layout bearbeiten</option><option value="answer_only">Nur analysieren / erklären</option></select></label><textarea ref={input} aria-label="Frage oder Änderungswunsch" rows={3} value={draft} aria-invalid={draft.length>AI_PROMPT_LIMIT} aria-describedby="nxt-ai-prompt-length" onChange={e=>setDraft(e.target.value)} placeholder="Frage zu diesem Element oder Änderungswunsch …" onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();void send()}}}/><small id="nxt-ai-prompt-length" className={'nxt-ai-prompt-length'+(draft.length>AI_PROMPT_LIMIT?' over-limit':'')}>{draft.length.toLocaleString('de-DE')} / {AI_PROMPT_LIMIT.toLocaleString('de-DE')} Zeichen{draft.length>AI_PROMPT_LIMIT?' · Bitte kürzen, keine Zeichen abgeschnitten':''}</small><div><button type="button" className="nxt-intelligence-reset" disabled={pending} onClick={()=>{setThreads(old=>({...old,[scope]:[]}));setError('')}}>Neuer Chat</button><button type="submit" className="nxt-button primary" disabled={!draft.trim()||draft.length>AI_PROMPT_LIMIT||pending||!selected}><Icon name="arrow-right" size={17}/> Senden</button></div></form>
     <small>Keine automatische Veröffentlichung. Übernommene Änderungen bleiben bis zum Speichern ein Entwurf.</small>{canEdit&&entries.some(e=>e.applied)&&<button type="button" className="nxt-intelligence-reset" disabled={busy||pending} onClick={()=>{onUndo();setError('')}}>Letzte Workspace-Änderung rückgängig</button>}
    </footer>
   </aside>}

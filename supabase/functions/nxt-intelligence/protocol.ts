@@ -1,12 +1,12 @@
 /** Shared, deliberately narrow NXT Intelligence contract. No executable SQL or arbitrary code. */
-export const ACTION_KINDS=['add_widget','rename_node','set_question','add_branch','add_container','add_filter','remove_widget','rename_widget','set_node_metric','move_node','set_container_style','resize_container','arrange_container','set_node_visualization','add_finding','edit_finding','add_reference'] as const;
+export const ACTION_KINDS=['add_widget','rename_node','set_question','add_branch','add_container','add_filter','remove_widget','rename_widget','set_node_metric','move_node','set_container_style','resize_container','arrange_container','set_node_visualization','add_finding','edit_finding','add_reference','optimize_layout','resize_node','configure_widget'] as const;
 export type ActionKind=typeof ACTION_KINDS[number];
 export type AiAction={kind:ActionKind;target:string;label:string|null;ref:string|null;widgetType:string|null;metric:string|null;dimension:string|null;compareDimension:string|null;field:string|null;value:string|null;widgetId:string|null;targetValue:number|null};
 export type AiPlan={answer:string;operations:AiAction[]};
-export const KNOWLEDGE_VERSION='nxt-ai-v1.5.0';
+export const KNOWLEDGE_VERSION='nxt-ai-v1.6.0';
 export const AI_GRAPH_FORMAT=3 as const;
 export const AI_CONTAINER_TONES=['teal','slate','sand'] as const;
-export const AI_LAYOUT_ACTIONS=['move_node','set_container_style','resize_container','arrange_container','set_node_visualization'] as const;
+export const AI_LAYOUT_ACTIONS=['move_node','set_container_style','resize_container','arrange_container','set_node_visualization','optimize_layout','resize_node'] as const;
 export const AI_BRANCH_PLACEMENTS=['direct','member','standalone'] as const;
 export function coordinatePair(value:unknown,minX:number,maxX:number,minY:number,maxY:number):{x:number;y:number}|null{
  if(typeof value!=='string'||!/^\s*-?\d{1,6}\s*,\s*-?\d{1,6}\s*$/.test(value))return null;
@@ -14,7 +14,7 @@ export function coordinatePair(value:unknown,minX:number,maxX:number,minY:number
  return x>=minX&&x<=maxX&&y>=minY&&y<=maxY?{x,y}:null;
 }
 export function requiresGraph3(op:AiAction){return (AI_LAYOUT_ACTIONS as readonly string[]).includes(op.kind)||(op.kind==='add_branch'&&op.field!==null)}
-export const AI_PROMPT_LIMIT=6000;
+export const AI_PROMPT_LIMIT=18000;
 export const AI_HISTORY_LIMIT=6000;
 export function assistantPromptProblem(prompt:unknown):string|null{
  if(typeof prompt!=='string'||!prompt.trim())return 'Bitte eine Frage oder einen Änderungswunsch eingeben.';
@@ -26,11 +26,11 @@ export function boundedAssistantHistory(text:string,operationsSummary=''):string
  const marker='\n[Älterer Chatkontext gekürzt]';
  return joined.length<=AI_HISTORY_LIMIT?joined:joined.slice(0,AI_HISTORY_LIMIT-marker.length)+marker;
 }
-export type AiRequestIntent='auto'|'build_path'|'build_dashboard'|'edit_layout';
+export type AiRequestIntent='auto'|'build_path'|'build_dashboard'|'edit_layout'|'edit_analysis'|'answer_only';
 // Explicit UI actions and unambiguous creation commands are not advisory requests.
 // Ambiguous conversational prompts are left to the model, rather than forced into mutation mode.
 export function resolveAssistantIntent(prompt:string,explicit:unknown=null):AiRequestIntent{
- if(explicit==='build_path'||explicit==='build_dashboard'||explicit==='edit_layout')return explicit;
+ if(explicit==='build_path'||explicit==='build_dashboard'||explicit==='edit_layout'||explicit==='edit_analysis'||explicit==='answer_only')return explicit;
  const p=prompt.trim().toLocaleLowerCase('de-DE');
  if(/^(wie|warum|was|welche[rsn]?|wieso|erkläre|beschreibe|bewerte|prüfe|analysiere|how|why|what|explain|describe|review)\b/.test(p)||/^(bitte\s+)?(nicht|keine)\b/.test(p))return 'auto';
  const layout=/^(?:(?:bitte|kannst du|könntest du|würdest du|please|can you|could you)\s+)*(?:verschieb\w*|sortier\w*|ordn\w*|rück\w*|vergrößer\w*|verkleiner\w*|färb\w*|gestalt\w*|arrangier\w*|move|arrange|resize|recolor|style|align)\b/.test(p)||(/^(?:ändere|passe|mach|setze|wechsle|change|set|kannst du|könntest du|bitte)\b/.test(p)&&/\b(?:farbe|farben|farbton|layout|position|größe|diagrammtyp|visualisierung|verschieben|anordnen|containergröße|color|size|position|chart type)\b/.test(p)&&!/\b(?:nicht|keine)\b/.test(p));
@@ -41,22 +41,25 @@ export function resolveAssistantIntent(prompt:string,explicit:unknown=null):AiRe
  if(!command&&!desire&&!extend)return 'auto';
  if(/thinking[\s-]*path|analysepfad|analysebaum|decision[\s-]*tree|analysegraph|ursachenbaum/.test(p))return 'build_path';
  if(/dashboard/.test(p))return 'build_dashboard';
+ if(/diagramm|tabelle|chart|kontrollgrupp|prozessvarian|prozesskarte|case explorer|deep analysis|datenqualität|finding|kostentreiber|analyse|widget|visualisier|kachel/.test(p))return 'edit_analysis';
  return 'auto';
 }
 export function buildRequestBlocker(intent:AiRequestIntent,canEdit:boolean,graphFormat:unknown):{status:number;message:string}|null{
- if(intent==='auto')return null;
+ if(intent==='auto'||intent==='answer_only')return null;
  if(!canEdit)return {status:403,message:'Dieser Workspace ist nur lesbar. Öffne einen eigenen bearbeitbaren Workspace oder bitte einen Administrator um Freigabe. Es wurde keine KI-Anfrage berechnet.'};
  if(graphFormat!==AI_GRAPH_FORMAT)return {status:409,message:'Dein Browser verwendet einen älteren KI-Graph-Stand. Bitte speichere offene Änderungen und lade NXT Analytics mit Strg+F5 neu. Es wurde keine KI-Anfrage berechnet.'};
  return null;
 }
 export function buildPlanProblem(intent:AiRequestIntent,plan:AiPlan):string|null{
  if(intent==='build_path'&&!plan.operations.some(o=>o.kind==='add_branch'))return 'Die KI hat keinen ausführbaren neuen Analysezweig geliefert. Bitte erneut versuchen oder den gewünschten neuen Analysefokus angeben. Vorhandene Inhalte bleiben unverändert.';
- if(intent==='edit_layout'&&!plan.operations.some(o=>requiresGraph3(o)))return 'Die KI hat keine ausführbare Layout- oder Gestaltungsänderung geliefert. Bitte erneut versuchen; der Workspace bleibt unverändert.';
+ if(intent==='answer_only'&&plan.operations.length)return 'Nur Analyse: Änderungen sind für diese Anfrage nicht erlaubt.';
+ if(intent==='edit_analysis'&&!plan.operations.some(o=>['add_branch','add_widget','add_container','add_finding','set_node_visualization','configure_widget','set_node_metric','add_filter','edit_finding','rename_node','rename_widget','remove_widget'].includes(o.kind)))return 'Die KI hat keine ausführbare Analyseänderung geliefert.';
+ if(intent==='edit_layout'&&!plan.operations.some(o=>(AI_LAYOUT_ACTIONS as readonly string[]).includes(o.kind)))return 'Die KI hat keine ausführbare Layout- oder Gestaltungsänderung geliefert. Bitte erneut versuchen; der Workspace bleibt unverändert.';
  if(intent==='build_dashboard'&&!plan.operations.some(o=>o.kind==='add_widget'))return 'Die KI hat keine neuen Dashboard-Elemente geliefert. Bitte erneut versuchen oder einen konkreten Ergänzungswunsch angeben. Vorhandene Inhalte bleiben unverändert.';
  return null;
 }
 
-export const AI_WIDGET_TYPES=['kpi','line','bar','table','donut','text','bar_horizontal','bar_vertical','stacked','stacked100','heatmap','pareto','scatter','waterfall','bullet','histogram','treemap','funnel','e02_overview','e02_compare','e02_quality','e02_distribution','customer_table','comparison','status','scenario'] as const;
+export const AI_WIDGET_TYPES=['kpi','line','bar','table','donut','text','bar_horizontal','bar_vertical','stacked','stacked100','heatmap','pareto','scatter','waterfall','bullet','histogram','treemap','funnel','e02_overview','e02_compare','e02_quality','e02_distribution','customer_table','comparison','status','scenario','research'] as const;
 export const AI_METRICS=['orders','otifRate','onTimeRate','volumeConformanceRate','otifCases','lateOrders','avgDelayDays','affectedFactories','totalPenaltyEur','latePenaltyEur','shortfallPenaltyEur','penaltyPerOrderEur','penaltyPerKgEur','penaltyOrderValueRate','underDeliveryRate','overDeliveryRate','overDeliveryKg','quantityDeviationPct','orderConfirmationDays','productionPreparationDays','shipmentBufferDays','quantityChangesAfterStart','quantityChangesAfterEnd','quantityChangesAfterShip','creditBlockRate','scheduleChangeRate','processVariantCount','dataQualityCoverageRate','orderedKg','deliveredKg','avgOrderedKg'] as const;
 export const AI_DIMENSIONS=['factory','product_type','delivery_company','warehouse_type','cust_country','delivery_year','cust_market','delivered_quantity_unit','order_tolerance_met','otif_status','factory_product','quantity_deviation_class','credit_block','quantity_change_phase','process_order_quality','order_size_class','quantity_change_group','delivery_month'] as const;
 export const AI_SEGMENT_METRICS=AI_METRICS.filter(k=>!['avgDelayDays','affectedFactories'].includes(k));
@@ -64,7 +67,7 @@ export const AI_NUMERIC_FIELDS=['ordered_quantity','delivered_quantity','order_v
 export const AI_DATE_FIELDS=['delivered_date','promised_date','order_received_date'] as const;
 export const AI_FILTER_FIELDS=[...AI_DIMENSIONS,...AI_NUMERIC_FIELDS,...AI_DATE_FIELDS] as const;
 export function actionFilterValue(op:AiAction):string|string[]{if(op.widgetType==='in'||op.widgetType==='between'){let v:unknown;try{v=JSON.parse(op.value||'')}catch{throw Error('Filter benötigt ein JSON-Array von Textwerten.')}if(!Array.isArray(v)||v.some(x=>typeof x!=='string'||!x.trim()||x.length>200))throw Error('Ungültige Filterliste.');return v;}return op.value||'';}
-export const AI_CANVAS_TYPES=['kpi','bar','line','donut','stacked','stacked100','heatmap','pareto','scatter','waterfall','histogram','treemap','funnel','process_interval','table','customer_table','comparison','status','scenario','bullet','bar_horizontal','bar_vertical','e02_overview','e02_compare','e02_quality','e02_distribution','text'] as const;
+export const AI_CANVAS_TYPES=['kpi','bar','line','donut','stacked','stacked100','heatmap','pareto','scatter','waterfall','histogram','treemap','funnel','process_interval','table','customer_table','comparison','status','scenario','bullet','bar_horizontal','bar_vertical','e02_overview','e02_compare','e02_quality','e02_distribution','text','research'] as const;
 export const AI_INTERVAL_KEYS=['order_to_production','production_duration','production_to_shipment','shipment_to_delivery','order_to_delivery'] as const;
 const CANVAS_GROUPED=['bar','bar_horizontal','bar_vertical','table','comparison','stacked','stacked100','heatmap','pareto','scatter','treemap'];
 const COST_VISUALS=['pareto','waterfall','treemap'];
@@ -76,10 +79,70 @@ export function action(kind:ActionKind,target:string,patch:Partial<AiAction>={})
 }
 const str=(v:unknown,max:number)=>typeof v==='string'&&v.trim().length>0&&v.length<=max;
 const isOne=(a:readonly string[],v:unknown)=>typeof v==='string'&&a.includes(v);
+
+/** Shared frontend/edge config validation. A JSON value is data, never executable code. */
+export const AI_RESEARCH_TABS=['cases','process','variants','groups','compare','costs','quality'] as const;
+export const AI_RESEARCH_DIMENSIONS=[...AI_DIMENSIONS,'cust_id','order_received_month','promised_month'] as const;
+export const AI_CONTROL_FIELDS=['factory','product_type','warehouse_type','cust_market','order_size_class','delivery_year','credit_block','delivery_company'] as const;
+export const AI_RESEARCH_EXPOSURES=AI_RESEARCH_DIMENSIONS.filter(d=>!['otif_status','order_tolerance_met','quantity_deviation_class','process_order_quality','cust_id'].includes(d));
+const objectValue=(value:string|null):Record<string,unknown>=>{
+ let parsed:unknown;try{parsed=JSON.parse(value||'')}catch{throw Error('Analyseparameter benötigen ein gültiges JSON-Objekt.')}
+ if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw Error('Analyseparameter benötigen ein JSON-Objekt.');
+ return parsed as Record<string,unknown>;
+};
+const enabledDimension=(d:unknown,allowed:readonly string[])=>typeof d==='string'&&(d==='all'||(d==='order_received_month'?allowed.includes('order_received_date'):d==='promised_month'?allowed.includes('promised_date'):d==='customer_product'?allowed.includes('cust_id')&&allowed.includes('product_type'):allowed.includes(d)));
+const oneOf=(v:unknown,values:readonly string[])=>typeof v==='string'&&values.includes(v);
+export function parseAiResearch(value:string|null,allowed:readonly string[]){
+ const s=objectValue(value),tab=s.tab;
+ const keys=['tab','dimensions','exposure','a','b','outcome','minN','sequence','sort','status','pageSize'];
+ if(Object.keys(s).some(k=>!keys.includes(k))||!oneOf(tab,AI_RESEARCH_TABS))throw Error('Unbekannte Deep-Analysis-Konfiguration.');
+ const dims=s.dimensions??[];
+ if(!Array.isArray(dims)||dims.length>3||new Set(dims).size!==dims.length||dims.some(d=>!oneOf(d,AI_RESEARCH_DIMENSIONS)||!enabledDimension(d,allowed)))throw Error('Deep Analysis: maximal drei unterschiedliche freigegebene Dimensionen.');
+ if(dims.length&&!['groups','costs','compare'].includes(String(tab)))throw Error('Diese Deep Analysis unterstützt keine Gruppierungsdimensionen.');
+ if(tab==='compare'){
+  if(!oneOf(s.exposure,AI_RESEARCH_EXPOSURES)||!enabledDimension(s.exposure,allowed)||!str(s.a,200)||!str(s.b,200)||s.a===s.b||dims.some(d=>!oneOf(d,AI_CONTROL_FIELDS)||d===s.exposure))throw Error('Kontrollgruppen: zwei verschiedene Werte eines freigegebenen Einflussfaktors und maximal drei unabhängige Kontrollvariablen erforderlich.');
+  if(s.outcome!==undefined&&!oneOf(s.outcome,['otif','otd','volume'])||s.minN!==undefined&&(!Number.isInteger(s.minN)||Number(s.minN)<5||Number(s.minN)>1000))throw Error('Kontrollgruppen: Zielkennzahl oder Mindestfallzahl ungültig.');
+ }else if(['exposure','a','b','outcome','minN'].some(k=>s[k]!==undefined))throw Error('Vergleichsparameter gehören zur Kontrollgruppenanalyse.');
+ if(s.sequence!==undefined&&(!oneOf(s.sequence,['chronological','source'])||!['process','variants'].includes(String(tab))))throw Error('Unzulässige Prozessreihenfolge.');
+ if(s.sort!==undefined&&(!oneOf(s.sort,['cost','late','short','weight','key','orders'])||!['cases','groups','costs','variants'].includes(String(tab))))throw Error('Unzulässige Sortierung.');
+ if(s.status!==undefined&&!oneOf(s.status,['on_time_in_full','on_time_not_full','late_in_full','late_not_full','unknown']))throw Error('Unbekannte OTIF-Klasse.');
+ if(s.pageSize!==undefined&&(![10,25,50,100].includes(Number(s.pageSize))||typeof s.pageSize!=='number'))throw Error('Ungültige Seitengröße.');
+ if(tab==='variants'&&!allowed.includes('process_variant'))throw Error('Prozessvarianten sind nicht freigegeben.');
+ return {...(tab==='compare'?{outcome:'otif',minN:10}:{}),...(tab==='process'||tab==='variants'?{sequence:'chronological'}:{}),...s,dimensions:dims};
+}
+const DISPLAY_KEYS:Record<string,string[]>={
+ bar:['groupBy','ascending','limit','orientation'],bar_horizontal:['groupBy','ascending','limit','orientation'],bar_vertical:['groupBy','ascending','limit','orientation'],
+ line:['timeAnchor','secondaryMetric'],table:['groupBy','columns','sortMetric','ascending','limit','pageSize'],customer_table:['groupBy','columns','sortMetric','ascending','limit','pageSize','targetOtd'],
+ scatter:['groupBy','xMetric','yMetric','sizeMetric','sortMetric','ascending','limit'],comparison:['groupBy','comparison','sortMetric','ascending','limit'],scenario:['targetOtd','lateReduction','shortfallReduction']
+};
+export function parseAiDisplay(type:string,value:string|null,allowed:readonly string[]){
+ const s=objectValue(value),keys=DISPLAY_KEYS[type];
+ if(!keys||Object.keys(s).some(k=>!keys.includes(k)))throw Error('Diese Diagrammkonfiguration enthält nicht unterstützte Parameter.');
+ if(s.groupBy!==undefined&&(!oneOf(s.groupBy,[...AI_DIMENSIONS,'cust_id','cust_name','customer_product','order_received_month','promised_month','all'])||!enabledDimension(s.groupBy,allowed)))throw Error('Diagrammgruppierung nicht freigegeben.');
+ if(s.columns!==undefined&&(!Array.isArray(s.columns)||!s.columns.length||s.columns.length>12||new Set(s.columns).size!==s.columns.length||s.columns.some(m=>!oneOf(m,AI_SEGMENT_METRICS))))throw Error('Tabellenspalten ungültig.');
+ for(const k of ['sortMetric','xMetric','yMetric','sizeMetric','secondaryMetric'])if(s[k]!==undefined&&!oneOf(s[k],AI_SEGMENT_METRICS))throw Error('Diagrammkennzahl ungültig: '+k);
+ for(const [k,values] of Object.entries({timeAnchor:['delivered','ordered','promised'],orientation:['horizontal','vertical'],limit:['5','10','12','20','50','100','all'],comparison:['rates','costs','mass']}))if(s[k]!==undefined&&!oneOf(s[k],values))throw Error('Diagrammparameter ungültig: '+k);
+ if(s.ascending!==undefined&&typeof s.ascending!=='boolean'||s.pageSize!==undefined&&![10,20,50].includes(s.pageSize as number))throw Error('Sortierung oder Seitengröße ungültig.');
+ for(const k of ['targetOtd','lateReduction','shortfallReduction'])if(s[k]!==undefined&&(typeof s[k]!=='number'||!Number.isFinite(s[k])||Number(s[k])<0||Number(s[k])>100))throw Error('Szenariowert muss zwischen 0 und 100 liegen.');
+ return s;
+}
+export const hasJsonConfig=(value:string|null)=>typeof value==='string'&&value.trimStart().startsWith('{');
+export function validateWidgetConfig(op:AiAction,allowed:Set<string>){
+ if(op.widgetType==='research'){
+  if(op.metric||op.dimension||op.compareDimension||op.targetValue!==null)throw Error('Deep Analysis wird ausschließlich über das JSON-Analyseobjekt konfiguriert.');
+  parseAiResearch(op.value,[...allowed]);return true;
+ }
+ if(hasJsonConfig(op.value)){parseAiDisplay(op.widgetType||'',op.value,[...allowed]);return true;}
+ return false;
+}
+
 function validateCanvasVisual(op:AiAction,allowed:Set<string>){
     const viz=op.widgetType||'kpi';
     if(!isOne(AI_CANVAS_TYPES,viz))throw Error('Diagrammtyp im Thinking Path nicht unterstützt.');
-    if(CANVAS_GROUPED.includes(viz)&&!op.dimension)throw Error('Canvas-Diagramm benötigt eine freigegebene Dimension.');
+    const configured=validateWidgetConfig(op,allowed);
+    if(viz==='research')return;
+    const group=hasJsonConfig(op.value)?parseAiDisplay(viz,op.value,[...allowed]).groupBy:null;
+    if(CANVAS_GROUPED.includes(viz)&&!op.dimension&&!group)throw Error('Canvas-Diagramm benötigt eine freigegebene Dimension.');
     if(op.dimension&&!CANVAS_GROUPED.includes(viz))throw Error('Canvas-Diagramm unterstützt keine Segmentdimension.');
     if(viz==='heatmap'){
      if(!['factory','product_type'].includes(op.dimension||''))throw Error('Canvas-Heatmap nutzt Werk und Produkttyp.');
@@ -94,10 +157,10 @@ function validateCanvasVisual(op:AiAction,allowed:Set<string>){
     if(viz==='histogram'&&op.value&&op.value!=='quantity_change_count')throw Error('Canvas-Histogramm zeigt Mengenänderungen; andere Verteilungen im Dashboard.');
     if(viz==='bullet'&&(op.targetValue===null||op.metric&&!['otifRate','onTimeRate','volumeConformanceRate'].includes(op.metric)))throw Error('Bullet benötigt einen Prozent-Zielwert.');
     if(op.targetValue!==null&&!['bullet','scenario','customer_table'].includes(viz))throw Error('Zielwert für diesen Typ nicht unterstützt.');
-    if(viz==='comparison'&&op.value&&!['rates','costs','mass'].includes(op.value))throw Error('Vergleichsmodus ungültig.');
-    if(viz==='line'&&op.value&&!['delivered','ordered','promised'].includes(op.value))throw Error('Zeitbezug ungültig.');
+    if(viz==='comparison'&&!configured&&op.value&&!['rates','costs','mass'].includes(op.value))throw Error('Vergleichsmodus ungültig.');
+    if(viz==='line'&&!configured&&op.value&&!['delivered','ordered','promised'].includes(op.value))throw Error('Zeitbezug ungültig.');
     if(viz==='e02_distribution'&&op.value&&!isOne(AI_INTERVAL_KEYS,op.value))throw Error('Prozessintervall ungültig.');
-    if(!['process_interval','histogram','line','comparison','e02_distribution','text'].includes(viz)&&op.value)throw Error('Nicht unterstützter Canvas-Parameter.');
+    if(!configured&&!['process_interval','histogram','line','comparison','e02_distribution','text'].includes(viz)&&op.value)throw Error('Nicht unterstützter Canvas-Parameter.');
 }
 export function validatePlan(input:unknown,existingIds:string[],allowedFields:string[],canEdit=true):AiPlan{
  if(!input||typeof input!=='object')throw Error('KI-Antwort ungültig.');
@@ -107,7 +170,7 @@ export function validatePlan(input:unknown,existingIds:string[],allowedFields:st
  const known=new Set(existingIds),allowed=new Set(allowedFields),out:AiAction[]=[];
  for(const raw of p.operations){
   if(!raw||!isOne(ACTION_KINDS,raw.kind)||!str(raw.target,180)||!known.has(raw.target))throw Error('Unbekannte Aktion oder Zielknoten.');
-  for(const k of slots)if(raw[k]!=null&&!str(raw[k],k==='label'?700:k==='value'&&['add_finding','edit_finding'].includes(raw.kind)?1800:k==='value'?200:180))throw Error('Ungültiges Aktionsfeld: '+k);
+  for(const k of slots)if(raw[k]!=null&&!str(raw[k],k==='label'?700:k==='value'&&['add_finding','edit_finding'].includes(raw.kind)?1800:k==='value'&&(['add_branch','add_widget','set_node_visualization','configure_widget'].includes(raw.kind))&&(raw.widgetType==='research'||hasJsonConfig(raw.value))?2000:k==='value'?200:180))throw Error('Ungültiges Aktionsfeld: '+k);
   if(raw.targetValue!=null&&(!Number.isFinite(raw.targetValue)||raw.targetValue<0||raw.targetValue>100))throw Error('Zielwert ungültig.');
   const op=action(raw.kind,raw.target,Object.fromEntries([...slots,'targetValue'].map(k=>[k,(raw as unknown as Record<string,unknown>)[k]??null])) as Partial<AiAction>);
   if(op.metric&&!isOne(AI_METRICS,op.metric))throw Error('Unbekannte Kennzahl.');
@@ -131,6 +194,12 @@ export function validatePlan(input:unknown,existingIds:string[],allowedFields:st
     validateCanvasVisual(op,allowed);
    }
    known.add(op.ref);
+  }else if(op.kind==='optimize_layout'||op.kind==='resize_node'){
+   if(op.label||op.ref||op.widgetType||op.metric||op.dimension||op.compareDimension||op.field||op.widgetId||op.targetValue!==null)throw Error('Ungültige Layoutparameter.');
+   if(op.kind==='optimize_layout'&&!['hybrid','tree'].includes(op.value||''))throw Error('Smart Layout: hybrid oder tree erforderlich.');
+   if(op.kind==='resize_node'&&!coordinatePair(op.value,180,1400,132,1200))throw Error('Kachelgröße ungültig.');
+  }else if(op.kind==='configure_widget'){
+   if(!isOne(AI_WIDGET_TYPES,op.widgetType)||!op.widgetId||op.ref||op.field||op.label||!validateWidgetConfig(op,allowed))throw Error('Widget-Konfiguration benötigt Widget-ID, Typ und gültige JSON-Parameter.');
   }else if(op.kind==='move_node'||op.kind==='resize_container'||op.kind==='arrange_container'||op.kind==='set_container_style'){
    if(op.label||op.ref||op.widgetType||op.metric||op.dimension||op.compareDimension||op.field||op.widgetId||op.targetValue!==null)throw Error('Ungültige Parameter für Layout-Aktion.');
    if(op.kind==='move_node'&&!coordinatePair(op.value,-100000,100000,-100000,100000))throw Error('Position ungültig. Erwartet: x,y als ganze Zahlen.');
@@ -146,6 +215,7 @@ export function validatePlan(input:unknown,existingIds:string[],allowedFields:st
    if(!str(op.label,700))throw Error('Forschungsfrage fehlt.');
   }else if(op.kind==='add_widget'){
    if(!isOne(AI_WIDGET_TYPES,op.widgetType)||!str(op.label,100))throw Error('Widgettyp oder Titel ungültig.');
+   const configured=validateWidgetConfig(op,allowed);
    if(op.widgetType==='heatmap'&&[op.dimension,op.compareDimension].some(d=>d&&!['factory','product_type','delivery_company','cust_market','cust_country','warehouse_type'].includes(d)))throw Error('Heatmap-Dimension nicht unterstützt.');
    if(op.widgetType==='bullet'&&op.targetValue==null)throw Error('Zielwert ausdrücklich angeben.');
    if(op.widgetType==='bullet'&&op.metric&&!['otifRate','onTimeRate','volumeConformanceRate'].includes(op.metric))throw Error('Bullet benötigt eine Prozent-Kennzahl.');
@@ -155,8 +225,8 @@ export function validatePlan(input:unknown,existingIds:string[],allowedFields:st
    if(['heatmap','scatter','stacked','stacked100'].includes(op.widgetType||'')&&op.metric&&op.metric!=='otifRate')throw Error('Dieses Dashboard-Diagramm nutzt die fest definierte OTIF-Auswertung.');
    if(op.widgetType==='e02_distribution'&&op.value&&!isOne(AI_INTERVAL_KEYS,op.value))throw Error('Prozessintervall ungültig.');
    if(op.widgetType==='histogram'&&op.value&&!['quantity_change_count','lateness_days'].includes(op.value))throw Error('Verteilung ungültig.');
-   if(op.widgetType==='comparison'&&op.value&&!['rates','costs','mass'].includes(op.value))throw Error('Vergleichsmodus ungültig.');
-   if(op.widgetType==='line'&&op.value&&!['delivered','ordered','promised'].includes(op.value))throw Error('Zeitbezug ungültig.');
+   if(op.widgetType==='comparison'&&!configured&&op.value&&!['rates','costs','mass'].includes(op.value))throw Error('Vergleichsmodus ungültig.');
+   if(op.widgetType==='line'&&!configured&&op.value&&!['delivered','ordered','promised'].includes(op.value))throw Error('Zeitbezug ungültig.');
   }else if(op.kind==='add_filter'){
    if(!op.field||!allowed.has(op.field)||!isOne(AI_FILTER_FIELDS,op.field)||!str(op.value,200))throw Error('Filterfeld oder Filterwert ungültig.');
    const operator=op.widgetType||'eq',category=isOne(AI_DIMENSIONS,op.field),date=isOne(AI_DATE_FIELDS,op.field);

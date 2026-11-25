@@ -1,14 +1,17 @@
-import {action,validatePlan,AI_GRAPH_FORMAT,AI_SEGMENT_METRICS,actionFilterValue,coordinatePair,type AiPlan,type AiAction} from './assistantProtocol';
+import {parseAiResearch,parseAiDisplay,hasJsonConfig,action,validatePlan,AI_GRAPH_FORMAT,AI_SEGMENT_METRICS,actionFilterValue,coordinatePair,type AiPlan,type AiAction} from './assistantProtocol';
 import {freshWidget,normalizeDashboard,standardDashboard,makeDocument,METRICS,WIDGET_LABELS,METRIC_LABELS,type NodeDashboard,type MetricKey,type WidgetType} from './dashboard';
+import {smartLayout} from './smartLayout';
+import {validResearchSpec,type ResearchSpec} from './research';
+import {validChartDisplay,type ChartDisplay} from './analyticsCanvas';
 import {findingStamp} from './findings';
-import {nodeFor,referenceEdge,annotationEdge,isValidAnnotation,isValidReference,moveIntoContainer,worldPosition,containerSize,nodeLayoutSize,fitGraphContainers,changeContainerSettings,serializeDraft,type NNode,type NEdge} from './graph';
+import {nodeFor,referenceEdge,annotationEdge,isValidAnnotation,isValidReference,moveIntoContainer,worldPosition,containerSize,nodeLayoutSize,resizeGraphCard,fitGraphContainers,changeContainerSettings,serializeDraft,type NNode,type NEdge} from './graph';
 import {effectiveFilters,validateFilters,conflictingFields,formatFilter} from './filters';
 import type {AnalysisNode,Filter,Metrics,GraphViz,ContainerTone} from './types';
 import type {FieldKey} from '../config';
 import {KPI_DEFINITIONS} from './kpiDefinitions';
 import type {E02IntervalKey} from './processIntervals';
 export type AssistantState={nodes:NNode[];edges:NEdge[];globals:Filter[];locals:Record<string,Filter[]>;dashboards:Record<string,NodeDashboard>;selectedId:string;allowedFields:FieldKey[]};
-export type AssistantContext={graphFormat:typeof AI_GRAPH_FORMAT;workspaceId:string|null;revision:number|null;workspaceTitle:string;selectedId:string;nodes:{id:string;label:string;kind:string;metric:string|null;visualization:string|null;chartDimension:string|null;intervalKey:string|null;containerId:string|null;containerCollapsed:boolean;containerTone:string|null;position:{x:number;y:number};world:{x:number;y:number};size:{width:number;height:number};description:string|null;question:string|null;localFilters:{field:string;op:string;value:string|string[]}[];widgets:{id:string;type:string;title:string;metric:string|null;dimension:string|null;compareDimension:string|null;width:string;target:number|null;intervalKey:string|null;distributionMeasure:string|null}[]}[];edges:{source:string;target:string;kind?:string}[];filters:{field:string;op:string;value:string|string[]}[];globalFilters:{field:string;op:string;value:string|string[]}[];allowedFields:string[];canEdit:boolean};
+export type AssistantContext={researchProtocol:1;graphFormat:typeof AI_GRAPH_FORMAT;workspaceId:string|null;revision:number|null;workspaceTitle:string;selectedId:string;nodes:{id:string;label:string;kind:string;metric:string|null;visualization:string|null;chartDimension:string|null;intervalKey:string|null;containerId:string|null;containerCollapsed:boolean;containerTone:string|null;position:{x:number;y:number};world:{x:number;y:number};size:{width:number;height:number};description:string|null;question:string|null;localFilters:{field:string;op:string;value:string|string[]}[];widgets:{id:string;type:string;title:string;metric:string|null;dimension:string|null;compareDimension:string|null;width:string;target:number|null;intervalKey:string|null;distributionMeasure:string|null;research:ResearchSpec|null;display:ChartDisplay|null}[]}[];edges:{source:string;target:string;kind?:string}[];filters:{field:string;op:string;value:string|string[]}[];globalFilters:{field:string;op:string;value:string|string[]}[];allowedFields:string[];canEdit:boolean};
 export function resolveAssistantNodeId(nodes:NNode[],selectedId:string):string{
  return nodes.some(n=>n.id===selectedId)?selectedId:nodes.find(n=>n.data.analysis.kind==='root')?.id||nodes[0]?.id||'';
 }
@@ -19,8 +22,8 @@ export function contextForAssistant(s:AssistantState,workspace:{id:string;title:
  if(!s.nodes.some(n=>n.id===s.selectedId))throw Error('Bitte zuerst einen Analyseblock auswählen.');
  const strip=({field,op,value}:Filter)=>({field,op,value});
  const filters=effectiveFilters(s.globals,s.nodes.map(n=>n.data.analysis),s.locals,s.selectedId,s.edges).map(strip);
- return {graphFormat:AI_GRAPH_FORMAT,workspaceId:workspace?.id||null,revision:workspace?.revision??null,workspaceTitle:workspace?.title||'Lokaler Entwurf',selectedId:s.selectedId,canEdit,allowedFields:s.allowedFields,
- nodes:s.nodes.map(n=>{const a=n.data.analysis,d=s.dashboards[n.id];return {id:n.id,label:a.label,kind:a.kind,metric:a.metricId||null,visualization:a.canvasWidgetType||a.visualization||null,chartDimension:a.chartDimension||null,intervalKey:a.intervalKey||null,containerId:a.containerId||null,containerCollapsed:!!a.containerCollapsed,containerTone:a.kind==='container'?(a.containerTone||'teal'):null,position:{x:Math.round(n.position.x),y:Math.round(n.position.y)},world:worldPosition(n,s.nodes),size:assistantBlockSize(n),description:a.description||null,question:d?.question||null,localFilters:[...(a.predicate?[a.predicate]:[]),...(s.locals[n.id]||[])].map(strip),widgets:(d?.widgets||[]).map(w=>({id:w.id,type:w.type,title:w.title,metric:w.metric||null,dimension:w.dimension||null,compareDimension:w.compareDimension||null,width:w.width,target:w.target??null,intervalKey:w.intervalKey||null,distributionMeasure:w.distributionMeasure||null}))}}),
+ return {researchProtocol:1,graphFormat:AI_GRAPH_FORMAT,workspaceId:workspace?.id||null,revision:workspace?.revision??null,workspaceTitle:workspace?.title||'Lokaler Entwurf',selectedId:s.selectedId,canEdit,allowedFields:s.allowedFields,
+ nodes:s.nodes.map(n=>{const a=n.data.analysis,d=s.dashboards[n.id];return {id:n.id,label:a.label,kind:a.kind,metric:a.metricId||null,visualization:a.canvasWidgetType||a.visualization||null,chartDimension:a.chartDimension||null,intervalKey:a.intervalKey||null,containerId:a.containerId||null,containerCollapsed:!!a.containerCollapsed,containerTone:a.kind==='container'?(a.containerTone||'teal'):null,position:{x:Math.round(n.position.x),y:Math.round(n.position.y)},world:worldPosition(n,s.nodes),size:assistantBlockSize(n),description:a.description||null,question:d?.question||null,localFilters:[...(a.predicate?[a.predicate]:[]),...(s.locals[n.id]||[])].map(strip),widgets:(d?.widgets||[]).map(w=>({id:w.id,type:w.type,title:w.title,metric:w.metric||null,dimension:w.dimension||null,compareDimension:w.compareDimension||null,width:w.width,target:w.target??null,intervalKey:w.intervalKey||null,distributionMeasure:w.distributionMeasure||null,research:w.research||null,display:w.display||null}))}}),
  edges:s.edges.map(e=>({source:e.source,target:e.target,kind:e.data?.kind})),filters,globalFilters:s.globals.map(strip)};
 }
 function baseDashboard(n:NNode):NodeDashboard{
@@ -89,24 +92,26 @@ function validateLayout(before:NNode[],after:NNode[]){
 }
 const dimensionTypes=['comparison','bar','table','bar_horizontal','bar_vertical','stacked','stacked100','heatmap','pareto','scatter','treemap'];
 const selectableMetricTypes=['kpi','bar','line','bar_horizontal','bar_vertical','bullet'];
-const sharedCanvasTypes=['table','customer_table','comparison','status','scenario','bullet','bar_horizontal','bar_vertical','e02_overview','e02_compare','e02_quality','e02_distribution','text'];
+const sharedCanvasTypes=['table','customer_table','comparison','status','scenario','bullet','bar_horizontal','bar_vertical','e02_overview','e02_compare','e02_quality','e02_distribution','text','research'];
 function makeSharedWidget(op:AiAction,title:string,allowed:FieldKey[]){
  const type=op.widgetType as WidgetType,w=freshWidget(type);w.title=title;
  if(op.metric&&selectableMetricTypes.includes(type))w.metric=op.metric as MetricKey;
  if(op.dimension&&dimensionTypes.includes(type))w.dimension=op.dimension as FieldKey;
  if(type==='heatmap'&&op.compareDimension)w.compareDimension=op.compareDimension as FieldKey;
  if(type==='bullet')w.target=op.targetValue!;
- if(type==='comparison'&&op.value)w.display={...w.display,comparison:op.value as 'rates'|'costs'|'mass'};
- if(type==='line'&&op.value)w.display={...w.display,timeAnchor:op.value as 'delivered'|'ordered'|'promised'};
+ if(type==='comparison'&&op.value&&!hasJsonConfig(op.value))w.display={...w.display,comparison:op.value as 'rates'|'costs'|'mass'};
+ if(type==='line'&&op.value&&!hasJsonConfig(op.value))w.display={...w.display,timeAnchor:op.value as 'delivered'|'ordered'|'promised'};
  if((type==='scenario'||type==='customer_table')&&op.targetValue!==null)w.display={...w.display,targetOtd:op.targetValue};
  if(type==='text'&&op.value)w.text=op.value;
  if(type==='histogram'&&op.value)w.distributionMeasure=op.value as typeof w.distributionMeasure;
  if(type==='e02_distribution'&&op.value)w.intervalKey=op.value as typeof w.intervalKey;
+ if(type==='research'){const r=parseAiResearch(op.value,allowed) as unknown as ResearchSpec;if(!validResearchSpec(r))throw Error('Ungültige Deep-Analysis-Konfiguration.');w.research=r;}
+ else if(hasJsonConfig(op.value)){const display=parseAiDisplay(type,op.value,allowed) as ChartDisplay;if(!validChartDisplay(display))throw Error('Ungültige Diagrammkonfiguration.');w.display={...w.display,...display};}
  if(type==='customer_table'&&!allowed.includes('cust_id'))throw Error('Kunden-ID nicht freigegeben.');
  if((w.dimension&&!allowed.includes(w.dimension))||(w.compareDimension&&!allowed.includes(w.compareDimension)))throw Error('Widget-Dimension nicht freigegeben.');
  return w;
 }
-function isSharedCanvas(op:AiAction){return sharedCanvasTypes.includes(op.widgetType||'')||op.widgetType==='line'&&!!op.value;}
+function isSharedCanvas(op:AiAction){return sharedCanvasTypes.includes(op.widgetType||'')||op.widgetType==='line'&&!!op.value||hasJsonConfig(op.value);}
 export function applyAssistantPlan(state:AssistantState,raw:AiPlan):AssistantState{
  const plan=validatePlan(raw,state.nodes.map(n=>n.id),state.allowedFields);
  let nodes=[...state.nodes],edges=[...state.edges],locals={...state.locals},dashboards={...state.dashboards};
@@ -121,7 +126,10 @@ export function applyAssistantPlan(state:AssistantState,raw:AiPlan):AssistantSta
  for(const op of plan.operations){
   const n=get(op.target),id=n.id,a=n.data.analysis;
   switch(op.kind){
-   case 'move_node':case 'set_container_style':case 'resize_container':case 'arrange_container':layoutOps.push(op);break;
+   case 'move_node':case 'set_container_style':case 'resize_container':case 'arrange_container':case 'optimize_layout':case 'resize_node':layoutOps.push(op);break;
+   case 'configure_widget':{
+    updateDashboard(n,d=>{const w=d.widgets.find(w=>w.id===op.widgetId);if(!w||w.type!==op.widgetType)throw Error('Widget nicht vorhanden oder Typ stimmt nicht überein.');const patch=makeSharedWidget({...op,dimension:op.dimension||w.dimension||null,metric:op.metric||w.metric||null},w.title,state.allowedFields);return {...d,widgets:d.widgets.map(x=>x.id===w.id?{...w,...(op.metric?{metric:patch.metric}:{}),...(op.dimension?{dimension:patch.dimension}:{}),...(w.type==='research'?{research:patch.research}:{display:{...w.display,...patch.display}})}:x)};});break;
+   }
    case 'set_node_visualization':{
     if(a.kind==='container'||a.kind==='note')throw Error('Container oder Textblöcke können nicht in Diagramme umgewandelt werden.');
     const shared=isSharedCanvas(op)?makeSharedWidget(op,a.label,state.allowedFields):null;
@@ -196,7 +204,9 @@ export function applyAssistantPlan(state:AssistantState,raw:AiPlan):AssistantSta
  if(created.size)nodes=layoutNewBlocks(nodes,created);
  for(const op of layoutOps){
   const n=get(op.target),a=n.data.analysis;
-  if(op.kind==='move_node'){
+  if(op.kind==='optimize_layout')continue;
+  if(op.kind==='resize_node'){if(a.kind==='container')throw Error('Containergröße über resize_container einstellen.');const z=coordinatePair(op.value,180,1400,132,1200)!;nodes=resizeGraphCard(nodes,n.id,{width:z.x,height:z.y});}
+  else if(op.kind==='move_node'){
    const pos=coordinatePair(op.value,-100000,100000,-100000,100000)!;
    if(a.containerId&&(pos.x<18||pos.y<86))throw Error('Position innerhalb eines Containers benötigt x≥18, y≥86.');
    nodes=nodes.map(x=>x.id===n.id?{...x,position:pos}:x);
@@ -213,6 +223,8 @@ export function applyAssistantPlan(state:AssistantState,raw:AiPlan):AssistantSta
   }
  }
  nodes=fitGraphContainers(nodes);
+ const autoLayout=layoutOps.filter(o=>o.kind==='optimize_layout').at(-1);
+ if(autoLayout){const result=smartLayout(nodes,edges,autoLayout.value==='tree'?'tree':'hybrid');if(result.warnings.some(w=>w.includes('überschreitet')))throw Error('Smart Layout: Container zu groß. Bitte aufteilen.');nodes=result.nodes;}
  if(layoutOps.some(o=>o.kind!=='set_container_style')||plan.operations.some(o=>o.kind==='set_node_visualization'))validateLayout(state.nodes,nodes);
  const topology=nodes.map(n=>n.data.analysis);
  if(plan.operations.some(o=>o.kind==='add_filter'||o.kind==='add_branch'||o.kind==='add_container')){
@@ -246,6 +258,9 @@ export function actionLabel(op:AiAction,labels:Record<string,string>){
   case 'resize_container':return t+' vergrößern/verkleinern · '+op.value+' px (mind. Platz für Mitglieder)';
   case 'set_container_style':return t+' · Farbe '+({teal:'NXT Türkis',slate:'Schiefergrau',sand:'Sand'}[op.value as ContainerTone]||op.value);
   case 'arrange_container':return t+' · '+op.value+' Spalten';
+  case 'optimize_layout':return 'Gesamten Thinking Path mit Smart Layout anordnen · '+op.value;
+  case 'resize_node':return t+' · Kachelgröße '+op.value+' px';
+  case 'configure_widget':return 'Darstellung von „'+(labels[op.widgetId||'']||op.widgetId)+'“ in '+t+' konfigurieren';
   case 'set_node_visualization':return t+' · Visualisierung '+op.widgetType;
   case 'set_node_metric':return 'Kennzahl in '+t+': '+(METRIC_LABELS[op.metric as MetricKey]||op.metric);
  }
